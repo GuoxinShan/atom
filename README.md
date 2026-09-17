@@ -1,4 +1,6 @@
-# cited-demand
+# shiyuan
+
+> 事元 · append-only cited demand feed
 
 Append-only **demand feed** with mandatory citations and human gates.
 
@@ -35,4 +37,4 @@ Machines propose. Humans decide. Every claim points at evidence.
 
 ## Name
 
-`cited-demand` = demand that must be **cited**. No citation, no candidate.
+**shiyuan**（事元）— every change is an append-only event. No citation, no candidate.
