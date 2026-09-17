@@ -1,0 +1,14 @@
+{
+  "name": "@atom/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "atom": "./src/index.ts"
+  },
+  "dependencies": {
+    "@atom/adapters": "workspace:*",
+    "@atom/core": "workspace:*",
+    "@atom/web": "workspace:*"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "sources": [
+    { "id": "fixture", "kind": "fixture", "enabled": true },
+    { "id": "yzj", "kind": "yzj", "enabled": false }
+  ]
+}

@@ -8,6 +8,8 @@
 - Clone of company 灵基 / AI推进 product surfaces
 - China-first SaaS with ICP as day-one requirement
 - Dual state machines (chat tool + our DB both authoritative)
+- China ICP, MoR billing, or a hosted SaaS control plane
+- Next.js product shell — Stage-1 UI is a **local kanban prototype** over SQLite projections only
 
 ## Competitor stance
 

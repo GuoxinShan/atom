@@ -1,0 +1,7 @@
+{"id":"msg-001","groupId":"atom-demo","author":"林晚","text":"需要一份每日需求日报，每条候选必须带上原始消息引用，不能只有标题。","sentAt":"2026-09-16T09:12:00.000Z"}
+{"id":"msg-002","groupId":"atom-demo","author":"陈柯","text":"收到","sentAt":"2026-09-16T09:13:10.000Z"}
+{"id":"msg-003","groupId":"atom-demo","author":"林晚","text":"建议看板按 Suggested / Accepted / Rejected 三列，接受和拒绝都要留下可审计记录。","sentAt":"2026-09-16T09:18:44.000Z"}
+{"id":"msg-004","groupId":"atom-demo","author":"周屿","text":"哈哈","sentAt":"2026-09-16T09:19:02.000Z"}
+{"id":"msg-005","groupId":"atom-demo","author":"陈柯","text":"We should keep Stage-1 offline: fixture ingest plus heuristic extract, then a markdown digest under out/.","sentAt":"2026-09-16T10:02:15.000Z"}
+{"id":"msg-006","groupId":"atom-demo","author":"林晚","text":"能不能把 Grok Build Agent CLI 接到 extract 上，不要走裸的 OpenAI HTTP chat completions。","sentAt":"2026-09-16T10:08:33.000Z"}
+{"id":"msg-007","groupId":"atom-demo","author":"周屿","text":"希望 heuristic 离线也能跑，而且每个 candidate 至少要有一条 ref。","sentAt":"2026-09-16T11:21:09.000Z"}

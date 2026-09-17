@@ -4,19 +4,51 @@
 
 Machines propose. Humans decide. Every claim points at evidence.
 
-Dogfood first on personal chat sources (e.g. Yunzhijia via local CLI). Overseas Slack-compatible product comes later. This repo currently holds **core design and contracts only** — no runtime yet.
+## Quickstart
 
-## One-liner
+```bash
+pnpm install
+pnpm atom run
+pnpm atom candidates
+pnpm atom ui          # kanban at http://127.0.0.1:3333
+```
 
-Cited demand pool on an append-only **ATOM** feed — human gates all the way to land.
+Default path: **FixtureSource** + **HeuristicExtractAgent** (offline).  
+Writes atoms into SQLite table `events`, Markdown 需求日报 into `out/`, and a local kanban projection of candidates.
 
-## Stages (build in order)
+```bash
+pnpm atom approve <id>
+pnpm atom reject <id>
+```
 
-1. **Demand pool** — ingest messages → propose candidates with refs → approve / reject / merge
-2. **Spec** — accepted items become testable acceptance criteria
-3. **Handoff** — export to existing coding agents (Cursor / Codex), do not build a coding model
-4. **Evidence** — tests / screenshots packaged against criteria
-5. **Land** — PR + release checklist; merge/release stay human-gated
+## Env
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `ATOM_SOURCE` | `fixture` | `fixture` \| `yzj` |
+| `ATOM_EXTRACT_AGENT` | `heuristic` | `heuristic` \| `grok` |
+| `ATOM_GROK_BIN` | `grok` | Grok Build Agent CLI |
+| `ATOM_GROK_MODEL` | — | passed as `-m` |
+| `ATOM_GROK_MAX_TURNS` | `8` | `--max-turns` |
+| `ATOM_UI_PORT` | `3333` | kanban |
+
+Grok extract spawns the local CLI (not OpenAI/xAI HTTP chat completions):
+
+```text
+grok -p --always-approve --max-turns N --json-schema <file> --prompt-file <file>
+```
+
+## Layout
+
+```
+apps/cli/          # pnpm atom …
+apps/web/          # local Hono kanban (charcoal / copper)
+packages/core/     # SourceAdapter, ExtractAgent, Zod, events writer, projections
+packages/adapters/ # Fixture, Yzj (yzj-cli), Heuristic, GrokCliExtractAgent
+fixtures/messages.jsonl
+config/sources.json
+data/  out/        # gitignored
+```
 
 ## Docs
 
@@ -29,12 +61,6 @@ Cited demand pool on an append-only **ATOM** feed — human gates all the way to
 | [04-stack](docs/04-stack.md) | Week-1 tech stack |
 | [05-non-goals](docs/05-non-goals.md) | Explicit non-goals and competitor stance |
 
-## Status
-
-- Design: in progress (v0)
-- Runtime: not started
-- License: MIT (intended)
-
 ## Naming
 
 | Thing | Name |
@@ -42,4 +68,3 @@ Cited demand pool on an append-only **ATOM** feed — human gates all the way to
 | **Product** | **ATOM** (*Append-only Timeline Of Matters* / 事元) |
 | Unit of change | atom (one append-only record) |
 | Persistence table | `events` (implementation detail — **not** the product name) |
-| Old working title | vouch (retired) |
