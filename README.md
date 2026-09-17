@@ -1,6 +1,10 @@
-# shiyuan
+# vouch
 
-> 事元 · append-only cited demand feed
+> Every demand, vouched.
+
+Append-only demand feed with mandatory citations and human gates.
+
+Dogfood first on personal chat sources (e.g. Yunzhijia via local CLI). Overseas Slack-compatible product comes later. This repo currently holds **core design and contracts only** — no runtime yet.
 
 Append-only **demand feed** with mandatory citations and human gates.
 
@@ -37,4 +41,5 @@ Machines propose. Humans decide. Every claim points at evidence.
 
 ## Name
 
-**shiyuan**（事元）— every change is an append-only event. No citation, no candidate.
+**vouch** — no citation, no candidate. Machines propose; humans decide.
+
