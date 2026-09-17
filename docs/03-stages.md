@@ -30,10 +30,10 @@ Autonomous daily job may only: ingest, propose, write local Markdown digest **as
 ## Stage 1 MVP (this month)
 
 - One SourceAdapter (Yunzhijia CLI wrapper)
-- Daily pull → events
+- Daily pull → atoms
 - Propose candidates with refs
 - Local Markdown 需求日报
-- CLI approve/reject/merge writing decision events
+- CLI approve/reject/merge writing decision atoms
 
 **Out of stage 1:** multi-agent orchestration, auto Jira/Linear, auto PR, vector DB, web SaaS billing.
 

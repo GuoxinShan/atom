@@ -24,7 +24,7 @@ Machines propose. Humans decide. Every claim points at evidence.
 |---|---|
 | [00-vision](docs/00-vision.md) | Why this exists and what we refuse to be |
 | [01-architecture](docs/01-architecture.md) | Layers, single source of truth, projections |
-| [02-event-contract](docs/02-event-contract.md) | Event feed — the core contract |
+| [02-event-contract](docs/02-event-contract.md) | ATOM feed — the core contract |
 | [03-stages](docs/03-stages.md) | Stage doors and human gates |
 | [04-stack](docs/04-stack.md) | Week-1 tech stack |
 | [05-non-goals](docs/05-non-goals.md) | Explicit non-goals and competitor stance |
@@ -37,4 +37,6 @@ Machines propose. Humans decide. Every claim points at evidence.
 
 ## Name
 
-**vouch** — no citation, no candidate. Machines propose; humans decide.
+**vouch** — the product. No citation, no candidate. Machines propose; humans decide.
+
+**ATOM** (*Append-only Timeline Of Matters*) — the unit of change (事元). The append-only feed is an atom log; see `docs/02-event-contract.md` (`atom-contract@0.1`).

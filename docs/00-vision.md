@@ -17,7 +17,7 @@ The scarce thing is not “smarter PRD writing”. It is an **incremental demand
 1. every candidate requirement has **mandatory source refs**,
 2. the system runs **daily without being summoned**,
 3. humans only **approve / reject / merge**,
-4. later stages (spec → code handoff → test evidence → land) reuse the same **append-only event feed**.
+4. later stages (spec → code handoff → test evidence → land) reuse the same **ATOM** feed (*Append-only Timeline Of Matters*).
 
 ## Dogfood path
 
