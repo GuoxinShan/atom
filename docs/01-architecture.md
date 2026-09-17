@@ -35,6 +35,23 @@ Week 1: Yunzhijia wrapper around existing local CLI, **instantiated from SourceR
 Types are open: `registerSourceType` adds adapters (later Slack, etc.) without changing ingest.  
 See [06-extensibility](06-extensibility.md).
 
+## Triggers
+
+Triggers are **multi-modal**, not cron-only. Every entry is a `TriggerConfig` in `data/triggers.json` (seed: `config/triggers.json`) and binds to the same runner (`ingest` | `extract` | `run`):
+
+```ts
+type TriggerKind = "manual" | "cron" | "webhook" | "hook" | "im_event" | "fs_watch"
+interface TriggerConfig {
+  id: string
+  kind: TriggerKind
+  enabled: boolean
+  pipeline: "ingest" | "extract" | "run"
+  config: Record<string, unknown>
+}
+```
+
+Stage-1 binds **`manual`** (`pnpm atom run`). Cron, HTTP webhook, yzj/IM hooks, git hooks, and fs watchers stay in the registry as stubs until a receiver is written. Do not stand up a webhook server in Stage-1.
+
 ## Separation (non-negotiable)
 
 | Plane | May do | Must not do |

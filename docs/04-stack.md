@@ -6,15 +6,16 @@
 | Package manager | pnpm |
 | Run | `tsx` |
 | DB | SQLite via Node 22 `node:sqlite` (table `events`) |
-| Schedule | local `cron` / `launchd` |
+| Schedule | TriggerRegistry (`manual` now; cron/webhook/IM later via same runner) |
 | LLM | Grok Build Agent CLI (`grok -p` + `--json-schema`) + Zod; HeuristicExtractAgent offline fallback |
 | Digest | Markdown files under `./out/` |
-| Config | `data/sources.json` SourceRegistry (seed: `config/sources.json`) |
+| Config | `data/sources.json` SourceRegistry; `data/triggers.json` TriggerRegistry |
 | Layout | `apps/cli` `packages/core` `packages/adapters` |
 
 ## Deferred
 
 - Web UI / kanban (separate design/prototype pass — Stage-1 is CLI + Markdown)
+- Cron daemon / HTTP webhook receiver / IM hook bindings (same `executeTrigger`; registry stubs only)
 - Slack Bolt adapter (new `registerSourceType`, not a core enum)
 - Next.js SaaS / ICP / hosted multi-tenant UI
 - Paddle / Lemon Squeezy (MoR) for overseas billing
@@ -26,9 +27,9 @@
 
 ```
 apps/cli/
-packages/core/     # atom writer, projections, SourceRegistry
+packages/core/     # atom writer, projections, SourceRegistry, TriggerRegistry
 packages/adapters/ # source factories, heuristic, grok CLI
 docs/              # contracts (this tree)
 out/               # local digests (gitignored)
-data/              # sqlite + sources.json (gitignored)
+data/              # sqlite + sources.json + triggers.json (gitignored)
 ```

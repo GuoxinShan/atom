@@ -13,11 +13,29 @@ export interface ExtractAgent {
   propose(input: { messages: RawMessage[] }): Promise<ProposedCandidate[]>;
 }
 
-/** Manual CLI run is the only Stage-1 trigger. */
-export interface Trigger {
+export const TRIGGER_KINDS = [
+  "manual",
+  "cron",
+  "webhook",
+  "hook",
+  "im_event",
+  "fs_watch",
+] as const;
+export type TriggerKind = (typeof TRIGGER_KINDS)[number];
+
+export const TRIGGER_PIPELINES = ["ingest", "extract", "run"] as const;
+export type TriggerPipeline = (typeof TRIGGER_PIPELINES)[number];
+
+export interface TriggerConfig {
   id: string;
-  kind: "manual";
+  kind: TriggerKind;
+  enabled: boolean;
+  pipeline: TriggerPipeline;
+  config: Record<string, unknown>;
 }
+
+/** @deprecated Use TriggerConfig. */
+export type Trigger = TriggerConfig;
 
 export interface SubscriptionSink {
   id: string;

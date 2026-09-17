@@ -2,6 +2,7 @@ import {
   AtomStore,
   loadSourceRegistry,
   LogSubscriptionSink,
+  resolveManualTrigger,
   resolvePaths,
   type ExtractAgent,
   type Pipeline,
@@ -53,12 +54,14 @@ export function createPipeline(): { pipeline: Pipeline; store: AtomStore } {
   }
   const extractKind = process.env.ATOM_EXTRACT_AGENT ?? "heuristic";
   const store = new AtomStore(paths.dbPath);
+  const trigger = resolveManualTrigger(paths.triggerRegistryPath, paths.seedTriggerRegistryPath);
   const pipeline: Pipeline = {
     store,
     sources,
     extract: createExtractAgent(extractKind),
     outDir: paths.outDir,
     sink: new LogSubscriptionSink(),
+    trigger,
   };
   return { pipeline, store };
 }

@@ -29,6 +29,25 @@ Unknown `type` values are stored. Ingest **skips** them until someone calls `reg
 
 SQLite table `source_configs` is **not** used in Stage-1 (avoid a second writable copy). JSON is the config store; `events` remains the atom feed.
 
+## Triggers
+
+Triggers are **multi-modal**. Runtime file: **`data/triggers.json`** (seed `config/triggers.json`).
+
+| kind | Stage-1 | Later |
+|---|---|---|
+| `manual` | **bound** — `pnpm atom run` / ingest / extract | — |
+| `cron` | stub row (`config.expr`) | launchd / cron calls the same `executeTrigger` |
+| `webhook` | stub row (`config.path`) | tiny HTTP receiver, same runner — **not shipped here** |
+| `hook` | stub | git / agent hook |
+| `im_event` | stub (`config.sourceId`) | yzj-cli / IM push |
+| `fs_watch` | stub | watch a drop folder |
+
+```bash
+pnpm atom triggers list
+```
+
+`executeTrigger(pipeline, config)` is the single dispatch. Non-manual kinds throw “not bound in Stage-1” if invoked.
+
 ## SourceAdapter factories
 
 ```ts

@@ -22,6 +22,8 @@ export type AtomPaths = {
   /** Runtime store (gitignored). Seeded from `seedRegistryPath` on first run. */
   registryPath: string;
   seedRegistryPath: string;
+  triggerRegistryPath: string;
+  seedTriggerRegistryPath: string;
 };
 
 export function resolvePaths(root = findRepoRoot()): AtomPaths {
@@ -41,6 +43,10 @@ export function resolvePaths(root = findRepoRoot()): AtomPaths {
       envPath(root, process.env.ATOM_SOURCE_REGISTRY, "data/sources.json"),
     ),
     seedRegistryPath: resolve(join(root, "config/sources.json")),
+    triggerRegistryPath: resolve(
+      envPath(root, process.env.ATOM_TRIGGER_REGISTRY, "data/triggers.json"),
+    ),
+    seedTriggerRegistryPath: resolve(join(root, "config/triggers.json")),
   };
 }
 

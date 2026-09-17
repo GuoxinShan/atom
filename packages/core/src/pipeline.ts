@@ -1,4 +1,4 @@
-import type { ExtractAgent, SourceAdapter, SubscriptionSink } from "./interfaces.ts";
+import type { ExtractAgent, SourceAdapter, SubscriptionSink, TriggerConfig } from "./interfaces.ts";
 import type { Candidate, ProposedCandidate, RawMessage } from "./types.ts";
 import { newId } from "./ids.ts";
 import { ProposedCandidateSchema } from "./schema.ts";
@@ -19,6 +19,7 @@ export type Pipeline = {
   extract: ExtractAgent;
   outDir: string;
   sink?: SubscriptionSink;
+  trigger?: TriggerConfig;
 };
 
 export async function ingest(p: Pipeline): Promise<{ ingested: number; skipped: number }> {
@@ -62,7 +63,7 @@ async function ingestOne(
   p.store.setCursor(source.id, nextCursor, new Date().toISOString());
   await (p.sink ?? new LogSubscriptionSink()).publish({
     topic: "ingest",
-    payload: { source: source.id, ingested, skipped, trigger: MANUAL_TRIGGER.id },
+    payload: { source: source.id, ingested, skipped, trigger: (p.trigger ?? MANUAL_TRIGGER).id },
   });
   return { ingested, skipped };
 }
@@ -107,7 +108,12 @@ export async function extract(p: Pipeline): Promise<{ proposed: number; skipped:
   }
   await (p.sink ?? new LogSubscriptionSink()).publish({
     topic: "extract",
-    payload: { agent: p.extract.id, proposed: count, skipped },
+    payload: {
+      agent: p.extract.id,
+      proposed: count,
+      skipped,
+      trigger: (p.trigger ?? MANUAL_TRIGGER).id,
+    },
   });
   return { proposed: count, skipped };
 }
@@ -128,6 +134,22 @@ export async function run(p: Pipeline): Promise<{
   const ext = await extract(p);
   const dig = digest(p);
   return { ingested: ing.ingested, proposed: ext.proposed, digestPath: dig.path };
+}
+
+/** Dispatch a TriggerConfig onto the same runner. Stage-1 binds `manual` only. */
+export async function executeTrigger(
+  p: Pipeline,
+  trigger: TriggerConfig,
+): Promise<{ ingested?: number; proposed?: number; digestPath?: string; skipped?: number }> {
+  if (trigger.kind !== "manual") {
+    throw new Error(
+      `trigger ${trigger.id} kind=${trigger.kind} is registered but not bound in Stage-1 (no cron/webhook/IM receiver). See docs/06-extensibility.md.`,
+    );
+  }
+  const bound: Pipeline = { ...p, trigger };
+  if (trigger.pipeline === "ingest") return ingest(bound);
+  if (trigger.pipeline === "extract") return extract(bound);
+  return run(bound);
 }
 
 export function decideOnStore(

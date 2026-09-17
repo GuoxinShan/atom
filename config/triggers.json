@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "triggers": [
+    {
+      "id": "cli",
+      "kind": "manual",
+      "enabled": true,
+      "pipeline": "run",
+      "config": {}
+    },
+    {
+      "id": "daily",
+      "kind": "cron",
+      "enabled": false,
+      "pipeline": "run",
+      "config": { "expr": "0 8 * * *" }
+    },
+    {
+      "id": "inbound",
+      "kind": "webhook",
+      "enabled": false,
+      "pipeline": "ingest",
+      "config": { "path": "/hooks/atom" }
+    },
+    {
+      "id": "yzj-hook",
+      "kind": "im_event",
+      "enabled": false,
+      "pipeline": "ingest",
+      "config": { "sourceId": "yzj" }
+    }
+  ]
+}

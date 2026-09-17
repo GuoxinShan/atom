@@ -1,12 +1,15 @@
 import {
   decideOnStore,
+  describeUnboundKind,
   digest,
+  executeTrigger,
   extract,
   ingest,
   listSourceConfigs,
+  listTriggerConfigs,
   projectCandidates,
+  resolveManualTrigger,
   resolvePaths,
-  run,
   SourceConfigSchema,
   upsertSourceConfig,
 } from "@atom/core";
@@ -23,8 +26,9 @@ const USAGE = `ATOM — Append-only Timeline Of Matters · 事元
   pnpm atom reject <id>
   pnpm atom sources list
   pnpm atom sources add --id <id> --type <type> [--group-id <gid> ...]
+  pnpm atom triggers list
 
-Default: enabled sources from data/sources.json (seeded from config/sources.json)
+Default: enabled sources from data/sources.json; manual trigger from data/triggers.json
          extract: heuristic. Set ATOM_EXTRACT_AGENT=grok for Grok CLI.
 Env: ATOM_SOURCE=<config id>     run one source
      ATOM_EXTRACT_AGENT=heuristic|grok
@@ -41,14 +45,22 @@ async function main(): Promise<void> {
     sourcesCommand(rest);
     return;
   }
+  if (cmd === "triggers") {
+    triggersCommand(rest);
+    return;
+  }
 
   const { pipeline, store } = createPipeline();
   try {
     switch (cmd) {
       case "run": {
-        const result = await run(pipeline);
+        const trigger = resolveManualTrigger(
+          resolvePaths().triggerRegistryPath,
+          resolvePaths().seedTriggerRegistryPath,
+        );
+        const result = await executeTrigger(pipeline, trigger);
         console.log(
-          `run ok  ingested=${result.ingested} proposed=${result.proposed}\ndigest ${result.digestPath}`,
+          `run ok  trigger=${trigger.id} ingested=${result.ingested ?? 0} proposed=${result.proposed ?? 0}\ndigest ${result.digestPath ?? ""}`,
         );
         break;
       }
@@ -149,6 +161,27 @@ function sourcesCommand(argv: string[]): void {
     return;
   }
   throw new Error(`unknown sources subcommand: ${sub}\n  sources list | sources add --id --type`);
+}
+
+function triggersCommand(argv: string[]): void {
+  const [sub] = argv;
+  const paths = resolvePaths();
+  if (!sub || sub === "list") {
+    const rows = listTriggerConfigs(paths.triggerRegistryPath, paths.seedTriggerRegistryPath);
+    console.log(`registry ${paths.triggerRegistryPath}`);
+    if (rows.length === 0) {
+      console.log("(empty)");
+      return;
+    }
+    for (const t of rows) {
+      const on = t.enabled ? "on" : "off";
+      console.log(
+        `${t.id}\t${t.kind}\t${on}\tpipeline=${t.pipeline}\t${describeUnboundKind(t.kind)}`,
+      );
+    }
+    return;
+  }
+  throw new Error(`unknown triggers subcommand: ${sub}\n  triggers list`);
 }
 
 function parseFlags(argv: string[]): Record<string, string[]> {

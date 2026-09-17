@@ -10,6 +10,7 @@
 - Dual state machines (chat tool + our DB both authoritative)
 - China ICP, MoR billing, or a hosted SaaS control plane
 - Frontend / Next / web UI until a designed prototype exists (Stage-1 is CLI + Markdown digest only)
+- HTTP webhook server / cron daemon in Stage-1 (TriggerRegistry stubs only)
 
 ## Competitor stance
 

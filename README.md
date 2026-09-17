@@ -11,6 +11,7 @@ pnpm install
 pnpm atom run
 pnpm atom candidates
 pnpm atom sources list
+pnpm atom triggers list
 ```
 
 Default path: **enabled SourceRegistry rows** (seed includes Fixture) + **HeuristicExtractAgent** (offline).  
@@ -32,6 +33,7 @@ pnpm atom sources add --id yzj-work --type yzj --group-id <gid>
 | `ATOM_GROK_MODEL` | — | passed as `-m` |
 | `ATOM_GROK_MAX_TURNS` | `8` | `--max-turns` |
 | `ATOM_SOURCE_REGISTRY` | `data/sources.json` | runtime SourceRegistry |
+| `ATOM_TRIGGER_REGISTRY` | `data/triggers.json` | runtime TriggerRegistry |
 
 Grok extract spawns the local CLI (not OpenAI/xAI HTTP chat completions):
 
@@ -48,8 +50,9 @@ apps/cli/          # pnpm atom …
 packages/core/     # SourceRegistry, SourceAdapter, ExtractAgent, events writer
 packages/adapters/ # factories: fixture, yzj; Heuristic + GrokCliExtractAgent
 fixtures/messages.jsonl
-config/sources.json   # seed copied to data/sources.json
-data/  out/           # gitignored
+config/sources.json    # seed copied to data/sources.json
+config/triggers.json   # seed copied to data/triggers.json
+data/  out/            # gitignored
 ```
 
 ## Docs
@@ -62,7 +65,7 @@ data/  out/           # gitignored
 | [03-stages](docs/03-stages.md) | Stage doors and human gates |
 | [04-stack](docs/04-stack.md) | Week-1 tech stack |
 | [05-non-goals](docs/05-non-goals.md) | Explicit non-goals and competitor stance |
-| [06-extensibility](docs/06-extensibility.md) | SourceRegistry, factories, Grok extract |
+| [06-extensibility](docs/06-extensibility.md) | SourceRegistry, TriggerRegistry, Grok extract |
 
 ## Naming
 
