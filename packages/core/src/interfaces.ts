@@ -20,11 +20,27 @@ export const TRIGGER_KINDS = [
   "hook",
   "im_event",
   "fs_watch",
+  "atom_event",
 ] as const;
 export type TriggerKind = (typeof TRIGGER_KINDS)[number];
 
-export const TRIGGER_PIPELINES = ["ingest", "extract", "run"] as const;
+export const TRIGGER_PIPELINES = [
+  "ingest",
+  "extract",
+  "run",
+  "digest",
+  "approve",
+  "spec",
+  "handoff",
+] as const;
 export type TriggerPipeline = (typeof TRIGGER_PIPELINES)[number];
+
+/** Auto-chain must stop here — a human writes the next atom. */
+export const HUMAN_GATED_PIPELINES: ReadonlySet<TriggerPipeline> = new Set([
+  "approve",
+  "spec",
+  "handoff",
+]);
 
 export interface TriggerConfig {
   id: string;
@@ -36,6 +52,12 @@ export interface TriggerConfig {
 
 /** @deprecated Use TriggerConfig. */
 export type Trigger = TriggerConfig;
+
+export interface ExecuteAgent {
+  id: string;
+  /** Later: handoff/spec. Must emit atoms; never a fire-and-forget side effect. */
+  run?(input: { subjectId: string }): Promise<void>;
+}
 
 export interface SubscriptionSink {
   id: string;

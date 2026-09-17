@@ -31,22 +31,31 @@ SQLite table `source_configs` is **not** used in Stage-1 (avoid a second writabl
 
 ## Triggers
 
-Triggers are **multi-modal**. Runtime file: **`data/triggers.json`** (seed `config/triggers.json`).
+Triggers are **multi-modal**. Runtime file: **`data/triggers.json`** (seed `config/triggers.json`). Missing seed ids are appended on load; existing rows are never overwritten.
 
 | kind | Stage-1 | Later |
 |---|---|---|
 | `manual` | **bound** — `pnpm atom run` / ingest / extract | — |
+| `atom_event` | **observe** after append; `auto` dispatch if not human-gated | same runner |
 | `cron` | stub row (`config.expr`) | launchd / cron calls the same `executeTrigger` |
 | `webhook` | stub row (`config.path`) | tiny HTTP receiver, same runner — **not shipped here** |
-| `hook` | stub | git / agent hook |
+| `hook` | stub (`config.on=atom` same filter as atom_event) | git / agent hook |
 | `im_event` | stub (`config.sourceId`) | yzj-cli / IM push |
 | `fs_watch` | stub | watch a drop folder |
+
+## Event loop
+
+```
+Trigger → Agent → emit Atom (`events`) → atom_event Trigger → Agent → …
+```
+
+Extract (and later Execute) emit `agent_started` / `agent_completed` / `agent_failed` plus domain atoms (`candidate_proposed`, later `handoff_exported`, `evidence_attached`). Matching `atom_event` rows observe the next stage; `config.auto=true` dispatches the same runner. **Approve is never skipped:** pipeline `approve` | `spec` | `handoff` throw `HumanGateError` if auto-chained; `candidate_proposed` waits for `decision_accepted`.
 
 ```bash
 pnpm atom triggers list
 ```
 
-`executeTrigger(pipeline, config)` is the single dispatch. Non-manual kinds throw “not bound in Stage-1” if invoked.
+`executeTrigger(pipeline, config)` is the single dispatch. Bound kinds: `manual`, `atom_event`, `hook` with `config.on=atom`. Cron / webhook / im_event / fs_watch throw “not bound in Stage-1” if invoked.
 
 ## SourceAdapter factories
 

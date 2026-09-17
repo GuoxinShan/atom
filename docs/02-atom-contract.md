@@ -51,6 +51,9 @@ type Ref = {
 | `handoff_exported` | handoff id | yes | target (`cursor`/`codex`/file path) |
 | `evidence_attached` | evidence id | yes | kind (`test`/`screenshot`/`log`), path |
 | `pr_opened` | pr id | yes | url, branch |
+| `agent_started` | agent-run id | no | `agent_id`, `pipeline`, `trigger_id?` |
+| `agent_completed` | agent-run id | no | `agent_id`, `pipeline` |
+| `agent_failed` | agent-run id | no | `agent_id`, `pipeline`, `error` |
 
 Unknown types are **rejected** by the writer. Adding a type is a contract change (bump `atom-contract` version).
 
@@ -73,6 +76,9 @@ Rebuildable anytime by replaying atoms for `subject_id`.
 4. LLM output must pass schema validation (Zod) before becoming an atom.
 5. Outbound sends are **not** events until after human confirm; the confirm itself may be logged as a decision-like event later.
 
+6. Agents are not fire-and-forget: they **emit atoms** (`agent_started` / `agent_completed` / `agent_failed`, plus domain atoms like `candidate_proposed`).
+7. Auto-chain (`atom_event`) **must not skip a human gate**. `candidate_proposed` waits for `decision_accepted`.
+
 ## Version
 
-`atom-contract@0.1`
+`atom-contract@0.2`

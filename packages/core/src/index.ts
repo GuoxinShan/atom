@@ -21,8 +21,8 @@ export {
   RefSchema,
   proposedCandidateJsonSchema,
 } from "./schema.ts";
-export type { ExtractAgent, SourceAdapter, SubscriptionSink, Trigger, TriggerConfig, TriggerKind, TriggerPipeline } from "./interfaces.ts";
-export { TRIGGER_KINDS, TRIGGER_PIPELINES } from "./interfaces.ts";
+export type { ExtractAgent, ExecuteAgent, SourceAdapter, SubscriptionSink, Trigger, TriggerConfig, TriggerKind, TriggerPipeline } from "./interfaces.ts";
+export { TRIGGER_KINDS, TRIGGER_PIPELINES, HUMAN_GATED_PIPELINES } from "./interfaces.ts";
 export { newId, nowIso, utcDateStamp } from "./ids.ts";
 export { findRepoRoot, resolvePaths } from "./paths.ts";
 export type { AtomPaths } from "./paths.ts";
@@ -58,4 +58,13 @@ export {
   describeUnboundKind,
 } from "./trigger.ts";
 export type { TriggerRegistry } from "./trigger.ts";
+export { writeAgentStarted, writeAgentCompleted, writeAgentFailed } from "./agents.ts";
+export type { AgentLifecycleDetail } from "./agents.ts";
+export {
+  fanoutAtom,
+  matchesAtomEvent,
+  matchingAtomEventTriggers,
+  assertAutoChainAllowed,
+  HumanGateError,
+} from "./loop.ts";
 export { LogSubscriptionSink } from "./sink.ts";

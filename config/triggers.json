@@ -28,6 +28,20 @@
       "enabled": false,
       "pipeline": "ingest",
       "config": { "sourceId": "yzj" }
+    },
+    {
+      "id": "on-ingested",
+      "kind": "atom_event",
+      "enabled": false,
+      "pipeline": "extract",
+      "config": { "type": "message_ingested", "auto": false }
+    },
+    {
+      "id": "on-proposed",
+      "kind": "atom_event",
+      "enabled": false,
+      "pipeline": "approve",
+      "config": { "type": "candidate_proposed", "auto": false }
     }
   ]
 }

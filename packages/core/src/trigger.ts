@@ -48,6 +48,20 @@ export const DEFAULT_TRIGGER_REGISTRY: TriggerRegistry = {
       pipeline: "ingest",
       config: { sourceId: "yzj" },
     },
+    {
+      id: "on-ingested",
+      kind: "atom_event",
+      enabled: false,
+      pipeline: "extract",
+      config: { type: "message_ingested", auto: false },
+    },
+    {
+      id: "on-proposed",
+      kind: "atom_event",
+      enabled: false,
+      pipeline: "approve",
+      config: { type: "candidate_proposed", auto: false },
+    },
   ],
 };
 
@@ -60,7 +74,16 @@ export function loadTriggerRegistry(runtimePath: string, seedPath?: string): Tri
     else saveTriggerRegistry(runtimePath, DEFAULT_TRIGGER_REGISTRY);
   }
   const raw = JSON.parse(readFileSync(runtimePath, "utf8")) as unknown;
-  return normalize(raw);
+  const loaded = normalize(raw);
+  const seed = seedPath && existsSync(seedPath)
+    ? normalize(JSON.parse(readFileSync(seedPath, "utf8")) as unknown)
+    : DEFAULT_TRIGGER_REGISTRY;
+  const ids = new Set(loaded.triggers.map((t) => t.id));
+  const extra = seed.triggers.filter((t) => !ids.has(t.id));
+  if (extra.length === 0) return loaded;
+  const merged: TriggerRegistry = { version: 1, triggers: [...loaded.triggers, ...extra] };
+  saveTriggerRegistry(runtimePath, merged);
+  return merged;
 }
 
 export function saveTriggerRegistry(path: string, registry: TriggerRegistry): void {
@@ -85,6 +108,8 @@ export function resolveManualTrigger(path: string, seedPath?: string): TriggerCo
 /** Stage-1 only binds `manual`. Other kinds stay in the registry until a receiver exists. */
 export function describeUnboundKind(kind: TriggerKind): string {
   if (kind === "manual") return "bound: CLI `atom run|ingest|extract`";
+  if (kind === "atom_event") return "bound: observe after append (human gates apply)";
+  if (kind === "hook") return "stub unless config.on=atom (same as atom_event)";
   return "stub — not bound in Stage-1";
 }
 

@@ -1,4 +1,4 @@
-export const ATOM_CONTRACT_VERSION = "atom-contract@0.1";
+export const ATOM_CONTRACT_VERSION = "atom-contract@0.2";
 
 export const ATOM_TYPES = [
   "message_ingested",
@@ -10,6 +10,9 @@ export const ATOM_TYPES = [
   "handoff_exported",
   "evidence_attached",
   "pr_opened",
+  "agent_started",
+  "agent_completed",
+  "agent_failed",
 ] as const;
 
 export type AtomType = (typeof ATOM_TYPES)[number];

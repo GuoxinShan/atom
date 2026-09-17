@@ -41,7 +41,7 @@ Grok extract spawns the local CLI (not OpenAI/xAI HTTP chat completions):
 grok -p --always-approve --max-turns N --json-schema <file> --prompt-file <file>
 ```
 
-Sources are **not** a closed Fixture/Yzj set. See [docs/06-extensibility.md](docs/06-extensibility.md).
+Sources are **not** a closed Fixture/Yzj set. ATOM is an **event loop** (Trigger → Agent → Atom → Trigger). See [docs/06-extensibility.md](docs/06-extensibility.md).
 
 ## Layout
 

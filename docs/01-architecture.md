@@ -37,20 +37,36 @@ See [06-extensibility](06-extensibility.md).
 
 ## Triggers
 
-Triggers are **multi-modal**, not cron-only. Every entry is a `TriggerConfig` in `data/triggers.json` (seed: `config/triggers.json`) and binds to the same runner (`ingest` | `extract` | `run`):
+Triggers are **multi-modal**, not cron-only. Every entry is a `TriggerConfig` in `data/triggers.json` (seed: `config/triggers.json`) and binds to the same runner:
 
 ```ts
-type TriggerKind = "manual" | "cron" | "webhook" | "hook" | "im_event" | "fs_watch"
+type TriggerKind = "manual" | "cron" | "webhook" | "hook" | "im_event" | "fs_watch" | "atom_event"
+type TriggerPipeline = "ingest" | "extract" | "run" | "digest" | "approve" | "spec" | "handoff"
 interface TriggerConfig {
   id: string
   kind: TriggerKind
   enabled: boolean
-  pipeline: "ingest" | "extract" | "run"
+  pipeline: TriggerPipeline
   config: Record<string, unknown>
 }
 ```
 
-Stage-1 binds **`manual`** (`pnpm atom run`). Cron, HTTP webhook, yzj/IM hooks, git hooks, and fs watchers stay in the registry as stubs until a receiver is written. Do not stand up a webhook server in Stage-1.
+Stage-1 binds **`manual`** (`pnpm atom run`) and observes **`atom_event`** (and `hook` with `config.on=atom`) after each append. `config.auto=true` may dispatch; **approve / spec / handoff never auto-run**. Cron, HTTP webhook, yzj/IM hooks, git hooks, and fs watchers stay in the registry as stubs until a receiver is written. Do not stand up a webhook server in Stage-1.
+
+## Event loop
+
+ATOM is a **giant event loop**. Agents are not fire-and-forget side effects.
+
+```
+Trigger → Agent → emit Atom into `events` → (optional) atom_event Trigger → Agent → …
+```
+
+- Triggers wake a pipeline (`ingest` | `extract` | `run` | …).
+- ExtractAgent / later ExecuteAgent **append atoms** on progress and completion (`candidate_proposed`, `handoff_exported`, `evidence_attached`, `agent_started` / `agent_completed` / `agent_failed`).
+- `kind=atom_event` (or `hook` with `config.on=atom`) filters on `config.type` / `config.types` (+ optional `subject_id`). Set `config.auto=true` to dispatch; default is observe-only.
+- **Human gates:** `approve`, `spec`, and `handoff` never auto-run. A trigger on `candidate_proposed` cannot skip `decision_accepted`.
+
+See [06-extensibility](06-extensibility.md).
 
 ## Separation (non-negotiable)
 

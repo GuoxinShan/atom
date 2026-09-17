@@ -1,5 +1,5 @@
 import {
-  decideOnStore,
+  decide,
   describeUnboundKind,
   digest,
   executeTrigger,
@@ -97,8 +97,8 @@ async function main(): Promise<void> {
       case "reject": {
         const id = rest[0];
         if (!id) throw new Error(`${cmd} requires a candidate id`);
-        const updated = decideOnStore(
-          store,
+        const updated = await decide(
+          pipeline,
           id,
           cmd === "approve" ? "accepted" : "rejected",
           rest.slice(1).join(" ") || undefined,
