@@ -1,5 +1,6 @@
 import {
   AtomStore,
+  listSubscriptionConfigs,
   listTriggerConfigs,
   loadSourceRegistry,
   LogSubscriptionSink,
@@ -57,12 +58,16 @@ export function createPipeline(): { pipeline: Pipeline; store: AtomStore } {
   const store = new AtomStore(paths.dbPath);
   const trigger = resolveManualTrigger(paths.triggerRegistryPath, paths.seedTriggerRegistryPath);
   const triggers = listTriggerConfigs(paths.triggerRegistryPath, paths.seedTriggerRegistryPath);
+  const subscriptions = listSubscriptionConfigs(
+    paths.subscriptionRegistryPath,
+    paths.seedSubscriptionRegistryPath,
+  );
   const pipeline: Pipeline = {
     store,
     sources,
     extract: createExtractAgent(extractKind),
     outDir: paths.outDir,
-    sink: new LogSubscriptionSink(),
+    sink: new LogSubscriptionSink(subscriptions),
     trigger,
     triggers,
   };

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "subscriptions": [
+    {
+      "id": "example-webhook",
+      "enabled": false,
+      "url": "https://example.invalid/hooks/atom",
+      "secret": "",
+      "types": ["candidate_proposed", "decision_accepted", "agent_failed"]
+    }
+  ]
+}

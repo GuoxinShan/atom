@@ -6,6 +6,7 @@ import {
   extract,
   ingest,
   listSourceConfigs,
+  listSubscriptionConfigs,
   listTriggerConfigs,
   projectCandidates,
   resolveManualTrigger,
@@ -27,6 +28,7 @@ const USAGE = `ATOM — Append-only Timeline Of Matters · 事元
   pnpm atom sources list
   pnpm atom sources add --id <id> --type <type> [--group-id <gid> ...]
   pnpm atom triggers list
+  pnpm atom subscriptions list
 
 Default: enabled sources from data/sources.json; manual trigger from data/triggers.json
          extract: heuristic. Set ATOM_EXTRACT_AGENT=grok for Grok CLI.
@@ -47,6 +49,10 @@ async function main(): Promise<void> {
   }
   if (cmd === "triggers") {
     triggersCommand(rest);
+    return;
+  }
+  if (cmd === "subscriptions") {
+    subscriptionsCommand(rest);
     return;
   }
 
@@ -182,6 +188,29 @@ function triggersCommand(argv: string[]): void {
     return;
   }
   throw new Error(`unknown triggers subcommand: ${sub}\n  triggers list`);
+}
+
+function subscriptionsCommand(argv: string[]): void {
+  const [sub] = argv;
+  const paths = resolvePaths();
+  if (!sub || sub === "list") {
+    const rows = listSubscriptionConfigs(
+      paths.subscriptionRegistryPath,
+      paths.seedSubscriptionRegistryPath,
+    );
+    console.log(`registry ${paths.subscriptionRegistryPath}`);
+    if (rows.length === 0) {
+      console.log("(empty)");
+      return;
+    }
+    for (const s of rows) {
+      const on = s.enabled ? "on" : "off";
+      const types = s.types?.length ? s.types.join(",") : "*";
+      console.log(`${s.id}\t${on}\t${s.url}\ttypes=${types}\tstub — no HTTP POST`);
+    }
+    return;
+  }
+  throw new Error(`unknown subscriptions subcommand: ${sub}\n  subscriptions list`);
 }
 
 function parseFlags(argv: string[]): Record<string, string[]> {

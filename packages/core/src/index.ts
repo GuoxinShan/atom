@@ -67,4 +67,15 @@ export {
   assertAutoChainAllowed,
   HumanGateError,
 } from "./loop.ts";
+export {
+  loadSubscriptionRegistry,
+  saveSubscriptionRegistry,
+  listSubscriptionConfigs,
+  DEFAULT_SUBSCRIPTION_REGISTRY,
+  SubscriptionConfigSchema,
+  matchesSubscription,
+  fanoutSubscriptions,
+  stubDeliverSubscription,
+} from "./subscription.ts";
+export type { SubscriptionRegistry, SubscriptionConfig, SubscriptionDeliver } from "./subscription.ts";
 export { LogSubscriptionSink } from "./sink.ts";

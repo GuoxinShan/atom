@@ -67,6 +67,29 @@ export class AtomStore {
     return rows.map(rowToAtom);
   }
 
+  /**
+   * Pull-API seam: atoms after `cursor` (last-seen id), optional type filter.
+   * Later HTTP: `GET /atoms?since=<cursor>&type=…`. Stage-1 has no server.
+   */
+  listSince(
+    cursor: string | null,
+    opts: { types?: AtomType[]; limit?: number } = {},
+  ): { atoms: Atom[]; nextCursor: string | null } {
+    let atoms = this.listAll();
+    if (opts.types && opts.types.length > 0) {
+      const allow = new Set(opts.types);
+      atoms = atoms.filter((a) => allow.has(a.type));
+    }
+    if (cursor) {
+      const idx = atoms.findIndex((a) => a.id === cursor);
+      atoms = idx >= 0 ? atoms.slice(idx + 1) : atoms;
+    }
+    const limit = opts.limit;
+    if (typeof limit === "number" && limit >= 0) atoms = atoms.slice(0, limit);
+    const last = atoms[atoms.length - 1];
+    return { atoms, nextCursor: last?.id ?? cursor };
+  }
+
   hasSubject(type: AtomType, subjectId: string): boolean {
     const row = this.db
       .prepare(`SELECT 1 AS ok FROM events WHERE type = ? AND subject_id = ? LIMIT 1`)

@@ -48,8 +48,13 @@ function loopOpts(p: Pipeline) {
 
 async function commitAtom(p: Pipeline, input: Parameters<typeof writeAtom>[1]): Promise<Atom> {
   const atom = writeAtom(p.store, input);
-  await fanoutAtom(atom, loopOpts(p));
+  await afterAppend(p, atom);
   return atom;
+}
+
+async function afterAppend(p: Pipeline, atom: Atom): Promise<void> {
+  await fanoutAtom(atom, loopOpts(p));
+  await (p.sink ?? new LogSubscriptionSink()).onAtom(atom);
 }
 
 async function ingestOne(
@@ -98,7 +103,7 @@ export async function extract(p: Pipeline): Promise<{ proposed: number; skipped:
     },
     actor,
   );
-  await fanoutAtom(started, loopOpts(p));
+  await afterAppend(p, started);
   try {
     const atoms = p.store.listAll();
     const messages = projectMessages(atoms);
@@ -147,7 +152,7 @@ export async function extract(p: Pipeline): Promise<{ proposed: number; skipped:
       },
       actor,
     );
-    await fanoutAtom(done, loopOpts(p));
+    await afterAppend(p, done);
     await (p.sink ?? new LogSubscriptionSink()).publish({
       topic: "extract",
       payload: {
@@ -170,7 +175,7 @@ export async function extract(p: Pipeline): Promise<{ proposed: number; skipped:
       },
       actor,
     );
-    await fanoutAtom(failed, loopOpts(p));
+    await afterAppend(p, failed);
     throw err;
   }
 }
@@ -252,7 +257,7 @@ export async function decide(
 ): Promise<Candidate> {
   const updated = decideOnStore(p.store, candidateId, decision, note, actor);
   const last = [...p.store.listAll()].reverse().find((a) => a.subject_id === candidateId);
-  if (last) await fanoutAtom(last, loopOpts(p));
+  if (last) await afterAppend(p, last);
   return updated;
 }
 

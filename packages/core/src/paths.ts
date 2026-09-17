@@ -24,6 +24,8 @@ export type AtomPaths = {
   seedRegistryPath: string;
   triggerRegistryPath: string;
   seedTriggerRegistryPath: string;
+  subscriptionRegistryPath: string;
+  seedSubscriptionRegistryPath: string;
 };
 
 export function resolvePaths(root = findRepoRoot()): AtomPaths {
@@ -47,6 +49,10 @@ export function resolvePaths(root = findRepoRoot()): AtomPaths {
       envPath(root, process.env.ATOM_TRIGGER_REGISTRY, "data/triggers.json"),
     ),
     seedTriggerRegistryPath: resolve(join(root, "config/triggers.json")),
+    subscriptionRegistryPath: resolve(
+      envPath(root, process.env.ATOM_SUBSCRIPTION_REGISTRY, "data/subscriptions.json"),
+    ),
+    seedSubscriptionRegistryPath: resolve(join(root, "config/subscriptions.json")),
   };
 }
 

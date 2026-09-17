@@ -1,4 +1,4 @@
-import type { ProposedCandidate, RawMessage } from "./types.ts";
+import type { Atom, ProposedCandidate, RawMessage } from "./types.ts";
 
 export interface SourceAdapter {
   id: string;
@@ -61,5 +61,8 @@ export interface ExecuteAgent {
 
 export interface SubscriptionSink {
   id: string;
+  /** Pipeline telemetry (ingest/extract summaries). Not the atom feed. */
   publish(event: { topic: string; payload: unknown }): Promise<void>;
+  /** Outbound: called after each atom is appended. Stage-1 stubs HTTP. */
+  onAtom(atom: Atom): Promise<void>;
 }

@@ -65,6 +65,7 @@ Trigger → Agent → emit Atom into `events` → (optional) atom_event Trigger 
 - ExtractAgent / later ExecuteAgent **append atoms** on progress and completion (`candidate_proposed`, `handoff_exported`, `evidence_attached`, `agent_started` / `agent_completed` / `agent_failed`).
 - `kind=atom_event` (or `hook` with `config.on=atom`) filters on `config.type` / `config.types` (+ optional `subject_id`). Set `config.auto=true` to dispatch; default is observe-only.
 - **Human gates:** `approve`, `spec`, and `handoff` never auto-run. A trigger on `candidate_proposed` cannot skip `decision_accepted`.
+- **Outbound:** other systems subscribe via `SubscriptionSink.onAtom` (webhook stub / later pull API). See [06-extensibility](06-extensibility.md#outbound-subscriptions).
 
 See [06-extensibility](06-extensibility.md).
 

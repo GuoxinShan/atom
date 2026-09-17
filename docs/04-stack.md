@@ -9,13 +9,14 @@
 | Schedule | TriggerRegistry (`manual` now; cron/webhook/IM later via same runner) |
 | LLM | Grok Build Agent CLI (`grok -p` + `--json-schema`) + Zod; HeuristicExtractAgent offline fallback |
 | Digest | Markdown files under `./out/` |
-| Config | `data/sources.json` SourceRegistry; `data/triggers.json` TriggerRegistry |
+| Config | `data/sources.json` SourceRegistry; `data/triggers.json` TriggerRegistry; `data/subscriptions.json` SubscriptionRegistry |
 | Layout | `apps/cli` `packages/core` `packages/adapters` |
 
 ## Deferred
 
 - Web UI / kanban (separate design/prototype pass — Stage-1 is CLI + Markdown)
 - Cron daemon / HTTP webhook receiver / IM hook bindings (same `executeTrigger`; registry stubs only)
+- Outbound webhook POST / HMAC / pull HTTP API (`SubscriptionSink.onAtom` + `listSince` stubs only)
 - Slack Bolt adapter (new `registerSourceType`, not a core enum)
 - Next.js SaaS / ICP / hosted multi-tenant UI
 - Paddle / Lemon Squeezy (MoR) for overseas billing
@@ -31,5 +32,5 @@ packages/core/     # atom writer, projections, SourceRegistry, TriggerRegistry
 packages/adapters/ # source factories, heuristic, grok CLI
 docs/              # contracts (this tree)
 out/               # local digests (gitignored)
-data/              # sqlite + sources.json + triggers.json (gitignored)
+data/              # sqlite + sources.json + triggers.json + subscriptions.json (gitignored)
 ```
