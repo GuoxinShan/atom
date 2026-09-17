@@ -15,7 +15,7 @@ Runtime truth lives in **SQLite**. Markdown and chat posts are **projections**, 
 
 | Data | Authority | Projection |
 |---|---|---|
-| Messages, candidates, decisions, specs, evidence | SQLite ATOM feed + derived views | — |
+| Messages, candidates, decisions, specs, evidence | SQLite `events` feed (ATOM product) + derived views | — |
 | Daily digest Markdown | — | export from atoms |
 | Outbound chat digests | — | export after human confirm |
 | Issues / PR text for coding agents | — | export after accept |
@@ -50,5 +50,5 @@ Patterns borrowed at the *discipline* level only (not a product fork):
 - human-present vs human-absent gates
 - suggested draft before commit
 - mandatory refs / bounded fetch of evidence
-- append-only ATOM feed（事元）
+- append-only feed under the ATOM product（事元）
 - confirm before any outbound side effect

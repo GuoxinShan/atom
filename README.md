@@ -1,14 +1,14 @@
-# vouch
+# ATOM
 
-> Every demand, vouched.
+> Append-only Timeline Of Matters · 事元
 
-Append-only **demand feed** with mandatory citations and human gates.
+Machines propose. Humans decide. Every claim points at evidence.
 
 Dogfood first on personal chat sources (e.g. Yunzhijia via local CLI). Overseas Slack-compatible product comes later. This repo currently holds **core design and contracts only** — no runtime yet.
 
 ## One-liner
 
-Machines propose. Humans decide. Every claim points at evidence.
+Cited demand pool on an append-only **ATOM** feed — human gates all the way to land.
 
 ## Stages (build in order)
 
@@ -24,7 +24,7 @@ Machines propose. Humans decide. Every claim points at evidence.
 |---|---|
 | [00-vision](docs/00-vision.md) | Why this exists and what we refuse to be |
 | [01-architecture](docs/01-architecture.md) | Layers, single source of truth, projections |
-| [02-atom-contract](docs/02-atom-contract.md) | ATOM feed — the core contract |
+| [02-atom-contract](docs/02-atom-contract.md) | Core contract for the ATOM feed |
 | [03-stages](docs/03-stages.md) | Stage doors and human gates |
 | [04-stack](docs/04-stack.md) | Week-1 tech stack |
 | [05-non-goals](docs/05-non-goals.md) | Explicit non-goals and competitor stance |
@@ -35,8 +35,11 @@ Machines propose. Humans decide. Every claim points at evidence.
 - Runtime: not started
 - License: MIT (intended)
 
-## Name
+## Naming
 
-**vouch** — the product. No citation, no candidate. Machines propose; humans decide.
-
-**ATOM** (*Append-only Timeline Of Matters*) — the unit of change (事元). The append-only feed is an atom log; see `docs/02-atom-contract.md` (`atom-contract@0.1`).
+| Thing | Name |
+|---|---|
+| **Product** | **ATOM** (*Append-only Timeline Of Matters* / 事元) |
+| Unit of change | atom (one append-only record) |
+| Persistence table | `events` (implementation detail — **not** the product name) |
+| Old working title | vouch (retired) |

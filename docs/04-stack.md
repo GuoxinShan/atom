@@ -24,7 +24,7 @@
 
 ```
 apps/cli/
-packages/core/     # event writer, projections, schemas
+packages/core/     # atom writer, projections, schemas
 packages/adapters/ # yzj, later slack
 docs/              # contracts (this tree)
 out/               # local digests (gitignored)

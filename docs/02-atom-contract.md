@@ -2,14 +2,18 @@
 
 ## Principle
 
-**ATOM** = *Append-only Timeline Of Matters* (事元).
+**ATOM** is the **product** name: *Append-only Timeline Of Matters* (事元).
 
-**唯一变更通道 = append an atom.**  
-Candidates and stage status are **projections** folded from atoms. Do not mutate history.
+**唯一变更通道 = append one atom** (a single immutable change record).  
+Candidates and stage status are **projections** folded from that feed. Do not mutate history.
 
-In code and schemas, prefer the type name `Atom` / table `atoms` (alias of the event log). Docs may still say “event” where it aids ES readers; the product term is **ATOM**.
+| Layer | Name |
+|---|---|
+| Product | **ATOM** |
+| Domain type / one record | `Atom` |
+| SQL table | `events` (boring on purpose — do not name the table after the product) |
 
-## Table: `atoms` (event log)
+## Table: `events`
 
 | Column | Type | Notes |
 |---|---|---|
