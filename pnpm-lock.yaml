@@ -26,24 +26,6 @@ importers:
       '@atom/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@atom/web':
-        specifier: workspace:*
-        version: link:../web
-
-  apps/web:
-    dependencies:
-      '@atom/adapters':
-        specifier: workspace:*
-        version: link:../../packages/adapters
-      '@atom/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@hono/node-server':
-        specifier: ^1.14.1
-        version: 1.19.17(hono@4.13.8)
-      hono:
-        specifier: ^4.7.5
-        version: 4.13.8
 
   packages/adapters:
     dependencies:
@@ -218,12 +200,6 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@hono/node-server@1.19.17':
-    resolution: {integrity: sha512-dSneS5qhiauZWGDCeK4o695Xd9nUNjviSZCMQrj10eetr8Uln1ucn6bbphOM6UynAMMtNIzZNSpL9vnASJwrPQ==}
-    engines: {node: '>=18.14.1'}
-    peerDependencies:
-      hono: ^4
-
   '@types/node@22.20.3':
     resolution: {integrity: sha512-DZmzkmwHzXrLPAXPyKNDzlIwMMUZCVacoD25ywdy5YTKGbOx/2ld+Q38Im2zJ0vBuZP5Prd3VZutKZyXwkOS8A==}
 
@@ -236,10 +212,6 @@ packages:
     resolution: {integrity: sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==}
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
-
-  hono@4.13.8:
-    resolution: {integrity: sha512-/Gng7NfoykZl2pjukW5Z6+8Yxm3BPRf86GTbQnt0SbySkvax4fyL4H3HhY1cCpBGmiW9XDRFzRV+CXK2W8QudQ==}
-    engines: {node: '>=16.9.0'}
 
   tsx@4.23.13:
     resolution: {integrity: sha512-BL5MGkRln6aDYhb0xbQlEAGw743BaZYWdbWtdJOBriYJboKgUUYCadFp2/FpBBZquBC/ezNBn7wMMPx7FDZUDw==}
@@ -341,10 +313,6 @@ snapshots:
   '@esbuild/win32-x64@0.28.2':
     optional: true
 
-  '@hono/node-server@1.19.17(hono@4.13.8)':
-    dependencies:
-      hono: 4.13.8
-
   '@types/node@22.20.3':
     dependencies:
       undici-types: 6.21.0
@@ -380,8 +348,6 @@ snapshots:
 
   fsevents@2.3.3:
     optional: true
-
-  hono@4.13.8: {}
 
   tsx@4.23.13:
     dependencies:

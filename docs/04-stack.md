@@ -9,12 +9,13 @@
 | Schedule | local `cron` / `launchd` |
 | LLM | Grok Build Agent CLI (`grok -p` + `--json-schema`) + Zod; HeuristicExtractAgent offline fallback |
 | Digest | Markdown files under `./out/` |
-| Local UI | Hono kanban (charcoal / copper) reading SQLite projections |
-| Layout | `apps/cli` `apps/web` `packages/core` `packages/adapters` |
+| Config | `data/sources.json` SourceRegistry (seed: `config/sources.json`) |
+| Layout | `apps/cli` `packages/core` `packages/adapters` |
 
 ## Deferred
 
-- Slack Bolt adapter
+- Web UI / kanban (separate design/prototype pass — Stage-1 is CLI + Markdown)
+- Slack Bolt adapter (new `registerSourceType`, not a core enum)
 - Next.js SaaS / ICP / hosted multi-tenant UI
 - Paddle / Lemon Squeezy (MoR) for overseas billing
 - Postgres, Redis, K8s
@@ -25,10 +26,9 @@
 
 ```
 apps/cli/
-apps/web/          # local kanban projection
-packages/core/     # atom writer, projections, schemas
-packages/adapters/ # fixture, yzj-cli, heuristic, grok CLI
+packages/core/     # atom writer, projections, SourceRegistry
+packages/adapters/ # source factories, heuristic, grok CLI
 docs/              # contracts (this tree)
 out/               # local digests (gitignored)
-data/              # sqlite (gitignored)
+data/              # sqlite + sources.json (gitignored)
 ```

@@ -2,25 +2,33 @@ import { readFileSync } from "node:fs";
 import type { RawMessage, SourceAdapter } from "@atom/core";
 
 export class FixtureSource implements SourceAdapter {
-  readonly id = "fixture";
+  readonly id: string;
+  private readonly filePath: string;
+  private readonly seedCursor?: string;
 
-  constructor(private readonly filePath: string) {}
+  constructor(opts: { id?: string; filePath: string; seedCursor?: string }) {
+    this.id = opts.id ?? "fixture";
+    this.filePath = opts.filePath;
+    this.seedCursor = opts.seedCursor;
+  }
 
   async pullSince(cursor: string | null): Promise<{
     messages: RawMessage[];
     nextCursor: string;
   }> {
-    const messages = readJsonl(this.filePath);
-    const start = cursor ? messages.findIndex((m) => m.id === cursor) + 1 : 0;
-    const slice = start <= 0 && cursor && !messages.some((m) => m.id === cursor)
-      ? messages
-      : messages.slice(Math.max(0, start));
+    const messages = readJsonl(this.filePath, this.id);
+    const from = cursor ?? this.seedCursor ?? null;
+    const start = from ? messages.findIndex((m) => m.id === from) + 1 : 0;
+    const slice =
+      start <= 0 && from && !messages.some((m) => m.id === from)
+        ? messages
+        : messages.slice(Math.max(0, start));
     const last = slice.at(-1) ?? messages.at(-1);
-    return { messages: slice, nextCursor: last?.id ?? cursor ?? "" };
+    return { messages: slice, nextCursor: last?.id ?? from ?? "" };
   }
 }
 
-function readJsonl(path: string): RawMessage[] {
+function readJsonl(path: string, sourceId: string): RawMessage[] {
   const text = readFileSync(path, "utf8");
   const out: RawMessage[] = [];
   for (const line of text.split("\n")) {
@@ -32,7 +40,7 @@ function readJsonl(path: string): RawMessage[] {
     if (!id) continue;
     out.push({
       id,
-      sourceId: "fixture",
+      sourceId,
       groupId,
       author: String(raw.author ?? "unknown"),
       text: String(raw.text ?? raw.body ?? ""),

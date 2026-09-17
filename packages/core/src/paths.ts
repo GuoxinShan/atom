@@ -19,7 +19,9 @@ export type AtomPaths = {
   outDir: string;
   dbPath: string;
   fixturesPath: string;
+  /** Runtime store (gitignored). Seeded from `seedRegistryPath` on first run. */
   registryPath: string;
+  seedRegistryPath: string;
 };
 
 export function resolvePaths(root = findRepoRoot()): AtomPaths {
@@ -36,8 +38,9 @@ export function resolvePaths(root = findRepoRoot()): AtomPaths {
       envPath(root, process.env.ATOM_FIXTURES, "fixtures/messages.jsonl"),
     ),
     registryPath: resolve(
-      envPath(root, process.env.ATOM_SOURCE_REGISTRY, "config/sources.json"),
+      envPath(root, process.env.ATOM_SOURCE_REGISTRY, "data/sources.json"),
     ),
+    seedRegistryPath: resolve(join(root, "config/sources.json")),
   };
 }
 

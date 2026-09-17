@@ -1,6 +1,21 @@
 {
+  "version": 1,
   "sources": [
-    { "id": "fixture", "kind": "fixture", "enabled": true },
-    { "id": "yzj", "kind": "yzj", "enabled": false }
+    {
+      "id": "fixture",
+      "type": "fixture",
+      "enabled": true,
+      "label": "Bundled JSONL",
+      "settings": { "path": "fixtures/messages.jsonl" }
+    },
+    {
+      "id": "yzj",
+      "type": "yzj",
+      "enabled": false,
+      "label": "Yunzhijia via yzj-cli",
+      "groupIds": [],
+      "credentialRef": "keychain:yzj-cli",
+      "settings": { "bin": "yzj-cli" }
+    }
   ]
 }

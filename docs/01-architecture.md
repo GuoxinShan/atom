@@ -31,8 +31,9 @@ interface SourceAdapter {
 }
 ```
 
-Week 1: Yunzhijia wrapper around existing local CLI.  
-Later: Slack Bolt behind the same interface.
+Week 1: Yunzhijia wrapper around existing local CLI, **instantiated from SourceRegistry** (`data/sources.json`). Group ids live on the config row.  
+Types are open: `registerSourceType` adds adapters (later Slack, etc.) without changing ingest.  
+See [06-extensibility](06-extensibility.md).
 
 ## Separation (non-negotiable)
 

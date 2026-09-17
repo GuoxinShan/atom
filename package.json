@@ -8,8 +8,7 @@
   },
   "scripts": {
     "atom": "tsx apps/cli/src/index.ts",
-    "ui": "tsx apps/web/src/index.ts",
-    "typecheck": "tsc -p packages/core --noEmit && tsc -p packages/adapters --noEmit && tsc -p apps/cli --noEmit && tsc -p apps/web --noEmit"
+    "typecheck": "tsc -p packages/core --noEmit && tsc -p packages/adapters --noEmit && tsc -p apps/cli --noEmit"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",

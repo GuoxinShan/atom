@@ -31,7 +31,20 @@ export { projectCandidates, projectMessages, existingClusterKeys } from "./proje
 export { renderDigest, writeDigestFile } from "./digest.ts";
 export { ingest, extract, digest, run, decide, decideOnStore } from "./pipeline.ts";
 export type { Pipeline } from "./pipeline.ts";
-export { loadSourceRegistry, DEFAULT_SOURCE_REGISTRY } from "./registry.ts";
-export type { SourceRegistry, SourceRegistryEntry } from "./registry.ts";
+export {
+  loadSourceRegistry,
+  saveSourceRegistry,
+  upsertSourceConfig,
+  listSourceConfigs,
+  DEFAULT_SOURCE_REGISTRY,
+  SourceConfigSchema,
+} from "./registry.ts";
+export type {
+  SourceRegistry,
+  SourceRegistryEntry,
+  SourceConfig,
+  SourceFactory,
+  SourceFactoryContext,
+} from "./registry.ts";
 export { MANUAL_TRIGGER } from "./trigger.ts";
 export { LogSubscriptionSink } from "./sink.ts";

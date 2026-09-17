@@ -6,4 +6,13 @@ export {
   parseGrokOutput,
   grokArgv,
 } from "./grok-cli-extract.ts";
-export { createPipeline, createSource, createExtractAgent } from "./runtime.ts";
+export {
+  createPipeline,
+  createExtractAgent,
+  describeSource,
+} from "./runtime.ts";
+export {
+  registerSourceType,
+  registeredSourceTypes,
+  createSourceFromConfig,
+} from "./factories.ts";

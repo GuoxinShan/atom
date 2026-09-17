@@ -10,27 +10,28 @@ Machines propose. Humans decide. Every claim points at evidence.
 pnpm install
 pnpm atom run
 pnpm atom candidates
-pnpm atom ui          # kanban at http://127.0.0.1:3333
+pnpm atom sources list
 ```
 
-Default path: **FixtureSource** + **HeuristicExtractAgent** (offline).  
-Writes atoms into SQLite table `events`, Markdown 需求日报 into `out/`, and a local kanban projection of candidates.
+Default path: **enabled SourceRegistry rows** (seed includes Fixture) + **HeuristicExtractAgent** (offline).  
+Writes atoms into SQLite table `events` and Markdown 需求日报 into `out/`. Stage-1 is **CLI only** — UI is a separate prototype.
 
 ```bash
 pnpm atom approve <id>
 pnpm atom reject <id>
+pnpm atom sources add --id yzj-work --type yzj --group-id <gid>
 ```
 
 ## Env
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `ATOM_SOURCE` | `fixture` | `fixture` \| `yzj` |
+| `ATOM_SOURCE` | (all enabled) | Source **config id** to run |
 | `ATOM_EXTRACT_AGENT` | `heuristic` | `heuristic` \| `grok` |
 | `ATOM_GROK_BIN` | `grok` | Grok Build Agent CLI |
 | `ATOM_GROK_MODEL` | — | passed as `-m` |
 | `ATOM_GROK_MAX_TURNS` | `8` | `--max-turns` |
-| `ATOM_UI_PORT` | `3333` | kanban |
+| `ATOM_SOURCE_REGISTRY` | `data/sources.json` | runtime SourceRegistry |
 
 Grok extract spawns the local CLI (not OpenAI/xAI HTTP chat completions):
 
@@ -38,16 +39,17 @@ Grok extract spawns the local CLI (not OpenAI/xAI HTTP chat completions):
 grok -p --always-approve --max-turns N --json-schema <file> --prompt-file <file>
 ```
 
+Sources are **not** a closed Fixture/Yzj set. See [docs/06-extensibility.md](docs/06-extensibility.md).
+
 ## Layout
 
 ```
 apps/cli/          # pnpm atom …
-apps/web/          # local Hono kanban (charcoal / copper)
-packages/core/     # SourceAdapter, ExtractAgent, Zod, events writer, projections
-packages/adapters/ # Fixture, Yzj (yzj-cli), Heuristic, GrokCliExtractAgent
+packages/core/     # SourceRegistry, SourceAdapter, ExtractAgent, events writer
+packages/adapters/ # factories: fixture, yzj; Heuristic + GrokCliExtractAgent
 fixtures/messages.jsonl
-config/sources.json
-data/  out/        # gitignored
+config/sources.json   # seed copied to data/sources.json
+data/  out/           # gitignored
 ```
 
 ## Docs
@@ -60,6 +62,7 @@ data/  out/        # gitignored
 | [03-stages](docs/03-stages.md) | Stage doors and human gates |
 | [04-stack](docs/04-stack.md) | Week-1 tech stack |
 | [05-non-goals](docs/05-non-goals.md) | Explicit non-goals and competitor stance |
+| [06-extensibility](docs/06-extensibility.md) | SourceRegistry, factories, Grok extract |
 
 ## Naming
 

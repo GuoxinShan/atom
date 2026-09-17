@@ -15,15 +15,29 @@ import { LogSubscriptionSink } from "./sink.ts";
 
 export type Pipeline = {
   store: AtomStore;
-  source: SourceAdapter;
+  sources: SourceAdapter[];
   extract: ExtractAgent;
   outDir: string;
   sink?: SubscriptionSink;
 };
 
 export async function ingest(p: Pipeline): Promise<{ ingested: number; skipped: number }> {
-  const cursor = p.store.getCursor(p.source.id);
-  const { messages, nextCursor } = await p.source.pullSince(cursor);
+  let ingested = 0;
+  let skipped = 0;
+  for (const source of p.sources) {
+    const r = await ingestOne(p, source);
+    ingested += r.ingested;
+    skipped += r.skipped;
+  }
+  return { ingested, skipped };
+}
+
+async function ingestOne(
+  p: Pipeline,
+  source: SourceAdapter,
+): Promise<{ ingested: number; skipped: number }> {
+  const cursor = p.store.getCursor(source.id);
+  const { messages, nextCursor } = await source.pullSince(cursor);
   let ingested = 0;
   let skipped = 0;
   for (const msg of messages) {
@@ -38,17 +52,17 @@ export async function ingest(p: Pipeline): Promise<{ ingested: number; skipped: 
       actor: "system",
       refs: [],
       detail: {
-        source_adapter_id: p.source.id,
+        source_adapter_id: source.id,
         cursor: msg.cursor ?? msg.id,
         raw: msg,
       },
     });
     ingested += 1;
   }
-  p.store.setCursor(p.source.id, nextCursor, new Date().toISOString());
+  p.store.setCursor(source.id, nextCursor, new Date().toISOString());
   await (p.sink ?? new LogSubscriptionSink()).publish({
     topic: "ingest",
-    payload: { source: p.source.id, ingested, skipped, trigger: MANUAL_TRIGGER.id },
+    payload: { source: source.id, ingested, skipped, trigger: MANUAL_TRIGGER.id },
   });
   return { ingested, skipped };
 }

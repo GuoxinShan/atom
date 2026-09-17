@@ -3,10 +3,14 @@ import {
   digest,
   extract,
   ingest,
+  listSourceConfigs,
   projectCandidates,
+  resolvePaths,
   run,
+  SourceConfigSchema,
+  upsertSourceConfig,
 } from "@atom/core";
-import { createPipeline } from "@atom/adapters";
+import { createPipeline, describeSource, registeredSourceTypes } from "@atom/adapters";
 
 const USAGE = `ATOM — Append-only Timeline Of Matters · 事元
 
@@ -17,10 +21,12 @@ const USAGE = `ATOM — Append-only Timeline Of Matters · 事元
   pnpm atom candidates
   pnpm atom approve <id>
   pnpm atom reject <id>
-  pnpm atom ui               local kanban (http://127.0.0.1:3333)
+  pnpm atom sources list
+  pnpm atom sources add --id <id> --type <type> [--group-id <gid> ...]
 
-Default source: fixture    extract: heuristic
-Env: ATOM_SOURCE=fixture|yzj
+Default: enabled sources from data/sources.json (seeded from config/sources.json)
+         extract: heuristic. Set ATOM_EXTRACT_AGENT=grok for Grok CLI.
+Env: ATOM_SOURCE=<config id>     run one source
      ATOM_EXTRACT_AGENT=heuristic|grok
      ATOM_GROK_BIN ATOM_GROK_MODEL ATOM_GROK_MAX_TURNS
 `;
@@ -31,9 +37,8 @@ async function main(): Promise<void> {
     process.stdout.write(USAGE);
     return;
   }
-  if (cmd === "ui") {
-    const { startUi } = await import("@atom/web/server");
-    await startUi();
+  if (cmd === "sources") {
+    sourcesCommand(rest);
     return;
   }
 
@@ -90,12 +95,78 @@ async function main(): Promise<void> {
         console.log(`${updated.status}  ${updated.id}  ${updated.title}`);
         break;
       }
+      case "ui":
+        throw new Error("Kanban UI is out of this PR — CLI only. See docs/06-extensibility.md.");
       default:
         throw new Error(`unknown command: ${cmd}\n${USAGE}`);
     }
   } finally {
     store.close();
   }
+}
+
+function sourcesCommand(argv: string[]): void {
+  const [sub, ...rest] = argv;
+  const paths = resolvePaths();
+  if (!sub || sub === "list") {
+    const rows = listSourceConfigs(paths.registryPath, paths.seedRegistryPath);
+    console.log(`registry ${paths.registryPath}`);
+    console.log(`factories ${registeredSourceTypes().join(", ") || "(none)"}`);
+    if (rows.length === 0) {
+      console.log("(empty) — pnpm atom sources add --id … --type …");
+      return;
+    }
+    for (const row of rows) console.log(describeSource(row));
+    return;
+  }
+  if (sub === "add") {
+    const flags = parseFlags(rest);
+    const id = first(flags.id);
+    const type = first(flags.type);
+    if (!id || !type) {
+      throw new Error("sources add requires --id and --type");
+    }
+    const enabledRaw = first(flags.enabled);
+    const parsed = SourceConfigSchema.parse({
+      id,
+      type,
+      enabled: enabledRaw ? enabledRaw !== "false" : true,
+      label: first(flags.label),
+      credentialRef: first(flags["credential-ref"]),
+      groupIds: flags["group-id"],
+      settings: {
+        ...(first(flags.bin) ? { bin: first(flags.bin) } : {}),
+        ...(first(flags.path) ? { path: first(flags.path) } : {}),
+      },
+    });
+    upsertSourceConfig(paths.registryPath, parsed, paths.seedRegistryPath);
+    if (!registeredSourceTypes().includes(type)) {
+      console.warn(
+        `saved ${id} type=${type} with no factory yet. registerSourceType("${type}", …) before ingest.`,
+      );
+    }
+    console.log(`saved ${id} → ${paths.registryPath}`);
+    return;
+  }
+  throw new Error(`unknown sources subcommand: ${sub}\n  sources list | sources add --id --type`);
+}
+
+function parseFlags(argv: string[]): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (let i = 0; i < argv.length; i += 1) {
+    const tok = argv[i];
+    if (!tok?.startsWith("--")) continue;
+    const key = tok.slice(2);
+    const next = argv[i + 1];
+    const val = next && !next.startsWith("--") ? next : "true";
+    if (next && !next.startsWith("--")) i += 1;
+    (out[key] ??= []).push(val);
+  }
+  return out;
+}
+
+function first(values: string[] | undefined): string | undefined {
+  return values?.[0];
 }
 
 main().catch((err: unknown) => {

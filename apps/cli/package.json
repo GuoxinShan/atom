@@ -8,7 +8,6 @@
   },
   "dependencies": {
     "@atom/adapters": "workspace:*",
-    "@atom/core": "workspace:*",
-    "@atom/web": "workspace:*"
+    "@atom/core": "workspace:*"
   }
 }
