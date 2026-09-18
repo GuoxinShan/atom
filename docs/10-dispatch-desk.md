@@ -23,6 +23,27 @@ Status: **locked direction** — implement this, not a Cursor Projects clone.
 
 Projects optimizes *shipping code over months*. ATOM optimizes *not losing cited demands from chat*.
 
+
+## Daily focus (non-negotiable)
+
+**Home = Needs you.** Only surfaces that need a human gate:
+
+1. Suggested candidates (approve / reject / merge)
+2. Checklist human_gate_ack
+3. Outbound digest / chat post confirm (when enabled)
+
+Everything else is **low-frequency** and must not compete for attention:
+
+| Surface | Frequency | Placement |
+|---|---|---|
+| Lead NL config | occasional | collapsed composer / drawer |
+| Sources / triggers / Listening detail | rare setup | left rail collapsed or Settings |
+| Workspaces / agent providers | rare setup | drawer under gear |
+| Atom / run log | debug only | secondary **Atoms** nav, not Desk home |
+| Cold-start / doctor | new machine | Setup nav |
+
+If a screen does not end in a human decision, it does not own the default view.
+
 ## Layout (v1)
 
 ```

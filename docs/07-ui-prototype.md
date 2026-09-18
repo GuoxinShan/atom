@@ -25,3 +25,8 @@ Dark editorial: charcoal ground, copper/amber accent, generous whitespace, Linea
 ## Agent-assisted setup
 
 Empty states CTA: “Ask agent to wire a source / trigger”. Agent proposes config → human confirms → registry write → optional test pull.
+
+
+## Daily focus
+
+Default view is **Needs you** (human gates only). Run logs, providers, workspaces, Listening details are low-frequency — see `10-dispatch-desk.md`.
