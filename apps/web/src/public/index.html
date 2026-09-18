@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>ATOM</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header>
+        <div class="brand">
+          <h1>ATOM <span>Control</span></h1>
+          <p>Append-only Timeline Of Matters · Lead 调度 · 人审门禁</p>
+        </div>
+        <nav class="nav" id="nav">
+          <button data-page="board" class="active">看板</button>
+          <button data-page="sources">订阅源</button>
+          <button data-page="subscriptions">出站订阅</button>
+          <button data-page="workspaces">工作区</button>
+          <button data-page="setup">冷启动</button>
+        </nav>
+        <div class="meta" id="meta">…</div>
+      </header>
+
+      <section id="page-board" class="page active">
+        <div class="board" id="board"></div>
+      </section>
+
+      <section id="page-sources" class="page">
+        <div class="panel">
+          <h2>订阅源</h2>
+          <p class="hint">跟主 Agent 说也能改，例如：「打开 AI推进 群」「只要 Agentic Working」</p>
+          <div class="lead-box">
+            <input id="lead-input" placeholder="跟 Lead 说：打开 AI推进 群 / 只要 Agentic Working / 用 grok 抽" />
+            <button id="lead-send" class="primary">让 Lead 改</button>
+          </div>
+          <pre id="lead-result" class="result"></pre>
+          <div id="sources-list" class="cards"></div>
+        </div>
+      </section>
+
+      <section id="page-subscriptions" class="page">
+        <div class="panel">
+          <h2>出站订阅</h2>
+          <p class="hint">atom 追加后可 webhook 推给其他系统。也可说：「订阅加 https://…」</p>
+          <div id="subs-list" class="cards"></div>
+        </div>
+      </section>
+
+      <section id="page-workspaces" class="page">
+        <div class="panel">
+          <h2>工作区地图</h2>
+          <p class="hint">Lead 派活只进这里登记过的路径，不会无脑乱派。</p>
+          <div id="ws-list" class="cards"></div>
+        </div>
+      </section>
+
+      <section id="page-setup" class="page">
+        <div class="panel">
+          <h2>冷启动检查</h2>
+          <p class="hint">新机器 / 新同事：先看这里是否 READY，再 <code>pnpm atom run</code>。</p>
+          <div id="setup-list" class="checks"></div>
+        </div>
+      </section>
+
+      <footer>
+        CLI：<code>pnpm atom doctor</code> · <code>pnpm atom lead "…"</code> · <code>pnpm atom sources</code>
+      </footer>
+    </div>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "defaultMachine": "rock-shan",
+  "machines": {
+    "rock-shan": {
+      "label": "Rock-Shan MacBook Pro (M5)",
+      "hostname": "Rock-Shan.local",
+      "os": "darwin",
+      "role": "primary-dev",
+      "notes": "Main coding machine. Yunzhijia CLI, Grok CLI, company + personal repos."
+    },
+    "rock-air": {
+      "label": "Rocks-MacBook-Air",
+      "hostname": "Rocks-MacBook-Air.local",
+      "os": "darwin",
+      "role": "secondary",
+      "notes": "Do not assume repos exist here unless verified."
+    },
+    "rockspc": {
+      "label": "rockspc",
+      "hostname": "rockspc",
+      "os": "windows",
+      "role": "occasional",
+      "notes": "Often offline; not default for ATOM."
+    }
+  },
+  "workspaces": [
+    {
+      "id": "atom",
+      "machine": "rock-shan",
+      "path": "/Users/kingdee/dev/personal/atom",
+      "kind": "personal",
+      "tags": [
+        "atom",
+        "side-business",
+        "demand",
+        "事元"
+      ],
+      "match": [
+        "ATOM",
+        "需求日报",
+        "cited-demand",
+        "事元产品",
+        "kanban",
+        "handoff pack"
+      ],
+      "codingAgent": "grok-cli",
+      "notes": "Personal side-business ATOM product."
+    },
+    {
+      "id": "yzj",
+      "machine": "rock-shan",
+      "path": "/Users/kingdee/dev/yzj",
+      "kind": "work",
+      "tags": [
+        "yunzhijia",
+        "calendar",
+        "1023"
+      ],
+      "match": [
+        "云之家",
+        "1023",
+        "日历",
+        "灵基chat开发",
+        "code.yzjop.com/yzj",
+        "schedule/mcp",
+        "会议的mcp",
+        "日程"
+      ],
+      "codingAgent": "grok-cli",
+      "notes": "Yunzhijia main checkout; AGENTS.md present."
+    },
+    {
+      "id": "ai-advance",
+      "machine": "rock-shan",
+      "path": "/Users/kingdee/dev/ai-advance",
+      "kind": "work",
+      "tags": [
+        "ai-advance",
+        "lingee",
+        "推进",
+        "dsh"
+      ],
+      "match": [
+        "AI推进",
+        "ai-advance",
+        "lingee-advance",
+        "/ai-advance",
+        "推进五态"
+      ],
+      "codingAgent": "grok-cli",
+      "notes": "Company AI advance / lingee advance monorepo."
+    },
+    {
+      "id": "dsh-yzj",
+      "machine": "rock-shan",
+      "path": "/Users/kingdee/dev/dsh-yzj",
+      "kind": "work",
+      "tags": [
+        "dsh",
+        "harness"
+      ],
+      "match": [
+        "dsh-yzj",
+        "DSH",
+        "deepseek-harness"
+      ],
+      "codingAgent": "grok-cli",
+      "notes": "DSH × yzj bridge experiments."
+    },
+    {
+      "id": "deepseek-harness",
+      "machine": "rock-shan",
+      "path": "/Users/kingdee/dev/deepseek-harness",
+      "kind": "work",
+      "tags": [
+        "harness",
+        "oh-my-dsh"
+      ],
+      "match": [
+        "deepseek-harness",
+        "oh-my-dsh",
+        "harness"
+      ],
+      "codingAgent": "grok-cli",
+      "notes": "Upstream harness."
+    }
+  ]
+}

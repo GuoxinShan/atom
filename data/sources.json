@@ -1,0 +1,42 @@
+{
+  "sources": [
+    {
+      "id": "fixture",
+      "kind": "fixture",
+      "enabled": true,
+      "path": "fixtures/messages.jsonl"
+    },
+    {
+      "id": "yzj",
+      "kind": "yzj",
+      "enabled": true,
+      "groupIds": [
+        "6a98ef36e4b073377732ef7b"
+      ],
+      "groupNames": {
+        "6a98ef36e4b073377732ef7b": "灵基Chat · Agentic Working 验证"
+      },
+      "cli": "yzj-cli",
+      "limit": 20
+    },
+    {
+      "id": "yzj-ai-advance",
+      "kind": "yzj",
+      "enabled": false,
+      "groupIds": [
+        "6a9a59d1e4b043b377865acf"
+      ],
+      "groupNames": {
+        "6a9a59d1e4b043b377865acf": "【AI推进】"
+      },
+      "cli": "yzj-cli",
+      "limit": 20
+    }
+  ],
+  "defaultSourceId": "yzj",
+  "defaultExtractAgent": "grok-cli",
+  "extract": {
+    "heuristicGate": true,
+    "groupAllowlistFromSource": true
+  }
+}

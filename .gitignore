@@ -1,9 +1,11 @@
 node_modules/
 dist/
-out/
-data/
-*.sqlite
-*.db
+data/*.sqlite
+data/*.sqlite-*
+out/**
+!out/.gitkeep
+.DS_Store
+*.log
 .env
 .env.*
-.DS_Store
+*.tgz

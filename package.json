@@ -1,0 +1,19 @@
+{
+  "name": "atom",
+  "private": true,
+  "version": "0.1.0",
+  "description": "ATOM — append-only demand feed with mandatory citations",
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "atom": "tsx apps/cli/src/main.ts",
+    "web": "tsx apps/web/src/server.ts",
+    "typecheck": "pnpm -r run typecheck"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

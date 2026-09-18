@@ -30,3 +30,7 @@ docs/              # contracts (this tree)
 out/               # local digests (gitignored)
 data/              # sqlite (gitignored)
 ```
+
+## Triggers (beyond week-1 cron)
+
+Manual + stubs first; webhook / IM hook / fs watch share one Trigger interface — see `docs/06-extensibility.md`.

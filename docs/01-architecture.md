@@ -52,3 +52,19 @@ Patterns borrowed at the *discipline* level only (not a product fork):
 - mandatory refs / bounded fetch of evidence
 - append-only feed under the ATOM product（事元）
 - confirm before any outbound side effect
+
+## Event loop
+
+ATOM is a **giant event loop**, not a batch cron script.
+
+```
+Trigger  →  Agent (extract | execute | …)
+                ↓
+           append Atom(s) to `events`
+                ↓
+     Trigger bindings may match new atoms
+                ↓
+           next Agent / pipeline …
+```
+
+Agents both **consume** wakes and **emit** atoms on start/progress/completion/failure. Projections (candidates, digests, UI) fold from the same feed. Human gates still apply: auto-chaining must not skip required approve steps.

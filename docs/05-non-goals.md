@@ -2,6 +2,7 @@
 
 ## Not building
 
+- Frontend / web UI before a designed prototype (no ugly placeholder UI)
 - Another generic “Slack thread → PRD” bot
 - Full coding agent / Devin clone
 - Zero-touch SDLC with no human gates

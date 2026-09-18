@@ -51,6 +51,9 @@ type Ref = {
 | `handoff_exported` | handoff id | yes | target (`cursor`/`codex`/file path) |
 | `evidence_attached` | evidence id | yes | kind (`test`/`screenshot`/`log`), path |
 | `pr_opened` | pr id | yes | url, branch |
+| `agent_started` | run id | optional | agent id, pipeline |
+| `agent_completed` | run id | optional | agent id, pipeline, stats |
+| `agent_failed` | run id | optional | agent id, error |
 
 Unknown types are **rejected** by the writer. Adding a type is a contract change (bump `atom-contract` version).
 

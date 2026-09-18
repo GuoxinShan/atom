@@ -1,0 +1,6 @@
+{"id":"msg-001","source":"fixture","groupId":"demo-group","author":"张三","text":"希望需求池能每天自动汇总一条需求日报，最好带引用。","ts":"2026-09-17T10:15:00+08:00"}
+{"id":"msg-002","source":"fixture","groupId":"demo-group","author":"Li Wei","text":"We need a CLI to approve or reject suggested candidates without opening a web UI.","ts":"2026-09-17T11:02:00+08:00"}
+{"id":"msg-003","source":"fixture","groupId":"demo-group","author":"王芳","text":"今天又开了两个会，午饭吃了牛肉面，天气不错。","ts":"2026-09-17T12:30:00+08:00"}
+{"id":"msg-004","source":"fixture","groupId":"demo-group","author":"Chen","text":"Please add Yunzhijia IM ingest wrapping yzj-cli im message list for configured group ids.","ts":"2026-09-17T14:05:00+08:00"}
+{"id":"msg-005","source":"fixture","groupId":"demo-group","author":"赵敏","text":"候选需求必须带 refs，没有引用的直接拒绝入库。","ts":"2026-09-17T16:40:00+08:00"}
+{"id":"msg-006","source":"fixture","groupId":"demo-group","author":"Alex","text":"Can we ship a dark kanban (Suggested / Accepted / Rejected) for tomorrow's review?","ts":"2026-09-17T18:20:00+08:00"}

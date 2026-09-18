@@ -1,0 +1,6 @@
+{
+  "triggers": [
+    { "id": "manual-run", "kind": "manual", "enabled": true, "pipeline": "run" },
+    { "id": "webhook-ingest", "kind": "webhook", "enabled": false, "pipeline": "ingest", "config": { "path": "/hooks/ingest" } }
+  ]
+}

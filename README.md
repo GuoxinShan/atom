@@ -1,45 +1,75 @@
 # ATOM
 
-> Append-only Timeline Of Matters · 事元
+Append-only **demand feed** with mandatory citations. Machines propose. Humans decide.
 
-Machines propose. Humans decide. Every claim points at evidence.
+Domain unit: **atom**. SQL table: **`events`** (never `atoms`).
 
-Dogfood first on personal chat sources (e.g. Yunzhijia via local CLI). Overseas Slack-compatible product comes later. This repo currently holds **core design and contracts only** — no runtime yet.
+Stage-1 MVP: CLI + Markdown 需求日报 + optional local kanban. No Next.js product app.
 
-## One-liner
+## Quickstart
 
-Cited demand pool on an append-only **ATOM** feed — human gates all the way to land.
+```bash
+cd /Users/kingdee/dev/personal/atom   # or this repo root
+pnpm install
+pnpm atom run          # FixtureSource + HeuristicExtractAgent
+pnpm atom candidates   # list suggested candidates with refs
+```
 
-## Stages (build in order)
+Digest lands in `out/digest-YYYY-MM-DD.md`. SQLite at `data/atom.sqlite`.
 
-1. **Demand pool** — ingest messages → propose candidates with refs → approve / reject / merge
-2. **Spec** — accepted items become testable acceptance criteria
-3. **Handoff** — export to existing coding agents (Cursor / Codex), do not build a coding model
-4. **Evidence** — tests / screenshots packaged against criteria
-5. **Land** — PR + release checklist; merge/release stay human-gated
+### Commands
 
-## Docs
-
-| Doc | What it is |
+| Command | What it does |
 |---|---|
-| [00-vision](docs/00-vision.md) | Why this exists and what we refuse to be |
-| [01-architecture](docs/01-architecture.md) | Layers, single source of truth, projections |
-| [02-atom-contract](docs/02-atom-contract.md) | Core contract for the ATOM feed |
-| [03-stages](docs/03-stages.md) | Stage doors and human gates |
-| [04-stack](docs/04-stack.md) | Week-1 tech stack |
-| [05-non-goals](docs/05-non-goals.md) | Explicit non-goals and competitor stance |
+| `pnpm atom run` | ingest → extract → digest |
+| `pnpm atom ingest` | pull source only |
+| `pnpm atom extract [--agent heuristic\|grok-cli]` | propose candidates |
+| `pnpm atom digest` | rewrite Markdown projection |
+| `pnpm atom candidates` | print candidate projection |
+| `pnpm atom approve <id>` | append `decision_accepted` |
+| `pnpm atom reject <id>` | append `decision_rejected` |
 
-## Status
+Default extract agent is **heuristic** (offline). Primary LLM path is **GrokCliExtractAgent** (`grok -p --always-approve --json-schema …`).
 
-- Design: in progress (v0)
-- Runtime: not started
-- License: MIT (intended)
+```bash
+pnpm atom run --agent grok-cli
+```
 
-## Naming
+### Kanban (optional)
 
-| Thing | Name |
-|---|---|
-| **Product** | **ATOM** (*Append-only Timeline Of Matters* / 事元) |
-| Unit of change | atom (one append-only record) |
-| Persistence table | `events` (implementation detail — **not** the product name) |
-| Old working title | vouch (retired) |
+Same SQLite. Approve/reject append decision atoms.
+
+```bash
+pnpm web
+# open http://127.0.0.1:8787
+```
+
+Dark editorial UI (charcoal + copper): Suggested / Accepted / Rejected.
+
+### Yunzhijia source (stub)
+
+Enable in `data/sources.json` or:
+
+```bash
+ATOM_YZJ_GROUP_IDS=group1,group2 pnpm atom run --source yzj
+```
+
+Wraps `yzj-cli im message list` (ok if untested without groups).
+
+## Layout
+
+```
+apps/cli/          # tsx CLI
+apps/web/          # tiny local kanban + API
+packages/core/     # events writer, projections, agents, registry
+packages/adapters/ # fixture + yzj stub
+fixtures/          # demo messages.jsonl
+data/sources.json  # SourceRegistry config
+out/               # digests (gitignored)
+docs/              # contracts (see 02-atom-contract, 06-extensibility)
+```
+
+## Contracts
+
+- `candidate_proposed` without refs is **rejected** by the writer.
+- Atom types in Stage-1: `message_ingested`, `candidate_proposed`, `decision_accepted|rejected|merged`, `agent_started|completed|failed`.
