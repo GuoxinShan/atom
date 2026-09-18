@@ -98,6 +98,8 @@ Use **`POST /api/run`** from the CLI. Keep **`POST /hooks/run`** for inbound web
 
 Health: `GET /api/health` → `{ ok: true, service: "atom-desk" }`.
 
+Runtime clocks (real only): `GET /api/meta` → `{ ok, lastExtractAt, lastRunAt }` — either ISO string or `null`. Desk empty state uses this; it does not invent a last-run time.
+
 ## Layout
 
 Handlers live in `apps/web/src/routes.ts` (daemon owns DB + core). The CLI is `apps/cli/src/client.ts` + `main.ts` — no `openDb`, no pipeline imports.

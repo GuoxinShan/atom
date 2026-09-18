@@ -3,6 +3,7 @@ import { EventStore } from "../store/events.js";
 import { newId } from "../schema/ids.js";
 import { HeuristicCandidateGate } from "../agents/heuristic.js";
 import { isNoiseProposal } from "../agents/noise.js";
+import { recordExtractFinished } from "./runtime-meta.js";
 
 function messagesFromStore(store: EventStore, groupAllow?: Set<string>): RawMessage[] {
   return store
@@ -129,6 +130,7 @@ export async function runExtract(
       summary: `extract done: ${agent.id} proposed=${proposed} seeds=${seeded.length}`,
       detail: {
         agent_id: agent.id,
+        kind: "extract",
         proposed,
         skipped,
         noise_dropped: noiseDropped,
@@ -137,6 +139,7 @@ export async function runExtract(
       },
       actor: `agent:${agent.id}`,
     });
+    recordExtractFinished(store);
 
     return {
       proposed,

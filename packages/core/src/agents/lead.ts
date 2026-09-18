@@ -28,6 +28,46 @@ export interface WorkspacesFile {
 }
 
 /**
+ * Week-1 haystack rules (see fixtures/lead-routing.json):
+ * - Score primarily on `spec.title` + acceptance criteria.
+ * - Never score raw ref tokens (`yzj:im:…`) or ref digests — they leak tooling words.
+ * - Ignore generic tooling terms (云之家 / yzj-cli / CLI / grok / token / key / 本机 / 单机 / 分发)
+ *   unless the TITLE itself is a yzj product ask (1023 / 日历 / 灵基chat开发 / schedule/mcp).
+ * - Unsure → personal `atom` only; do not guess company paths.
+ */
+export const GENERIC_TOOLING_TERMS = [
+  "云之家",
+  "yzj-cli",
+  "cli",
+  "grok",
+  "token",
+  "key",
+  "本机",
+  "单机",
+  "分发",
+] as const;
+
+export const YZJ_TITLE_SIGNALS = ["1023", "日历", "灵基chat开发", "schedule/mcp"] as const;
+
+export function titleIsYzjProductAsk(title: string): boolean {
+  const t = title.toLowerCase();
+  return YZJ_TITLE_SIGNALS.some((s) => t.includes(s.toLowerCase()));
+}
+
+export function isGenericToolingTerm(needle: string): boolean {
+  const n = needle.toLowerCase();
+  return GENERIC_TOOLING_TERMS.some((g) => n === g.toLowerCase());
+}
+
+function needleHits(ws: WorkspaceEntry, needle: string, hay: string, title: string): boolean {
+  if (!needle) return false;
+  if (isGenericToolingTerm(needle)) {
+    if (ws.id !== "yzj" || !titleIsYzjProductAsk(title)) return false;
+  }
+  return hay.includes(needle);
+}
+
+/**
  * Lead / orchestrator: knows user + machines, routes work to a workspace.
  * Not a blind fan-out.
  */
@@ -48,17 +88,21 @@ export class LeadAgent {
 
   routeSpec(spec: SpecDraft): RouteDecision {
     const cfg = this.loadWorkspaces();
-    // Ref tokens look like `yzj:im:group:msg` — never score the adapter prefix.
-    const refDigests = spec.refs.map((r) => r.digest ?? "").join("\n");
-    const hay = [spec.title, spec.body, ...spec.acceptance_criteria, refDigests]
-      .join("\n")
-      .toLowerCase();
+    // Title + acceptance only. Body / ref tokens / ref digests stay out of the haystack.
+    const titleHay = spec.title.toLowerCase();
+    const acceptHay = spec.acceptance_criteria.join("\n").toLowerCase();
 
     let best: { ws: WorkspaceEntry; score: number; hits: string[] } | null = null;
     for (const ws of cfg.workspaces) {
-      const needles = [...(ws.match ?? []), ...(ws.tags ?? [])].map((s) => s.toLowerCase());
-      const hits = needles.filter((n) => n && hay.includes(n));
-      const score = hits.length;
+      const needles = [
+        ...new Set([...(ws.match ?? []), ...(ws.tags ?? [])].map((s) => s.toLowerCase())),
+      ];
+      const titleHits = needles.filter((n) => needleHits(ws, n, titleHay, spec.title));
+      const acceptHits = needles.filter(
+        (n) => !titleHits.includes(n) && needleHits(ws, n, acceptHay, spec.title)
+      );
+      const hits = [...titleHits, ...acceptHits];
+      const score = titleHits.length * 2 + acceptHits.length;
       if (!best || score > best.score) best = { ws, score, hits };
     }
 

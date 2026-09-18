@@ -3,6 +3,7 @@ import { EventStore } from "../store/events.js";
 import { ingestFromSource } from "./ingest.js";
 import { runExtract } from "./extract.js";
 import { writeDigest } from "./digest.js";
+import { recordRunFinished } from "./runtime-meta.js";
 
 export async function runPipeline(opts: {
   store: EventStore;
@@ -21,6 +22,7 @@ export async function runPipeline(opts: {
     groupAllowlist: opts.groupAllowlist,
   });
   const digestPath = writeDigest(opts.store, opts.repoRoot);
+  recordRunFinished(opts.store);
   await opts.sink?.publish({
     kind: "digest",
     text: `ingest=${ingested} seeds=${seeded} proposed=${proposed} digest=${digestPath}`,

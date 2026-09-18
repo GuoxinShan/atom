@@ -20,7 +20,7 @@ Top nav: **Desk** (default) · **Atoms** (stub) · **Setup**.
 
 | Region | What it is |
 |---|---|
-| Center | **Needs you** — Suggested approve/reject, checklist `human_gate_ack` (when any); outbound confirm only when a post is waiting |
+| Center | **Needs you** — Suggested approve/reject, checklist `human_gate_ack` (when any); outbound confirm only when a post is waiting. Empty: 「今天没有要你拍板的」 + last run/extract from `GET /api/meta` when known |
 | Right rail | Selected **matter** (title, body, refs, Approve/Reject/Handoff/Ack) |
 | Drawers | Listening, Lead, Matters (settled), Workspaces, Agents, Outbound — collapsed by default |
 

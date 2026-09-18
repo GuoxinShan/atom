@@ -98,6 +98,23 @@ export class EventStore {
     return rows.map((r) => r as unknown as EventRecord);
   }
 
+  listNewest(opts?: { type?: AtomType; limit?: number }): EventRecord[] {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (opts?.type) {
+      clauses.push("type = ?");
+      params.push(opts.type);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    const limit = opts?.limit ?? 20;
+    const rows = dbAll(
+      this.atomDb,
+      `SELECT * FROM events ${where} ORDER BY created_at DESC LIMIT ?`,
+      [...params, limit]
+    );
+    return rows.map((r) => r as unknown as EventRecord);
+  }
+
   getMeta(key: string): string | null {
     const row = dbGet(this.atomDb, `SELECT value FROM meta WHERE key = ?`, [key]);
     return row ? String(row.value) : null;
