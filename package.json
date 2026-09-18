@@ -7,6 +7,7 @@
   "scripts": {
     "atom": "tsx apps/cli/src/main.ts",
     "web": "tsx apps/web/src/server.ts",
+    "serve": "tsx apps/web/src/server.ts",
     "typecheck": "pnpm -r run typecheck"
   },
   "devDependencies": {

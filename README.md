@@ -4,24 +4,44 @@ Append-only **demand feed** with mandatory citations. Machines propose. Humans d
 
 Domain unit: **atom**. SQL table: **`events`** (never `atoms`).
 
-Stage-1 MVP: CLI + Markdown 需求日报 + local Dispatch Desk. No Next.js product app.
+Stage-1 MVP: local Dispatch Desk + CLI HTTP client + Markdown 需求日报. No Next.js product app.
+
+**One API.** Desk and CLI both talk to the local daemon. Core is not a second CLI entry. See [`docs/11-single-api.md`](docs/11-single-api.md).
 
 ## Quickstart
 
 ```bash
 cd /Users/kingdee/dev/personal/atom   # or this repo root
 pnpm install
-pnpm atom run          # FixtureSource + HeuristicExtractAgent
-pnpm atom candidates   # list suggested candidates with refs
+pnpm atom serve        # Desk + API — keep this running
+# open http://127.0.0.1:8787
+```
+
+In another terminal (daemon must be up):
+
+```bash
+pnpm atom run          # ingest → extract → digest via POST /api/run
+pnpm atom candidates   # GET /api/candidates
 ```
 
 Digest lands in `out/digest-YYYY-MM-DD.md`. SQLite at `data/atom.sqlite`.
+
+Daily: use **Desk**. Automation: **curl the API** or `pnpm atom` (thin client). Always keep `pnpm atom serve` (or `pnpm web`) running.
+
+If the API is down, the CLI exits with:
+
+```
+ATOM API is not running at http://127.0.0.1:8787. Start it with `pnpm atom serve` (or `pnpm web`).
+```
+
+It does not fall back to in-process `@atom/core`. Optional `ATOM_API_AUTO_START=1` may spawn serve once.
 
 ### Commands
 
 | Command | What it does |
 |---|---|
-| `pnpm atom run` | ingest → extract → digest |
+| `pnpm atom serve` | start Desk + HTTP API (`pnpm web`) |
+| `pnpm atom run` | ingest → extract → digest (`POST /api/run`) |
 | `pnpm atom ingest` | pull source only |
 | `pnpm atom extract [--agent heuristic\|grok-cli]` | propose candidates |
 | `pnpm atom digest` | rewrite Markdown projection |
@@ -41,14 +61,24 @@ pnpm atom run --agent grok-cli
 
 ### Dispatch Desk
 
-Same SQLite. Approve/reject append decision atoms. Lead NL configures sources.
+Same daemon, same SQLite. Approve/reject append decision atoms. Lead NL configures sources.
 
 ```bash
-pnpm web
+pnpm atom serve
 # open Desk at http://127.0.0.1:8787
 ```
 
 Dark editorial UI (charcoal + copper). Listen → propose → approve → route.
+
+### Cron / webhooks
+
+```bash
+curl -sS -X POST http://127.0.0.1:8787/api/run \
+  -H 'content-type: application/json' \
+  -d '{"source":"yzj"}'
+```
+
+Inbound webhooks use `/hooks/run` (same pipeline). CLI `run` uses `/api/run`.
 
 ### Yunzhijia source (stub)
 
@@ -65,14 +95,14 @@ Sweep leftover bot-digest / `收到✅` / log-dump suggestions: `pnpm atom rejec
 ## Layout
 
 ```
-apps/cli/          # tsx CLI
-apps/web/          # Dispatch Desk (static) + local API
+apps/cli/          # thin HTTP client (ATOM_API_BASE, default http://127.0.0.1:8787)
+apps/web/          # Dispatch Desk (static) + the only local API / core owner
 packages/core/     # events writer, projections, agents, registry
 packages/adapters/ # fixture + yzj stub
 fixtures/          # demo messages.jsonl
 data/sources.json  # SourceRegistry config
 out/               # digests (gitignored)
-docs/              # contracts (see 02-atom-contract, 06-extensibility)
+docs/              # contracts (see 02-atom-contract, 06-extensibility, 11-single-api)
 ```
 
 ## Contracts

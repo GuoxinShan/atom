@@ -2,16 +2,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  openDb,
+  defaultDbPath,
   EventStore,
   SourceRegistry,
   ManualTrigger,
   LogSubscriptionSink,
-  openDb,
-  defaultDbPath,
-  ExtractAgent,
-  resolveExtractAgent,
 } from "@atom/core";
 import { FixtureSource, YzjSource } from "@atom/adapters";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export function resolveRepoRoot(): string {
   let dir = path.resolve(process.cwd());
@@ -29,18 +29,21 @@ export function resolveRepoRoot(): string {
     if (parent === dir) break;
     dir = parent;
   }
-  const here = path.dirname(fileURLToPath(import.meta.url));
-  return path.resolve(here, "../../..");
+  return path.resolve(__dirname, "../../..");
 }
 
-export async function createAppContext(repoRoot = resolveRepoRoot()) {
-  const dbPath = process.env.ATOM_DB ?? defaultDbPath(repoRoot);
-  const atomDb = await openDb(dbPath);
-  const store = new EventStore(atomDb);
+export type Daemon = {
+  repoRoot: string;
+  store: EventStore;
+  registry: SourceRegistry;
+  trigger: ManualTrigger;
+  sink: LogSubscriptionSink;
+};
 
+export function createSourceRegistry(repoRoot: string): SourceRegistry {
   const registry = new SourceRegistry(repoRoot);
   registry.register("fixture", (entry, root) => {
-    const rel = entry.path ?? "fixtures/messages.jsonl";
+    const rel = (entry as { path?: string }).path ?? "fixtures/messages.jsonl";
     return new FixtureSource(path.join(root, rel), entry.id);
   });
   registry.register(
@@ -48,18 +51,18 @@ export async function createAppContext(repoRoot = resolveRepoRoot()) {
     (entry) =>
       new YzjSource({
         id: entry.id,
-        groupIds: entry.groupIds,
-        cli: entry.cli as string | undefined,
+        groupIds: (entry as { groupIds?: string[] }).groupIds,
+        cli: (entry as { cli?: string }).cli,
       })
   );
-
-  const trigger = new ManualTrigger();
-  const sink = new LogSubscriptionSink(repoRoot);
-
-  return { repoRoot, dbPath, atomDb, store, registry, trigger, sink };
+  return registry;
 }
 
-export function resolveAgent(_name: string, repoRoot = resolveRepoRoot()): ExtractAgent {
-  // Name flag kept for CLI compat; real selection is data/agents.json defaults.
-  return resolveExtractAgent(repoRoot);
+export async function createDaemon(repoRoot = resolveRepoRoot()): Promise<Daemon> {
+  const atomDb = await openDb(process.env.ATOM_DB ?? defaultDbPath(repoRoot));
+  const store = new EventStore(atomDb);
+  const registry = createSourceRegistry(repoRoot);
+  const trigger = new ManualTrigger();
+  const sink = new LogSubscriptionSink(repoRoot);
+  return { repoRoot, store, registry, trigger, sink };
 }
