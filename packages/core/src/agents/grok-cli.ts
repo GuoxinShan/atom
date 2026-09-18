@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { ExtractAgent, CandidateProposal, CandidateProposalSchema, RawMessage } from "../schema/types.js";
 import { refTokenForMessage } from "../schema/ids.js";
+import { isNoiseProposal } from "./noise.js";
 
 const JSON_SCHEMA = {
   type: "object",
@@ -116,7 +117,10 @@ export class GrokCliExtractAgent implements ExtractAgent {
         refs,
         source_message_ids: ids,
       });
-      if (proposal.success) out.push(proposal.data);
+      if (proposal.success) {
+        if (isNoiseProposal(proposal.data.title, proposal.data.body)) continue;
+        out.push(proposal.data);
+      }
     }
     return out;
   }
@@ -137,7 +141,8 @@ function buildPrompt(messages: RawMessage[]): string {
     "- Emit exactly ONE JSON object matching the schema. No markdown fences.",
     "- Never emit a Placeholder / draft / TODO title.",
     "- Only keep actionable demands / asks / bugs / missing capabilities.",
-    "- Drop acknowledgements, FYIs, already-finished digests, and chatter.",
+    "- Drop acknowledgements (收到✅), FYIs, bot digests (【来自Grok Bot自动发送】 / 已记入本周台账), log dumps, and chatter.",
+    "- Drop titles shorter than 6 characters or truncated mid-sentence (e.g. ending with bare （dev or only [2026-).",
     "- Merge duplicates into one candidate when they are the same ask.",
     "- Each candidate MUST cite one or more source_message_ids from the list (never invent ids).",
     "- Titles: short, imperative Chinese or English matching the chat language.",

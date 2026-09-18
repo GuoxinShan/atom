@@ -28,6 +28,10 @@ Digest lands in `out/digest-YYYY-MM-DD.md`. SQLite at `data/atom.sqlite`.
 | `pnpm atom candidates` | print candidate projection |
 | `pnpm atom approve <id>` | append `decision_accepted` |
 | `pnpm atom reject <id>` | append `decision_rejected` |
+| `pnpm atom reject-noise` | reject suggested junk (`bot digest` / `收到✅` / log dumps) as `decision_rejected` reason `noise-heuristic` |
+| `pnpm atom checklist <id>` | start Stage-2 PR checklist (append-only; not auto-merge) |
+| `pnpm atom checklist-done <id> <itemKey> [--ack]` | mark a checklist item; `--ack` required for `human_gate_ack` |
+| `pnpm atom pr-open <id> --url <prUrl>` | append `pr_opened` only after `pr_checklist_passed` (`--force` warns) |
 
 Default extract agent is **heuristic** (offline). Primary LLM path is **GrokCliExtractAgent** (`grok -p --always-approve --json-schema …`).
 
@@ -56,6 +60,8 @@ ATOM_YZJ_GROUP_IDS=group1,group2 pnpm atom run --source yzj
 
 Wraps `yzj-cli im message list` (ok if untested without groups).
 
+Sweep leftover bot-digest / `收到✅` / log-dump suggestions: `pnpm atom reject-noise`.
+
 ## Layout
 
 ```
@@ -72,4 +78,4 @@ docs/              # contracts (see 02-atom-contract, 06-extensibility)
 ## Contracts
 
 - `candidate_proposed` without refs is **rejected** by the writer.
-- Atom types in Stage-1: `message_ingested`, `candidate_proposed`, `decision_accepted|rejected|merged`, `agent_started|completed|failed`.
+- Atom types: see `docs/02-atom-contract.md` (incl. Stage-2 `pr_checklist_*` + existing `pr_opened` / `evidence_attached`).

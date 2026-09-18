@@ -1,6 +1,7 @@
 import { EventStore } from "../store/events.js";
 import { projectCandidates } from "../store/candidates.js";
 import { newId } from "../schema/ids.js";
+import { isNoiseProposal, NOISE_REJECT_REASON } from "../agents/noise.js";
 
 export function approveCandidate(
   store: EventStore,
@@ -45,7 +46,8 @@ export function approveCandidate(
 export function rejectCandidate(
   store: EventStore,
   candidateId: string,
-  reason?: string
+  reason?: string,
+  actor = "user:local"
 ): void {
   const found = projectCandidates(store).find((c) => c.id === candidateId);
   if (!found) throw new Error(`Candidate not found: ${candidateId}`);
@@ -55,7 +57,7 @@ export function rejectCandidate(
     summary: `rejected: ${found.title}`,
     detail: { reason: reason ?? "" },
     refs: found.refs,
-    actor: "user:local",
+    actor,
   });
 }
 
@@ -75,4 +77,22 @@ export function mergeCandidates(
     refs: survivor.refs,
     actor: "user:local",
   });
+}
+
+/** Reject currently-suggested candidates that match the shared noise heuristic. */
+export function rejectNoiseCandidates(store: EventStore): {
+  rejected: number;
+  ids: string[];
+  titles: string[];
+} {
+  const ids: string[] = [];
+  const titles: string[] = [];
+  for (const c of projectCandidates(store)) {
+    if (c.status !== "suggested") continue;
+    if (!isNoiseProposal(c.title, c.body)) continue;
+    rejectCandidate(store, c.id, NOISE_REJECT_REASON, "system:noise-heuristic");
+    ids.push(c.id);
+    titles.push(c.title);
+  }
+  return { rejected: ids.length, ids, titles };
 }

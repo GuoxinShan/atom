@@ -50,6 +50,9 @@ type Ref = {
 | `spec_drafted` | spec id | yes (to candidate / messages) | acceptance criteria[] |
 | `handoff_exported` | handoff id | yes | target (`cursor`/`codex`/file path) |
 | `evidence_attached` | evidence id | yes | kind (`test`/`screenshot`/`log`), path |
+| `pr_checklist_started` | handoff or candidate id | optional | checklist items[] (`id`, `key`, `required`, `label`) |
+| `pr_checklist_item_done` | checklist item id | optional | `key`, `note`, `evidence_ref?`, `parent_id` |
+| `pr_checklist_passed` | handoff or candidate id | optional | only when all required items are done (incl. explicit `human_gate_ack`) |
 | `pr_opened` | pr id | yes | url, branch |
 | `agent_started` | run id | optional | agent id, pipeline |
 | `agent_completed` | run id | optional | agent id, pipeline, stats |
@@ -78,4 +81,4 @@ Rebuildable anytime by replaying atoms for `subject_id`.
 
 ## Version
 
-`atom-contract@0.1`
+`atom-contract@0.2`
