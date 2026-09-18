@@ -214,9 +214,9 @@ function renderDetail() {
     <h3>${escapeHtml(title)}</h3>
     <p class="body">${escapeHtml(body)}</p>
     <div class="refs">${refHtml}</div>
-    ${
+        ${
       sel.spec?.acceptance_criteria?.length
-        ? `<h2 style="margin-top:14px">Criteria</h2><div class="body">${sel.spec.acceptance_criteria
+        ? `<h2 class="subhead" style="margin-top:14px">Criteria</h2><div class="body">${sel.spec.acceptance_criteria
             .map((c) => escapeHtml(c))
             .join("\n")}</div>`
         : ""
@@ -493,3 +493,12 @@ async function loadSetup() {
 }
 
 showPage("desk");
+
+document.querySelectorAll(".drawers details").forEach((d) => {
+  d.addEventListener("toggle", () => {
+    if (!d.open) return;
+    document.querySelectorAll(".drawers details").forEach((other) => {
+      if (other !== d) other.open = false;
+    });
+  });
+});
