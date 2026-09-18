@@ -1,6 +1,6 @@
 # 10 · Dispatch Desk (Lead UI)
 
-Status: **locked direction** — implement this, not a Cursor Projects clone.
+Status: **locked direction** — implemented in `apps/web` as Desk (not a Cursor Projects clone).
 
 ## Same energy as Cursor Projects
 
@@ -46,19 +46,26 @@ If a screen does not end in a human decision, it does not own the default view.
 
 ## Layout (v1)
 
+Home is **Needs you**, not a coordinator chat and not a three-column settled board.
+
 ```
-┌─────────────┬──────────────────────────────┬──────────────────┐
-│ Listening   │  Lead chat (coordinator)     │  Matter detail   │
-│ · sources   │  + recent Lead replies       │  (selected cand/ │
-│ · triggers  │                              │   spec/handoff)  │
-│ Matters     ├──────────────────────────────┴──────────────────┤
-│ · accepted  │  Triage board (Suggested / Accepted / Rejected) │
-│ · handoffs  │  citations always visible                        │
-└─────────────┴─────────────────────────────────────────────────┘
+┌────────────────────────────────────────┬──────────────────┐
+│ Needs you                              │ Matter detail    │
+│ · Suggested (approve / reject)         │ + human CTAs     │
+│ · Checklist ack (when any)             │                  │
+│ · Outbound confirm (when enabled)      │ ▸ Listening      │
+│                                        │ ▸ Lead           │
+│                                        │ ▸ Matters        │
+│                                        │ ▸ Workspaces     │
+│                                        │ ▸ Agents         │
+│                                        │ ▸ Outbound       │
+└────────────────────────────────────────┴──────────────────┘
 ```
 
-Top nav collapses to: **Desk** (default) · **Atoms** (log) · **Setup**.
-Providers / workspaces / outbound sinks live as **drawers** inside Desk (gear on Listening / Lead), not six peer tabs.
+Accepted / Rejected are settled — they live under the **Matters** drawer, not the home queue.
+
+Top nav: **Desk** (default) · **Atoms** (log) · **Setup**.
+Lead / Listening / providers / workspaces / outbound live as **collapsed drawers**, not peer tabs and not the home screen.
 
 ## Primary verbs
 
