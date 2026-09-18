@@ -109,3 +109,6 @@ docs/              # contracts (see 02-atom-contract, 06-extensibility, 11-singl
 
 - `candidate_proposed` without refs is **rejected** by the writer.
 - Atom types: see `docs/02-atom-contract.md` (incl. Stage-2 `pr_checklist_*` + existing `pr_opened` / `evidence_attached`).
+
+## Docs
+- [Operating plan (dogfood)](docs/12-operating-plan.md) — daily rhythm, accept boundary, group/noise
