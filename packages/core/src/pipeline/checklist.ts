@@ -312,6 +312,19 @@ export function getChecklist(store: EventStore, id: string): ChecklistView {
   };
 }
 
+/** Fold started checklists; newest subject first. */
+export function listChecklists(store: EventStore): ChecklistView[] {
+  const started = listType(store, "pr_checklist_started");
+  const seen = new Set<string>();
+  const out: ChecklistView[] = [];
+  for (const e of [...started].reverse()) {
+    if (seen.has(e.subject_id)) continue;
+    seen.add(e.subject_id);
+    out.push(getChecklist(store, e.subject_id));
+  }
+  return out;
+}
+
 export function formatChecklist(view: ChecklistView): string {
   const lines = [
     `checklist ${view.subjectId}${view.title ? ` · ${view.title}` : ""}`,

@@ -32,17 +32,7 @@
             </div>
             <div class="gate-counts" id="gate-counts"></div>
           </header>
-          <div class="gate-slots" id="extra-gates">
-            <div class="gate-slot">
-              <h3>Checklist</h3>
-              <p>No <code>human_gate_ack</code> items waiting.</p>
-            </div>
-            <div class="gate-slot">
-              <h3>Outbound confirm</h3>
-              <p>No digest or chat posts waiting for confirm.</p>
-            </div>
-          </div>
-          <div class="board" id="board"></div>
+          <div class="queue" id="needs-queue"></div>
         </main>
 
         <aside class="rail right">
@@ -72,7 +62,7 @@
             </details>
             <details>
               <summary>Matters</summary>
-              <p class="hint tiny">Accepted candidates and specs.</p>
+              <p class="hint tiny">Accepted, rejected, and specs — settled, not the home queue.</p>
               <div id="matters-list" class="stack"></div>
             </details>
             <details>

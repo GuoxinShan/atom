@@ -1,19 +1,16 @@
-const cols = [
-  { key: "suggested", title: "Suggested" },
-  { key: "accepted", title: "Accepted" },
-  { key: "rejected", title: "Rejected" },
-];
-
 const state = {
   page: "desk",
   candidates: [],
   specs: [],
+  checklists: [],
   selectedId: null,
+  selectedKind: "candidate",
   handoffNote: "",
+  ackNote: "",
 };
 
 const meta = document.getElementById("meta");
-const board = document.getElementById("board");
+const queue = document.getElementById("needs-queue");
 const transcript = document.getElementById("lead-transcript");
 
 function escapeHtml(s) {
@@ -151,12 +148,13 @@ function buildMatters() {
 function renderMatters() {
   const root = document.getElementById("matters-list");
   root.innerHTML = "";
-  const rows = buildMatters();
-  if (!rows.length) {
-    root.innerHTML = '<p class="hint tiny">Accept a candidate to open a matter.</p>';
+  const accepted = buildMatters();
+  const rejected = state.candidates.filter((c) => c.status === "rejected");
+  if (!accepted.length && !rejected.length) {
+    root.innerHTML = '<p class="hint tiny">Accept or reject a candidate; settled work lives here, not on home.</p>';
     return;
   }
-  for (const m of rows) {
+  for (const m of accepted) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = `matter${state.selectedId === m.key || state.selectedId === m.candidateId ? " selected" : ""}`;
@@ -167,11 +165,26 @@ function renderMatters() {
     `;
     root.appendChild(btn);
   }
+  for (const c of rejected) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `matter${state.selectedId === c.id ? " selected" : ""}`;
+    btn.dataset.select = c.id;
+    btn.innerHTML = `
+      <h3>${escapeHtml(c.title)}</h3>
+      <span class="pill off">rejected</span>
+    `;
+    root.appendChild(btn);
+  }
 }
 
 function findSelected() {
   const id = state.selectedId;
   if (!id) return null;
+  const chk = state.checklists.find((c) => c.subjectId === id);
+  if (chk && state.selectedKind === "checklist") {
+    return { kind: "checklist", checklist: chk, id: chk.subjectId, candidateId: chk.candidateId };
+  }
   const spec = state.specs.find((s) => s.id === id);
   if (spec) {
     const cand = state.candidates.find((c) => c.id === spec.candidate_id);
@@ -195,7 +208,22 @@ function renderDetail() {
   if (!sel) {
     root.innerHTML = `
       <h2>Matter</h2>
-      <p class="empty">Select a suggested candidate. Approve or reject is the gate — Lead stays in the drawer and does not code here.</p>
+      <p class="empty">Pick something in Needs you. Approve, reject, or ack — Lead stays in the drawer and does not code here.</p>
+    `;
+    return;
+  }
+  if (sel.kind === "checklist") {
+    const chk = sel.checklist;
+    const items = (chk.items || [])
+      .map((i) => `- [${i.done ? "x" : " "}] ${i.key}`)
+      .join("\n");
+    root.innerHTML = `
+      <h2>Checklist gate</h2>
+      <div class="meta-id">${escapeHtml(chk.subjectId)}</div>
+      <h3>${escapeHtml(chk.title || "Checklist")}</h3>
+      <p class="body">${escapeHtml(items)}</p>
+      <button type="button" class="cta primary" data-ack="${escapeHtml(chk.subjectId)}">Ack human gate</button>
+      ${state.ackNote ? `<pre class="handoff-out">${escapeHtml(state.ackNote)}</pre>` : ""}
     `;
     return;
   }
@@ -236,23 +264,37 @@ function renderDetail() {
   `;
 }
 
-function renderBoard() {
-  const list = state.candidates;
-  const suggested = list.filter((c) => c.status === "suggested").length;
-  meta.textContent = `${suggested} need you · ${list.length} candidates`;
+function awaitingChecklists() {
+  return (state.checklists || []).filter((c) => c.awaitingHumanAck && !c.passed);
+}
+
+function renderQueue() {
+  const suggested = state.candidates.filter((c) => c.status === "suggested");
+  const acks = awaitingChecklists();
+  const outbound = 0;
+  meta.textContent = `${suggested.length + acks.length} need you`;
   const counts = document.getElementById("gate-counts");
   if (counts) {
-    counts.textContent = `${suggested} suggested · 0 checklist · 0 outbound`;
+    const bits = [`${suggested.length} suggested`];
+    if (acks.length) bits.push(`${acks.length} checklist`);
+    if (outbound) bits.push(`${outbound} outbound`);
+    counts.textContent = bits.join(" · ");
   }
-  board.innerHTML = "";
-  for (const col of cols) {
-    const items = list.filter((c) => c.status === col.key);
-    const el = document.createElement("section");
-    el.className = `col${col.key === "suggested" ? " suggested" : ""}`;
-    el.innerHTML = `<h2>${col.title} <b>${items.length}</b></h2>`;
-    for (const c of items) {
+  queue.innerHTML = "";
+
+  if (!suggested.length && !acks.length && !outbound) {
+    queue.innerHTML =
+      '<p class="clear">You\'re clear. Nothing needs a human gate. Listening, Lead, and providers stay in drawers.</p>';
+    return;
+  }
+
+  if (suggested.length) {
+    const section = document.createElement("section");
+    section.className = "col suggested";
+    section.innerHTML = `<h2>Suggested <b>${suggested.length}</b></h2>`;
+    for (const c of suggested) {
       const card = document.createElement("article");
-      const selected = state.selectedId === c.id || specForCandidate(c.id)?.id === state.selectedId;
+      const selected = state.selectedKind !== "checklist" && (state.selectedId === c.id || specForCandidate(c.id)?.id === state.selectedId);
       card.className = `item${selected ? " selected" : ""}`;
       card.dataset.select = c.id;
       const refs = (c.refs || [])
@@ -260,26 +302,37 @@ function renderBoard() {
         .join("");
       card.innerHTML = `
         <h3>${escapeHtml(c.title)}</h3>
-        <p>${escapeHtml((c.body || "").slice(0, 160))}</p>
+        <p>${escapeHtml((c.body || "").slice(0, 220))}</p>
         <div class="refs">${refs || '<span class="pill">no refs</span>'}</div>
-        ${
-          c.status === "suggested"
-            ? `<div class="card-actions">
-                <button type="button" data-act="approve" data-id="${escapeHtml(c.id)}">Approve</button>
-                <button type="button" data-act="reject" data-id="${escapeHtml(c.id)}">Reject</button>
-              </div>`
-            : ""
-        }
+        <div class="card-actions">
+          <button type="button" data-act="approve" data-id="${escapeHtml(c.id)}">Approve</button>
+          <button type="button" data-act="reject" data-id="${escapeHtml(c.id)}">Reject</button>
+        </div>
       `;
-      el.appendChild(card);
+      section.appendChild(card);
     }
-    if (!items.length) {
-      const empty = document.createElement("p");
-      empty.className = "hint tiny";
-      empty.textContent = "Nothing here.";
-      el.appendChild(empty);
+    queue.appendChild(section);
+  }
+
+  if (acks.length) {
+    const section = document.createElement("section");
+    section.className = "col suggested";
+    section.innerHTML = `<h2>Checklist <b>${acks.length}</b></h2>`;
+    for (const chk of acks) {
+      const card = document.createElement("article");
+      const selected = state.selectedKind === "checklist" && state.selectedId === chk.subjectId;
+      card.className = `item${selected ? " selected" : ""}`;
+      card.dataset.selectChecklist = chk.subjectId;
+      card.innerHTML = `
+        <h3>${escapeHtml(chk.title || chk.subjectId)}</h3>
+        <p>All required items are done except <code>human_gate_ack</code>. ATOM will not auto-ack.</p>
+        <div class="card-actions">
+          <button type="button" data-ack="${escapeHtml(chk.subjectId)}">Ack</button>
+        </div>
+      `;
+      section.appendChild(card);
     }
-    board.appendChild(el);
+    queue.appendChild(section);
   }
 }
 
@@ -348,12 +401,14 @@ function renderSubs(data) {
   }
 }
 
-function selectMatter(id) {
+function selectMatter(id, kind = "candidate") {
   if (!id) return;
   state.selectedId = id;
+  state.selectedKind = kind;
   state.handoffNote = "";
+  state.ackNote = "";
   renderMatters();
-  renderBoard();
+  renderQueue();
   renderDetail();
 }
 
@@ -364,6 +419,7 @@ async function actOnCandidate(act, id) {
     body: JSON.stringify({ id }),
   });
   state.selectedId = id;
+  state.selectedKind = "candidate";
   await loadDesk();
 }
 
@@ -398,6 +454,39 @@ document.getElementById("page-desk").addEventListener("click", async (e) => {
       state.handoffNote = String(err);
     }
     renderDetail();
+    return;
+  }
+  const ackBtn = e.target.closest("[data-ack]");
+  if (ackBtn && !ackBtn.disabled) {
+    e.stopPropagation();
+    ackBtn.disabled = true;
+    state.selectedId = ackBtn.dataset.ack;
+    state.selectedKind = "checklist";
+    state.ackNote = "…";
+    renderDetail();
+    try {
+      const res = await fetch("/api/checklist-ack", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: ackBtn.dataset.ack, ack: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        state.ackNote = data.error || JSON.stringify(data);
+        renderDetail();
+      } else {
+        state.ackNote = "acked · checklist passed";
+        await loadDesk();
+      }
+    } catch (err) {
+      state.ackNote = String(err);
+      renderDetail();
+    }
+    return;
+  }
+  const chk = e.target.closest("[data-select-checklist]");
+  if (chk) {
+    selectMatter(chk.dataset.selectChecklist, "checklist");
     return;
   }
   const selectable = e.target.closest("[data-select]");
@@ -450,7 +539,7 @@ document.getElementById("lead-form").addEventListener("submit", async (e) => {
 
 async function loadDesk() {
   seedTranscript();
-  const [cands, specs, sources, triggersRes, workspaces, agents, subs] = await Promise.all([
+  const [cands, specs, sources, triggersRes, workspaces, agents, subs, checks] = await Promise.all([
     fetchJson("/api/candidates", { candidates: [] }),
     fetchJson("/api/specs", { specs: [] }),
     fetchJson("/api/sources", { sources: [] }),
@@ -460,13 +549,15 @@ async function loadDesk() {
     fetchJson("/api/workspaces", { workspaces: [] }),
     fetchJson("/api/agents", { providers: [] }),
     fetchJson("/api/subscriptions", { subscriptions: [] }),
+    fetchJson("/api/checklists", { checklists: [], awaitingHumanAck: [] }),
   ]);
   state.candidates = cands.candidates || [];
   state.specs = specs.specs || [];
+  state.checklists = checks.checklists || [];
   renderSources(sources);
   renderTriggers(triggersRes.data || {}, !triggersRes.ok);
   renderMatters();
-  renderBoard();
+  renderQueue();
   renderDetail();
   renderWorkspaces(workspaces);
   renderAgents(agents);

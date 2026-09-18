@@ -20,15 +20,15 @@ Top nav: **Desk** (default) · **Atoms** (stub) · **Setup**.
 
 | Region | What it is |
 |---|---|
-| Center | **Needs you** — Suggested approve/reject, checklist / outbound-confirm slots, triage board |
-| Right rail | Selected **matter** (title, body, refs, Approve/Reject/Handoff) |
-| Drawers | Listening, Lead, Workspaces, Agents, Outbound — collapsed by default |
+| Center | **Needs you** — Suggested approve/reject, checklist `human_gate_ack` (when any); outbound confirm only when a post is waiting |
+| Right rail | Selected **matter** (title, body, refs, Approve/Reject/Handoff/Ack) |
+| Drawers | Listening, Lead, Matters (settled), Workspaces, Agents, Outbound — collapsed by default |
 
 ## Not in v1
 
 - Full Atoms log viewer (stub page only; use SQLite `events` / CLI).
 - Blank “New Project” home chat.
-- Live checklist `human_gate_ack` / outbound digest confirm queues (empty states until those APIs exist).
+- Outbound digest / chat-post confirm queue (no pending-confirm API yet; the slot is omitted until a post needs a gate).
 
 ## Visual direction
 

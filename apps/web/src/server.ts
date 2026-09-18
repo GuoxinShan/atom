@@ -11,6 +11,8 @@ import {
   rejectCandidate,
   exportHandoff,
   listSpecDrafts,
+  listChecklists,
+  completeChecklistItem,
   GrokCliCodingAgent,
   runColdStart,
   leadApplyConfig,
@@ -83,6 +85,25 @@ async function main() {
 
       if (req.method === "GET" && url.pathname === "/api/specs") {
         return json(res, { specs: listSpecDrafts(store) });
+      }
+
+      if (req.method === "GET" && url.pathname === "/api/checklists") {
+        const all = listChecklists(store);
+        return json(res, {
+          checklists: all,
+          awaitingHumanAck: all.filter((c) => c.awaitingHumanAck && !c.passed),
+        });
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/checklist-ack") {
+        const body = await readJson(req);
+        const id = String(body.id ?? body.subjectId ?? "");
+        if (!id) return json(res, { error: "id required" }, 400);
+        if (body.ack !== true) {
+          return json(res, { error: "human_gate_ack requires ack:true (never auto)" }, 400);
+        }
+        const view = completeChecklistItem(store, id, "human_gate_ack", { ack: true });
+        return json(res, { ok: true, checklist: view });
       }
 
       if (req.method === "POST" && url.pathname === "/api/handoff") {

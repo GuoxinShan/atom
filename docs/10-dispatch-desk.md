@@ -46,21 +46,23 @@ If a screen does not end in a human decision, it does not own the default view.
 
 ## Layout (v1)
 
-Home is **Needs you**, not a coordinator chat.
+Home is **Needs you**, not a coordinator chat and not a three-column settled board.
 
 ```
 ┌────────────────────────────────────────┬──────────────────┐
 │ Needs you                              │ Matter detail    │
-│ · Suggested (approve / reject)         │ (selected cand)  │
-│ · Checklist gates (when any)           │ + human CTAs     │
-│ · Outbound confirm (when enabled)      │                  │
-│ Triage: Suggested / Accepted / Rejected│ ▸ Listening      │
-│ citations always visible               │ ▸ Lead           │
+│ · Suggested (approve / reject)         │ + human CTAs     │
+│ · Checklist ack (when any)             │                  │
+│ · Outbound confirm (when enabled)      │ ▸ Listening      │
+│                                        │ ▸ Lead           │
+│                                        │ ▸ Matters        │
 │                                        │ ▸ Workspaces     │
 │                                        │ ▸ Agents         │
 │                                        │ ▸ Outbound       │
 └────────────────────────────────────────┴──────────────────┘
 ```
+
+Accepted / Rejected are settled — they live under the **Matters** drawer, not the home queue.
 
 Top nav: **Desk** (default) · **Atoms** (log) · **Setup**.
 Lead / Listening / providers / workspaces / outbound live as **collapsed drawers**, not peer tabs and not the home screen.
