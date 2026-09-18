@@ -1,34 +1,15 @@
 #!/usr/bin/env node
-import {
-  runPipeline,
-  ingestFromSource,
-  runExtract,
-  writeDigest,
-  candidatesByStatus,
-  approveCandidate,
-  rejectCandidate,
-  rejectNoiseCandidates,
-  exportHandoff,
-  attachEvidence,
-  listSpecDrafts,
-  LeadAgent,
-  findSpec,
-  runColdStart,
-  ensureColdStartFiles,
-  leadApplyConfig,
-  AgentProviderRegistry,
-  resolveCodingAgent,
-  startChecklist,
-  completeChecklistItem,
-  formatChecklist,
-  openPr,
-} from "@atom/core";
-import { createAppContext, resolveAgent } from "./context.js";
+/**
+ * Thin HTTP client for the ATOM desk daemon.
+ * Side effects live in the local API (`pnpm atom serve`); this file only fetch()s.
+ */
+import { api, apiOk, ApiDownError, apiBase, runServe } from "./client.js";
 
 function usage(): never {
   console.log(`ATOM CLI
 
 Usage:
+  pnpm atom serve            # start Desk + API (keep this running)
   pnpm atom run [--source <id>] [--agent heuristic|grok-cli]
   pnpm atom ingest [--source <id>]
   pnpm atom extract [--agent grok-cli]
@@ -41,138 +22,147 @@ Usage:
   pnpm atom evidence <handoffId> --path <file>
   pnpm atom checklist <handoffOrCandidateId>
   pnpm atom checklist-done <handoffOrCandidateId> <itemKey> [--note ...] [--ack]
+  pnpm atom checklist-ack <handoffOrCandidateId>
   pnpm atom pr-open <handoffOrCandidateId> --url <prUrl> [--branch ...] [--force]
   pnpm atom reject-noise
   pnpm atom route <specOrCandidateId>
   pnpm atom doctor
   pnpm atom setup
   pnpm atom sources
+  pnpm atom subscriptions
+  pnpm atom triggers
+  pnpm atom workspaces
   pnpm atom lead "<自然语言改配置>"
   pnpm atom agents
 
-Default run = yzj (scoped groups) + heuristic seed-gate + grok-cli agentic extract
+Talks to ${apiBase()} (ATOM_API_BASE). No in-process core.
 `);
   process.exit(1);
 }
 
-function groupAllowlistFor(
-  ctx: Awaited<ReturnType<typeof createAppContext>>,
-  sourceId?: string
-): string[] {
-  const cfg = ctx.registry.loadConfig();
-  const id = sourceId ?? cfg.defaultSourceId;
-  const entry = cfg.sources.find((s) => s.id === id);
-  const fromEnv = (process.env.ATOM_YZJ_GROUP_IDS ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (fromEnv.length) return fromEnv;
-  return entry?.groupIds ?? [];
-}
+type Flags = Record<string, string | boolean>;
 
 async function main() {
-
   const argv = process.argv.slice(2);
   const cmd = argv[0] ?? "run";
   const flags = parseFlags(argv.slice(1));
 
-  const ctx = await createAppContext();
+  if (cmd === "help" || cmd === "-h" || cmd === "--help") usage();
+
+  if (cmd === "serve" || cmd === "web") {
+    await runServe();
+    return;
+  }
+
+  const groupIds = cliGroupIds();
   const sourceId = flags.source as string | undefined;
-  const agentName =
-    (flags.agent as string | undefined) ?? ctx.registry.defaultExtractAgent();
+  const agentName = flags.agent as string | undefined;
 
   if (cmd === "run") {
-    const source = ctx.registry.resolve(sourceId);
-    const agent = resolveAgent(agentName, ctx.repoRoot);
-    const allow = groupAllowlistFor(ctx, sourceId ?? source.id);
-    const result = await runPipeline({
-      store: ctx.store,
-      source,
-      agent,
-      repoRoot: ctx.repoRoot,
-      trigger: ctx.trigger,
-      sink: ctx.sink,
-      groupAllowlist: allow,
-      heuristicGate: true,
+    const data = await apiOk<{
+      source: string;
+      agent: string;
+      ingested: number;
+      seeded: number;
+      proposed: number;
+      digestPath: string;
+      groups: string[];
+      candidates: Candidate[];
+    }>("POST", "/api/run", {
+      source: sourceId,
+      agent: agentName,
+      groupIds,
     });
     console.log(
-      `OK run source=${source.id} agent=${agent.id} ingested=${result.ingested} seeds=${result.seeded} proposed=${result.proposed}`
+      `OK run source=${data.source} agent=${data.agent} ingested=${data.ingested} seeds=${data.seeded} proposed=${data.proposed}`
     );
-    console.log(`groups: ${allow.join(",") || "(all ingested)"}`);
-    console.log(`digest: ${result.digestPath}`);
-    printCandidates(ctx.store, "suggested");
+    console.log(`groups: ${(data.groups ?? []).join(",") || "(all ingested)"}`);
+    console.log(`digest: ${data.digestPath}`);
+    printCandidates(data.candidates ?? []);
     return;
   }
 
   if (cmd === "ingest") {
-    const source = ctx.registry.resolve(sourceId);
-    const { ingested, nextCursor } = await ingestFromSource(ctx.store, source);
-    console.log(`OK ingest source=${source.id} ingested=${ingested} cursor=${nextCursor}`);
+    const data = await apiOk<{ source: string; ingested: number; nextCursor: string }>(
+      "POST",
+      "/api/ingest",
+      { source: sourceId }
+    );
+    console.log(`OK ingest source=${data.source} ingested=${data.ingested} cursor=${data.nextCursor}`);
     return;
   }
 
   if (cmd === "extract") {
-    const agent = resolveAgent(agentName, ctx.repoRoot);
-    const allow = groupAllowlistFor(ctx, sourceId);
-    const { proposed, skipped, seeded, gated, noiseDropped } = await runExtract(ctx.store, agent, {
-      heuristicGate: true,
-      groupAllowlist: allow,
-    });
+    const data = await apiOk<{
+      agent: string;
+      seeded: number;
+      gated: number;
+      proposed: number;
+      skipped: number;
+      noiseDropped: number;
+    }>("POST", "/api/extract", { source: sourceId, agent: agentName, groupIds });
     console.log(
-      `OK extract agent=${agent.id} seeds=${seeded} gated_out=${gated} proposed=${proposed} skipped=${skipped} noise_dropped=${noiseDropped}`
+      `OK extract agent=${data.agent} seeds=${data.seeded} gated_out=${data.gated} proposed=${data.proposed} skipped=${data.skipped} noise_dropped=${data.noiseDropped}`
     );
     return;
   }
 
   if (cmd === "digest") {
-    const p = writeDigest(ctx.store, ctx.repoRoot);
-    console.log(`OK digest ${p}`);
+    const data = await apiOk<{ digestPath: string }>("POST", "/api/digest");
+    console.log(`OK digest ${data.digestPath}`);
     return;
   }
 
   if (cmd === "candidates") {
-    const status = flags.status as
-      | "suggested"
-      | "accepted"
-      | "rejected"
-      | "merged"
-      | undefined;
-    printCandidates(ctx.store, status);
+    const status = flags.status as string | undefined;
+    const q = status ? `?status=${encodeURIComponent(status)}` : "";
+    const data = await apiOk<{ candidates: Candidate[] }>("GET", `/api/candidates${q}`);
+    printCandidates(data.candidates ?? []);
     return;
   }
 
   if (cmd === "approve") {
     const id = positional(argv.slice(1));
     if (!id) usage();
-    const { specId } = approveCandidate(ctx.store, id, flags.note as string | undefined);
+    const data = await apiOk<{ specId: string }>("POST", "/api/approve", {
+      id,
+      note: flags.note,
+    });
     console.log(`OK approved ${id}`);
-    console.log(`spec drafted: ${specId} (atom type spec_drafted)`);
+    console.log(`spec drafted: ${data.specId} (atom type spec_drafted)`);
     return;
   }
 
   if (cmd === "reject") {
     const id = positional(argv.slice(1));
     if (!id) usage();
-    rejectCandidate(ctx.store, id, flags.reason as string | undefined);
+    await apiOk("POST", "/api/reject", { id, reason: flags.reason });
     console.log(`OK rejected ${id}`);
     return;
   }
 
   if (cmd === "reject-noise") {
-    const { rejected, ids, titles } = rejectNoiseCandidates(ctx.store);
-    if (!rejected) {
+    const data = await apiOk<{ rejected: number; ids: string[]; titles: string[] }>(
+      "POST",
+      "/api/reject-noise"
+    );
+    if (!data.rejected) {
       console.log("OK reject-noise: nothing matched");
       return;
     }
-    console.log(`OK reject-noise rejected=${rejected} reason=noise-heuristic`);
-    for (let i = 0; i < ids.length; i++) {
-      console.log(`- ${ids[i]}  ${titles[i]}`);
+    console.log(`OK reject-noise rejected=${data.rejected} reason=noise-heuristic`);
+    for (let i = 0; i < (data.ids ?? []).length; i++) {
+      console.log(`- ${data.ids[i]}  ${data.titles[i]}`);
     }
     return;
   }
 
   if (cmd === "specs") {
-    const specs = listSpecDrafts(ctx.store);
+    const data = await apiOk<{ specs: Array<{ id: string; candidate_id: string; title: string }> }>(
+      "GET",
+      "/api/specs"
+    );
+    const specs = data.specs ?? [];
     if (!specs.length) {
       console.log("(no specs)");
       return;
@@ -189,12 +179,12 @@ async function main() {
     if (!id) usage();
     const target = (flags.target as string | undefined) ?? "grok-cli";
     const run = Boolean(flags.run);
-    const coding =
-      target === "file" ? undefined : resolveCodingAgent(ctx.repoRoot);
-    const pack = await exportHandoff(ctx.store, ctx.repoRoot, id, coding, {
-      run,
-      target: target === "file" ? "file" : "grok-cli",
-    });
+    const data = await apiOk<{ pack: { id: string; path: string; target: string } }>(
+      "POST",
+      "/api/handoff",
+      { id, run, target }
+    );
+    const pack = data.pack;
     console.log(`OK handoff ${pack.id}`);
     console.log(`path: ${pack.path}`);
     console.log(`target: ${pack.target} run=${run}`);
@@ -202,11 +192,19 @@ async function main() {
   }
 
   if (cmd === "agents") {
-    const reg = new AgentProviderRegistry(ctx.repoRoot);
-    const cfg = reg.load();
+    const cfg = await apiOk<{
+      defaults: Record<string, string>;
+      providers: Array<{
+        id: string;
+        role: string;
+        kind: string;
+        enabled?: boolean;
+        url?: string;
+      }>;
+    }>("GET", "/api/agents");
     console.log("defaults:", JSON.stringify(cfg.defaults));
-    for (const p of cfg.providers) {
-      const star = cfg.defaults[p.role] === p.id ? "*" : " ";
+    for (const p of cfg.providers ?? []) {
+      const star = cfg.defaults?.[p.role] === p.id ? "*" : " ";
       console.log(
         `${star} ${p.id} role=${p.role} kind=${p.kind} on=${p.enabled !== false} url=${p.url || "-"}`
       );
@@ -215,27 +213,42 @@ async function main() {
   }
 
   if (cmd === "doctor") {
-    const report = runColdStart(ctx.repoRoot);
-    for (const c of report.checks) {
-      const mark = c.status === "ok" ? "OK" : c.status === "warn" ? "!!" : "XX";
-      console.log(`[${mark}] ${c.title}: ${c.detail}`);
-      if (c.fix && c.status !== "ok") console.log(`     fix: ${c.fix}`);
-    }
-    console.log(report.ready ? "cold-start: READY" : "cold-start: NOT READY");
+    const report = await apiOk<{
+      ready: boolean;
+      checks: Array<{ status: string; title: string; detail: string; fix?: string }>;
+    }>("GET", "/api/doctor");
+    printDoctor(report);
     process.exit(report.ready ? 0 : 1);
   }
 
   if (cmd === "setup") {
-    const created = ensureColdStartFiles(ctx.repoRoot);
-    console.log(created.length ? `created: ${created.join(", ")}` : "templates already present");
-    const report = runColdStart(ctx.repoRoot);
-    console.log(report.ready ? "cold-start: READY" : "cold-start: still has gaps — run pnpm atom doctor");
+    const data = await apiOk<{
+      created: string[];
+      report: { ready: boolean };
+    }>("POST", "/api/setup");
+    console.log(
+      data.created?.length ? `created: ${data.created.join(", ")}` : "templates already present"
+    );
+    console.log(
+      data.report?.ready
+        ? "cold-start: READY"
+        : "cold-start: still has gaps — run pnpm atom doctor"
+    );
     return;
   }
 
   if (cmd === "sources") {
-    const cfg = ctx.registry.loadConfig();
-    for (const s of cfg.sources) {
+    const cfg = await apiOk<{
+      sources: Array<{
+        id: string;
+        kind: string;
+        enabled?: boolean;
+        groupIds?: string[];
+      }>;
+      defaultSourceId?: string;
+      defaultExtractAgent?: string;
+    }>("GET", "/api/sources");
+    for (const s of cfg.sources ?? []) {
       console.log(
         `- ${s.id} kind=${s.kind} enabled=${s.enabled !== false} groups=${(s.groupIds ?? []).join(",") || "-"}`
       );
@@ -244,19 +257,71 @@ async function main() {
     return;
   }
 
+  if (cmd === "subscriptions") {
+    const data = await apiOk<{ subscriptions: Array<Record<string, unknown>> }>(
+      "GET",
+      "/api/subscriptions"
+    );
+    const list = data.subscriptions ?? [];
+    if (!list.length) {
+      console.log("(no subscriptions)");
+      return;
+    }
+    for (const s of list) {
+      const id = String(s.id ?? "");
+      const kind = String(s.kind ?? "webhook");
+      const url = String(s.url || s.bin || s.path || "-");
+      console.log(`- ${id} kind=${kind} enabled=${s.enabled !== false} url=${url}`);
+    }
+    return;
+  }
+
+  if (cmd === "triggers") {
+    const data = await apiOk<{ triggers: Array<Record<string, unknown>> }>("GET", "/api/triggers");
+    const list = data.triggers ?? [];
+    if (!list.length) {
+      console.log("(no triggers)");
+      return;
+    }
+    for (const t of list) {
+      console.log(
+        `- ${String(t.id ?? "")} kind=${String(t.kind ?? "-")} enabled=${t.enabled !== false} pipeline=${String(t.pipeline || "-")}`
+      );
+    }
+    return;
+  }
+
+  if (cmd === "workspaces") {
+    const data = await apiOk<{ workspaces: Array<Record<string, unknown>> }>(
+      "GET",
+      "/api/workspaces"
+    );
+    const list = data.workspaces ?? [];
+    if (!list.length) {
+      console.log("(no workspaces)");
+      return;
+    }
+    for (const w of list) {
+      console.log(`- ${String(w.id ?? "")} machine=${String(w.machine ?? "")} path=${String(w.path ?? "")}`);
+    }
+    return;
+  }
+
   if (cmd === "lead") {
-    const utterance = argv.slice(1).join(" ").replace(/^--\s*/, "").trim();
-    // allow: atom lead 打开AI推进  OR atom lead -- 打开...
-    const text = utterance.replace(/^--\s*/, "") || positional(argv.slice(1)) || "";
-    // gather all non-flag args as utterance
     const words = argv.slice(1).filter((a) => !a.startsWith("--") || a === "--");
     const u = words.filter((w) => w !== "--").join(" ").trim();
     if (!u) {
       console.log('Usage: pnpm atom lead "打开 AI推进 群"');
       process.exit(1);
     }
-    const result = leadApplyConfig(ctx.repoRoot, u);
-    console.log(result.ok ? `OK ${result.message}` : `NO ${result.message}`);
+    const res = await api<{ ok: boolean; message: string; changed?: string[] }>(
+      "POST",
+      "/api/lead",
+      { utterance: u }
+    );
+    const result = res.data;
+    const fail = result.message || (result as { error?: string }).error || "";
+    console.log(result.ok ? `OK ${result.message}` : `NO ${fail}`);
     if (result.changed?.length) console.log(`changed: ${result.changed.join(", ")}`);
     process.exit(result.ok ? 0 : 1);
   }
@@ -264,14 +329,18 @@ async function main() {
   if (cmd === "route") {
     const id = positional(argv.slice(1));
     if (!id) usage();
-    const lead = new LeadAgent(ctx.repoRoot);
-    const spec = findSpec(ctx.store, id);
-    const route = lead.routeSpec(spec);
-    console.log(`workspace: ${route.workspace.id}`);
-    console.log(`machine:   ${route.machine}`);
-    console.log(`path:      ${route.workspace.path}`);
-    console.log(`confidence:${route.confidence}`);
-    console.log(`reason:    ${route.reason}`);
+    const data = await apiOk<{
+      workspace: string;
+      machine: string;
+      path: string;
+      confidence: number;
+      reason: string;
+    }>("POST", "/api/route", { id });
+    console.log(`workspace: ${data.workspace}`);
+    console.log(`machine:   ${data.machine}`);
+    console.log(`path:      ${data.path}`);
+    console.log(`confidence:${data.confidence}`);
+    console.log(`reason:    ${data.reason}`);
     return;
   }
 
@@ -279,28 +348,42 @@ async function main() {
     const id = positional(argv.slice(1));
     const pathFlag = flags.path as string | undefined;
     if (!id || !pathFlag) usage();
-    const eid = attachEvidence(ctx.store, id, pathFlag);
-    console.log(`OK evidence ${eid} for handoff ${id}`);
+    const data = await apiOk<{ evidenceId: string; handoffId: string }>("POST", "/api/evidence", {
+      id,
+      path: pathFlag,
+    });
+    console.log(`OK evidence ${data.evidenceId} for handoff ${id}`);
     return;
   }
 
   if (cmd === "checklist") {
     const id = positional(argv.slice(1));
     if (!id) usage();
-    const view = startChecklist(ctx.store, id);
-    console.log(formatChecklist(view));
+    const data = await apiOk<{ text: string }>("POST", "/api/checklist", { id });
+    console.log(data.text);
     return;
   }
 
   if (cmd === "checklist-done") {
     const [id, itemKey] = positionals(argv.slice(1));
     if (!id || !itemKey) usage();
-    const view = completeChecklistItem(ctx.store, id, itemKey, {
-      note: flags.note as string | undefined,
+    const data = await apiOk<{ itemKey: string; text: string }>("POST", "/api/checklist-done", {
+      id,
+      itemKey,
+      note: flags.note,
       ack: Boolean(flags.ack),
     });
-    console.log(`OK checklist-done ${itemKey}`);
-    console.log(formatChecklist(view));
+    console.log(`OK checklist-done ${data.itemKey}`);
+    console.log(data.text);
+    return;
+  }
+
+  if (cmd === "checklist-ack") {
+    const id = positional(argv.slice(1));
+    if (!id) usage();
+    const data = await apiOk<{ text?: string }>("POST", "/api/checklist-ack", { id, ack: true });
+    console.log(`OK checklist-ack ${id}`);
+    if (data.text) console.log(data.text);
     return;
   }
 
@@ -308,12 +391,13 @@ async function main() {
     const id = positional(argv.slice(1));
     const url = flags.url as string | undefined;
     if (!id || !url) usage();
-    const { prId, forced } = openPr(ctx.store, id, {
+    const data = await apiOk<{ prId: string; forced: boolean }>("POST", "/api/pr-open", {
+      id,
       url,
-      branch: flags.branch as string | undefined,
+      branch: flags.branch,
       force: Boolean(flags.force),
     });
-    console.log(`OK pr-open ${prId}${forced ? " (forced)" : ""}`);
+    console.log(`OK pr-open ${data.prId}${data.forced ? " (forced)" : ""}`);
     console.log(`url: ${url}`);
     return;
   }
@@ -321,12 +405,16 @@ async function main() {
   usage();
 }
 
-function printCandidates(
-  store: import("@atom/core").EventStore,
-  status?: "suggested" | "accepted" | "rejected" | "merged"
-) {
-  const list = candidatesByStatus(store, status);
-  if (list.length === 0) {
+type Candidate = {
+  id: string;
+  status: string;
+  title: string;
+  confidence?: number;
+  refs?: Array<{ token: string; digest?: string }>;
+};
+
+function printCandidates(list: Candidate[]) {
+  if (!list.length) {
     console.log("(no candidates)");
     return;
   }
@@ -334,14 +422,34 @@ function printCandidates(
     console.log(`- [${c.status}] ${c.id}`);
     console.log(`  ${c.title}`);
     console.log(`  confidence=${c.confidence}`);
-    for (const r of c.refs) {
+    for (const r of c.refs ?? []) {
       console.log(`  ref: ${r.token}${r.digest ? ` | ${r.digest}` : ""}`);
     }
   }
 }
 
-function parseFlags(args: string[]): Record<string, string | boolean> {
-  const out: Record<string, string | boolean> = {};
+function printDoctor(report: {
+  ready: boolean;
+  checks: Array<{ status: string; title: string; detail: string; fix?: string }>;
+}) {
+  for (const c of report.checks ?? []) {
+    const mark = c.status === "ok" ? "OK" : c.status === "warn" ? "!!" : "XX";
+    console.log(`[${mark}] ${c.title}: ${c.detail}`);
+    if (c.fix && c.status !== "ok") console.log(`     fix: ${c.fix}`);
+  }
+  console.log(report.ready ? "cold-start: READY" : "cold-start: NOT READY");
+}
+
+function cliGroupIds(): string[] | undefined {
+  const fromEnv = (process.env.ATOM_YZJ_GROUP_IDS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return fromEnv.length ? fromEnv : undefined;
+}
+
+function parseFlags(args: string[]): Flags {
+  const out: Flags = {};
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (!a.startsWith("--")) continue;
@@ -376,6 +484,7 @@ function positional(args: string[]): string | undefined {
 }
 
 main().catch((err) => {
-  console.error(err instanceof Error ? err.message : err);
-  process.exit(1);
+  const msg = err instanceof Error ? err.message : String(err);
+  console.error(msg);
+  process.exit(err instanceof ApiDownError ? 2 : 1);
 });

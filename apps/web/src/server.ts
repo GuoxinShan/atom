@@ -1,229 +1,23 @@
 import http from "node:http";
-import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  openDb,
-  defaultDbPath,
-  EventStore,
-  candidatesByStatus,
-  approveCandidate,
-  rejectCandidate,
-  exportHandoff,
-  listSpecDrafts,
-  listChecklists,
-  completeChecklistItem,
-  GrokCliCodingAgent,
-  runColdStart,
-  leadApplyConfig,
-  AgentProviderRegistry,
-  runPipeline,
-  resolveExtractAgent,
-  SourceRegistry,
-} from "@atom/core";
-import { FixtureSource, YzjSource } from "@atom/adapters";
+import { defaultDbPath } from "@atom/core";
+import { createDaemon } from "./context.js";
+import { handleApi } from "./routes.js";
+import { file, json } from "./http.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "public");
-
-function resolveRepoRoot(): string {
-  let dir = path.resolve(process.cwd());
-  for (;;) {
-    const pkg = path.join(dir, "package.json");
-    if (fs.existsSync(pkg)) {
-      try {
-        const j = JSON.parse(fs.readFileSync(pkg, "utf8")) as { name?: string };
-        if (j.name === "atom") return dir;
-      } catch {
-        /* ignore */
-      }
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return path.resolve(__dirname, "../../..");
-}
-
-const repoRoot = resolveRepoRoot();
 const port = Number(process.env.ATOM_WEB_PORT ?? 8787);
 
 async function main() {
-  const atomDb = await openDb(process.env.ATOM_DB ?? defaultDbPath(repoRoot));
-  const store = new EventStore(atomDb);
+  const daemon = await createDaemon();
 
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? "/", `http://127.0.0.1:${port}`);
-
-      if (req.method === "GET" && url.pathname === "/api/candidates") {
-        const status = url.searchParams.get("status") as
-          | "suggested"
-          | "accepted"
-          | "rejected"
-          | "merged"
-          | null;
-        const list = candidatesByStatus(store, status ?? undefined);
-        return json(res, { candidates: list });
-      }
-
-      if (req.method === "POST" && url.pathname === "/api/approve") {
-        const body = await readJson(req);
-        const id = String(body.id ?? "");
-        if (!id) return json(res, { error: "id required" }, 400);
-        const { specId } = approveCandidate(store, id, body.note ? String(body.note) : undefined);
-        return json(res, { ok: true, specId });
-      }
-
-      if (req.method === "POST" && url.pathname === "/api/reject") {
-        const body = await readJson(req);
-        const id = String(body.id ?? "");
-        if (!id) return json(res, { error: "id required" }, 400);
-        rejectCandidate(store, id, body.reason ? String(body.reason) : undefined);
-        return json(res, { ok: true });
-      }
-
-      if (req.method === "GET" && url.pathname === "/api/specs") {
-        return json(res, { specs: listSpecDrafts(store) });
-      }
-
-      if (req.method === "GET" && url.pathname === "/api/checklists") {
-        const all = listChecklists(store);
-        return json(res, {
-          checklists: all,
-          awaitingHumanAck: all.filter((c) => c.awaitingHumanAck && !c.passed),
-        });
-      }
-
-      if (req.method === "POST" && url.pathname === "/api/checklist-ack") {
-        const body = await readJson(req);
-        const id = String(body.id ?? body.subjectId ?? "");
-        if (!id) return json(res, { error: "id required" }, 400);
-        if (body.ack !== true) {
-          return json(res, { error: "human_gate_ack requires ack:true (never auto)" }, 400);
-        }
-        const view = completeChecklistItem(store, id, "human_gate_ack", { ack: true });
-        return json(res, { ok: true, checklist: view });
-      }
-
-      if (req.method === "POST" && url.pathname === "/api/handoff") {
-        const body = await readJson(req);
-        const id = String(body.id ?? body.specId ?? body.candidateId ?? "");
-        if (!id) return json(res, { error: "id required" }, 400);
-        const run = Boolean(body.run);
-        const coding = body.target === "file" ? undefined : new GrokCliCodingAgent({ repoRoot });
-        const pack = await exportHandoff(store, repoRoot, id, coding, {
-          run,
-          target: body.target === "file" ? "file" : "grok-cli",
-        });
-        return json(res, { ok: true, pack });
-      }
-
-      // Inbound webhook Trigger seam: POST /hooks/run → pipeline not auto here (manual ack)
-      
-      
-      if (req.method === "GET" && url.pathname === "/api/agents") {
-        const reg = new AgentProviderRegistry(repoRoot);
-        return json(res, reg.load());
-      }
-
-      if (req.method === "GET" && url.pathname === "/api/setup") {
-        return json(res, runColdStart(repoRoot));
-      }
-
-      if (req.method === "GET" && url.pathname === "/api/sources") {
-        const raw = fs.readFileSync(path.join(repoRoot, "data/sources.json"), "utf8");
-        return json(res, JSON.parse(raw));
-      }
-
-      if (req.method === "GET" && url.pathname === "/api/subscriptions") {
-        const pth = path.join(repoRoot, "data/subscriptions.json");
-        const raw = fs.existsSync(pth) ? fs.readFileSync(pth, "utf8") : '{"subscriptions":[]}';
-        return json(res, JSON.parse(raw));
-      }
-
-      if (req.method === "GET" && url.pathname === "/api/triggers") {
-        const pth = path.join(repoRoot, "data/triggers.json");
-        const raw = fs.existsSync(pth) ? fs.readFileSync(pth, "utf8") : '{"triggers":[]}';
-        return json(res, JSON.parse(raw));
-      }
-
-      if (req.method === "GET" && url.pathname === "/api/workspaces") {
-        const raw = fs.readFileSync(path.join(repoRoot, "data/workspaces.json"), "utf8");
-        return json(res, JSON.parse(raw));
-      }
-
-      if (req.method === "POST" && url.pathname === "/api/lead") {
-        const body = await readJson(req);
-        const utterance = String(body.utterance ?? body.text ?? "");
-        if (!utterance.trim()) return json(res, { error: "utterance required" }, 400);
-        const result = leadApplyConfig(repoRoot, utterance);
-        return json(res, result, result.ok ? 200 : 400);
-      }
-
-
-      if (req.method === "POST" && url.pathname.startsWith("/hooks/")) {
-        const body = await readJson(req);
-        const hook = url.pathname.slice("/hooks/".length) || "run";
-        console.log(`[hook] ${hook}`, body);
-
-        // Map: /hooks/run|/hooks/ingest|/hooks/extract → pipeline
-        if (hook === "run" || hook === "ingest" || hook === "extract" || hook === "digest") {
-          const registry = new SourceRegistry(repoRoot);
-          registry.register("fixture", (entry, root) => {
-            const rel = (entry as { path?: string }).path ?? "fixtures/messages.jsonl";
-            return new FixtureSource(path.join(root, rel), entry.id);
-          });
-          registry.register(
-            "yzj",
-            (entry) =>
-              new YzjSource({
-                id: entry.id,
-                groupIds: (entry as { groupIds?: string[] }).groupIds,
-                cli: (entry as { cli?: string }).cli,
-              })
-          );
-          const sourceId =
-            typeof body.source === "string"
-              ? body.source
-              : registry.loadConfig().defaultSourceId;
-          const source = registry.resolve(sourceId);
-          const agent = resolveExtractAgent(repoRoot);
-          const allow = (registry.loadConfig().sources.find((s) => s.id === source.id)?.groupIds) ?? [];
-
-          if (hook === "run") {
-            const result = await runPipeline({
-              store,
-              source,
-              agent,
-              repoRoot,
-              groupAllowlist: allow,
-              heuristicGate: true,
-            });
-            return json(res, { ok: true, hook, ...result });
-          }
-          // other hooks: acknowledge + note (full split later)
-          return json(res, {
-            ok: true,
-            hook,
-            note: "use /hooks/run for full ingest+extract+digest",
-            received: body,
-          });
-        }
-
-        return json(res, { ok: true, received: true, path: url.pathname });
-      }
-
-      if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
-        return file(res, path.join(publicDir, "index.html"), "text/html; charset=utf-8");
-      }
-      if (req.method === "GET" && url.pathname === "/styles.css") {
-        return file(res, path.join(publicDir, "styles.css"), "text/css; charset=utf-8");
-      }
-      if (req.method === "GET" && url.pathname === "/app.js") {
-        return file(res, path.join(publicDir, "app.js"), "text/javascript; charset=utf-8");
-      }
-
+      if (await handleApi(req, res, url, daemon)) return;
+      if (handleStatic(req, res, url)) return;
       json(res, { error: "not found" }, 404);
     } catch (err) {
       json(res, { error: (err as Error).message }, 500);
@@ -232,39 +26,29 @@ async function main() {
 
   server.listen(port, "127.0.0.1", () => {
     console.log(`ATOM desk http://127.0.0.1:${port}`);
-    console.log(`db: ${process.env.ATOM_DB ?? defaultDbPath(repoRoot)}`);
+    console.log(`db: ${process.env.ATOM_DB ?? defaultDbPath(daemon.repoRoot)}`);
   });
 }
 
-function json(res: http.ServerResponse, body: unknown, status = 200) {
-  const data = JSON.stringify(body, null, 2);
-  res.writeHead(status, {
-    "content-type": "application/json; charset=utf-8",
-    "cache-control": "no-store",
-  });
-  res.end(data);
-}
-
-function file(res: http.ServerResponse, p: string, type: string) {
-  const data = fs.readFileSync(p);
-  res.writeHead(200, { "content-type": type });
-  res.end(data);
-}
-
-function readJson(req: http.IncomingMessage): Promise<Record<string, unknown>> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on("data", (c) => chunks.push(Buffer.from(c)));
-    req.on("end", () => {
-      try {
-        const raw = Buffer.concat(chunks).toString("utf8") || "{}";
-        resolve(JSON.parse(raw) as Record<string, unknown>);
-      } catch (e) {
-        reject(e);
-      }
-    });
-    req.on("error", reject);
-  });
+function handleStatic(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  url: URL
+): boolean {
+  if (req.method !== "GET") return false;
+  if (url.pathname === "/" || url.pathname === "/index.html") {
+    file(res, path.join(publicDir, "index.html"), "text/html; charset=utf-8");
+    return true;
+  }
+  if (url.pathname === "/styles.css") {
+    file(res, path.join(publicDir, "styles.css"), "text/css; charset=utf-8");
+    return true;
+  }
+  if (url.pathname === "/app.js") {
+    file(res, path.join(publicDir, "app.js"), "text/javascript; charset=utf-8");
+    return true;
+  }
+  return false;
 }
 
 main().catch((err) => {
