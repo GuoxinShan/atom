@@ -121,6 +121,12 @@ async function main() {
         return json(res, JSON.parse(raw));
       }
 
+      if (req.method === "GET" && url.pathname === "/api/triggers") {
+        const pth = path.join(repoRoot, "data/triggers.json");
+        const raw = fs.existsSync(pth) ? fs.readFileSync(pth, "utf8") : '{"triggers":[]}';
+        return json(res, JSON.parse(raw));
+      }
+
       if (req.method === "GET" && url.pathname === "/api/workspaces") {
         const raw = fs.readFileSync(path.join(repoRoot, "data/workspaces.json"), "utf8");
         return json(res, JSON.parse(raw));
@@ -204,7 +210,7 @@ async function main() {
   });
 
   server.listen(port, "127.0.0.1", () => {
-    console.log(`ATOM kanban http://127.0.0.1:${port}`);
+    console.log(`ATOM desk http://127.0.0.1:${port}`);
     console.log(`db: ${process.env.ATOM_DB ?? defaultDbPath(repoRoot)}`);
   });
 }

@@ -3,84 +3,113 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ATOM</title>
+    <title>ATOM Desk</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div class="shell">
-      <header>
+    <div class="app">
+      <header class="topbar">
         <div class="brand">
-          <h1>ATOM <span>Control</span></h1>
-          <p>Append-only Timeline Of Matters · Lead 调度 · 人审门禁</p>
+          <h1>ATOM <span>Desk</span></h1>
         </div>
         <nav class="nav" id="nav">
-          <button data-page="board" class="active">看板</button>
-          <button data-page="sources">订阅源</button>
-          <button data-page="subscriptions">出站订阅</button>
-          <button data-page="workspaces">工作区</button>
-          <button data-page="agents">Agents</button>
-          <button data-page="setup">冷启动</button>
+          <button type="button" data-page="desk" class="active">Desk</button>
+          <button type="button" data-page="atoms">Atoms</button>
+          <button type="button" data-page="setup">Setup</button>
         </nav>
-        <div class="meta" id="meta">…</div>
+        <div class="top-meta">
+          <span class="listening-pill" id="listening-pill" hidden>Listening</span>
+          <span id="meta">…</span>
+        </div>
       </header>
 
-      <section id="page-board" class="page active">
-        <div class="board" id="board"></div>
-      </section>
-
-      <section id="page-sources" class="page">
-        <div class="panel">
-          <h2>订阅源</h2>
-          <p class="hint">跟主 Agent 说也能改，例如：「打开 AI推进 群」「只要 Agentic Working」</p>
-          <div class="lead-box">
-            <input id="lead-input" placeholder="跟 Lead 说：打开 AI推进 群 / 只要 Agentic Working / 用 grok 抽" />
-            <button id="lead-send" class="primary">让 Lead 改</button>
+      <section id="page-desk" class="page desk active">
+        <main class="center">
+          <header class="needs-head">
+            <div>
+              <h2>Needs you</h2>
+              <p class="hint tiny">Human gates only. Approve, reject, or confirm — Lead and Listening stay collapsed.</p>
+            </div>
+            <div class="gate-counts" id="gate-counts"></div>
+          </header>
+          <div class="gate-slots" id="extra-gates">
+            <div class="gate-slot">
+              <h3>Checklist</h3>
+              <p>No <code>human_gate_ack</code> items waiting.</p>
+            </div>
+            <div class="gate-slot">
+              <h3>Outbound confirm</h3>
+              <p>No digest or chat posts waiting for confirm.</p>
+            </div>
           </div>
-          <pre id="lead-result" class="result"></pre>
-          <div id="sources-list" class="cards"></div>
-        </div>
-      </section>
+          <div class="board" id="board"></div>
+        </main>
 
-      <section id="page-subscriptions" class="page">
-        <div class="panel">
-          <h2>出站订阅</h2>
-          <p class="hint">atom 追加后可 webhook 推给其他系统。也可说：「订阅加 https://…」</p>
-          <div id="subs-list" class="cards"></div>
-        </div>
-      </section>
-
-      <section id="page-workspaces" class="page">
-        <div class="panel">
-          <h2>工作区地图</h2>
-          <p class="hint">Lead 派活只进这里登记过的路径，不会无脑乱派。</p>
-          <div id="ws-list" class="cards"></div>
-        </div>
-      </section>
-
-      <section id="page-agents" class="page">
-        <div class="panel">
-          <h2>Agent Providers</h2>
-          <p class="hint">Lead / Extract / Coding / Execute 都可换成本地 CLI 或 Webhook（含 Grok Bot）。跟 Lead 说也行。</p>
-          <div class="lead-box">
-            <input id="agent-lead-input" placeholder="主agent用webhook https://… / 抽取用本地grok / 有哪些agent" />
-            <button id="agent-lead-send" class="primary">让 Lead 改</button>
+        <aside class="rail right">
+          <div id="matter-detail" class="matter-detail"></div>
+          <div class="drawers">
+            <details>
+              <summary>Listening</summary>
+              <p class="hint tiny">Sources and triggers. Ask Lead to change them.</p>
+              <div id="sources-list" class="stack"></div>
+              <h3 class="subhead">Triggers</h3>
+              <div id="triggers-list" class="stack"></div>
+            </details>
+            <details>
+              <summary>Lead</summary>
+              <p class="hint tiny">Config and route — Lead does not write production code here.</p>
+              <div class="lead-chat">
+                <div id="lead-transcript" class="transcript"></div>
+                <form id="lead-form" class="composer">
+                  <input
+                    id="lead-input"
+                    autocomplete="off"
+                    placeholder="Ask Lead: 有哪些源 / 打开 AI推进 群"
+                  />
+                  <button type="submit" class="primary" id="lead-send">Send</button>
+                </form>
+              </div>
+            </details>
+            <details>
+              <summary>Matters</summary>
+              <p class="hint tiny">Accepted candidates and specs.</p>
+              <div id="matters-list" class="stack"></div>
+            </details>
+            <details>
+              <summary>Workspaces</summary>
+              <div id="ws-list" class="stack compact"></div>
+            </details>
+            <details>
+              <summary>Agents</summary>
+              <div id="agents-list" class="stack compact"></div>
+            </details>
+            <details>
+              <summary>Outbound</summary>
+              <div id="subs-list" class="stack compact"></div>
+            </details>
           </div>
-          <pre id="agent-lead-result" class="result"></pre>
-          <div id="agents-list" class="cards"></div>
+        </aside>
+      </section>
+
+      <section id="page-atoms" class="page page-plain">
+        <div class="stub">
+          <p class="eyebrow">Atoms</p>
+          <h2>Append-only log</h2>
+          <p>
+            Full event viewer is not in Desk v1. The unit is still a cited atom in SQLite
+            (<code>events</code> table, never <code>atoms</code>).
+          </p>
+          <p class="hint">Use <code>pnpm atom candidates</code> or inspect <code>data/atom.sqlite</code>.</p>
         </div>
       </section>
 
-      <section id="page-setup" class="page">
+      <section id="page-setup" class="page page-plain">
         <div class="panel">
-          <h2>冷启动检查</h2>
-          <p class="hint">新机器 / 新同事：先看这里是否 READY，再 <code>pnpm atom run</code>。</p>
+          <h2>Cold start</h2>
+          <p class="hint">New machine: get READY here, then <code>pnpm atom run</code>.</p>
           <div id="setup-list" class="checks"></div>
         </div>
       </section>
-
-      <footer>
-        CLI：<code>pnpm atom doctor</code> · <code>pnpm atom lead "…"</code> · <code>pnpm atom sources</code>
-      </footer>
     </div>
     <script src="/app.js" type="module"></script>
   </body>

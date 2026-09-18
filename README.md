@@ -4,7 +4,7 @@ Append-only **demand feed** with mandatory citations. Machines propose. Humans d
 
 Domain unit: **atom**. SQL table: **`events`** (never `atoms`).
 
-Stage-1 MVP: CLI + Markdown 需求日报 + optional local kanban. No Next.js product app.
+Stage-1 MVP: CLI + Markdown 需求日报 + local Dispatch Desk. No Next.js product app.
 
 ## Quickstart
 
@@ -39,16 +39,16 @@ Default extract agent is **heuristic** (offline). Primary LLM path is **GrokCliE
 pnpm atom run --agent grok-cli
 ```
 
-### Kanban (optional)
+### Dispatch Desk
 
-Same SQLite. Approve/reject append decision atoms.
+Same SQLite. Approve/reject append decision atoms. Lead NL configures sources.
 
 ```bash
 pnpm web
-# open http://127.0.0.1:8787
+# open Desk at http://127.0.0.1:8787
 ```
 
-Dark editorial UI (charcoal + copper): Suggested / Accepted / Rejected.
+Dark editorial UI (charcoal + copper). Listen → propose → approve → route.
 
 ### Yunzhijia source (stub)
 
@@ -66,7 +66,7 @@ Sweep leftover bot-digest / `收到✅` / log-dump suggestions: `pnpm atom rejec
 
 ```
 apps/cli/          # tsx CLI
-apps/web/          # tiny local kanban + API
+apps/web/          # Dispatch Desk (static) + local API
 packages/core/     # events writer, projections, agents, registry
 packages/adapters/ # fixture + yzj stub
 fixtures/          # demo messages.jsonl

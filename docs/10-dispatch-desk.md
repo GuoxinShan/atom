@@ -1,6 +1,6 @@
 # 10 · Dispatch Desk (Lead UI)
 
-Status: **locked direction** — implement this, not a Cursor Projects clone.
+Status: **locked direction** — implemented in `apps/web` as Desk (not a Cursor Projects clone).
 
 ## Same energy as Cursor Projects
 
@@ -46,19 +46,24 @@ If a screen does not end in a human decision, it does not own the default view.
 
 ## Layout (v1)
 
+Home is **Needs you**, not a coordinator chat.
+
 ```
-┌─────────────┬──────────────────────────────┬──────────────────┐
-│ Listening   │  Lead chat (coordinator)     │  Matter detail   │
-│ · sources   │  + recent Lead replies       │  (selected cand/ │
-│ · triggers  │                              │   spec/handoff)  │
-│ Matters     ├──────────────────────────────┴──────────────────┤
-│ · accepted  │  Triage board (Suggested / Accepted / Rejected) │
-│ · handoffs  │  citations always visible                        │
-└─────────────┴─────────────────────────────────────────────────┘
+┌────────────────────────────────────────┬──────────────────┐
+│ Needs you                              │ Matter detail    │
+│ · Suggested (approve / reject)         │ (selected cand)  │
+│ · Checklist gates (when any)           │ + human CTAs     │
+│ · Outbound confirm (when enabled)      │                  │
+│ Triage: Suggested / Accepted / Rejected│ ▸ Listening      │
+│ citations always visible               │ ▸ Lead           │
+│                                        │ ▸ Workspaces     │
+│                                        │ ▸ Agents         │
+│                                        │ ▸ Outbound       │
+└────────────────────────────────────────┴──────────────────┘
 ```
 
-Top nav collapses to: **Desk** (default) · **Atoms** (log) · **Setup**.
-Providers / workspaces / outbound sinks live as **drawers** inside Desk (gear on Listening / Lead), not six peer tabs.
+Top nav: **Desk** (default) · **Atoms** (log) · **Setup**.
+Lead / Listening / providers / workspaces / outbound live as **collapsed drawers**, not peer tabs and not the home screen.
 
 ## Primary verbs
 
