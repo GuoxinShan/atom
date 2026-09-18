@@ -21,4 +21,4 @@
 ## Extract policy
 - Heuristic = seed gate only.
 - Agentic Grok CLI = real extract.
-- Default Yzj group: Agentic Working 验证 only; enable `yzj-ai-advance` explicitly for 【AI推进】.
+- Default Yzj group: 【AI推进】 (`yzj-ai-advance`). Agentic Working 验证 (`yzj`) stays off — not the owner's business.

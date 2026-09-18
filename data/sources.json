@@ -9,7 +9,7 @@
     {
       "id": "yzj",
       "kind": "yzj",
-      "enabled": true,
+      "enabled": false,
       "groupIds": [
         "6a98ef36e4b073377732ef7b"
       ],
@@ -22,7 +22,7 @@
     {
       "id": "yzj-ai-advance",
       "kind": "yzj",
-      "enabled": false,
+      "enabled": true,
       "groupIds": [
         "6a9a59d1e4b043b377865acf"
       ],
@@ -30,10 +30,10 @@
         "6a9a59d1e4b043b377865acf": "【AI推进】"
       },
       "cli": "yzj-cli",
-      "limit": 20
+      "limit": 40
     }
   ],
-  "defaultSourceId": "yzj",
+  "defaultSourceId": "yzj-ai-advance",
   "defaultExtractAgent": "grok-cli",
   "extract": {
     "heuristicGate": true,

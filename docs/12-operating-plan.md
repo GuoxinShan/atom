@@ -16,7 +16,7 @@ ATOM is a **cited demand inbox + human triage desk**, not a coding factory and n
 | When (Asia/Shanghai) | Who | What |
 |---|---|---|
 | Boot / login | launchd | `pnpm atom serve` stays up on Rock-Shan (Desk API) |
-| 09:30 workdays | launchd / cron | `POST /api/run` (yzj default groups only) → local digest |
+| 09:30 workdays | launchd / cron | `POST /api/run` (yzj-ai-advance / 【AI推进】 only) → local digest |
 | Anytime | You | Open Desk → **Needs you** only (approve / reject / checklist ack) |
 | 18:30 optional | cron | second `run` if you want evening catch-up (default **off** week 1) |
 
@@ -47,10 +47,10 @@ Week 2+ (only if handoffs pile up unused): optional “Accept & handoff” one-c
 ## 4. Sources & noise (群 / 标准)
 
 Default on:
-- `yzj` → **Agentic Working 验证** only
+- `yzj-ai-advance` → **【AI推进】** only
 
-Default off (enable via Lead NL when you mean it):
-- `yzj-ai-advance` → 【AI推进】
+Default off:
+- `yzj` → Agentic Working 验证 (noise / others' work — stay off)
 
 Noise (reject / never seed) — already partly in `noise.ts`, keep strict:
 - Bot digests (`【来自…自动发送】`, `【AI产出·`)
