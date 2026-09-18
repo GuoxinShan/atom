@@ -217,12 +217,17 @@ function renderDetail() {
     const items = (chk.items || [])
       .map((i) => `- [${i.done ? "x" : " "}] ${i.key}`)
       .join("\n");
+    const canAck = chk.awaitingHumanAck && !chk.passed;
     root.innerHTML = `
       <h2>Checklist gate</h2>
       <div class="meta-id">${escapeHtml(chk.subjectId)}</div>
       <h3>${escapeHtml(chk.title || "Checklist")}</h3>
       <p class="body">${escapeHtml(items)}</p>
-      <button type="button" class="cta primary" data-ack="${escapeHtml(chk.subjectId)}">Ack human gate</button>
+      ${
+        canAck
+          ? `<button type="button" class="cta primary" data-ack="${escapeHtml(chk.subjectId)}">Ack human gate</button>`
+          : `<p class="empty">${chk.passed ? "Checklist passed." : "Waiting on other checklist items (CLI)."}</p>`
+      }
       ${state.ackNote ? `<pre class="handoff-out">${escapeHtml(state.ackNote)}</pre>` : ""}
     `;
     return;
