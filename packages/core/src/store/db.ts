@@ -13,6 +13,7 @@ export type SqlJsDatabase = {
     run(params?: unknown[]): void;
   };
   export(): Uint8Array;
+  close?: () => void;
 };
 
 export type BetterDatabase = {
@@ -27,7 +28,16 @@ export type BetterDatabase = {
 
 export type AtomDb =
   | { kind: "better-sqlite3"; db: BetterDatabase; filePath: string }
-  | { kind: "sqljs"; db: SqlJsDatabase; filePath: string; persist: () => void };
+  | {
+      kind: "sqljs";
+      db: SqlJsDatabase;
+      filePath: string;
+      persist: () => void;
+      /** Reload in-memory DB if another process rewrote the file. */
+      refresh: () => void;
+      mtimeMs: number;
+      SQL: { Database: new (data?: ArrayLike<number>) => SqlJsDatabase };
+    };
 
 const require = createRequire(import.meta.url);
 
@@ -56,6 +66,14 @@ export function defaultDbPath(repoRoot: string): string {
   return path.join(repoRoot, "data", "atom.sqlite");
 }
 
+function fileMtimeMs(filePath: string): number {
+  try {
+    return fs.statSync(filePath).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
 export async function openDb(filePath: string): Promise<AtomDb> {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
 
@@ -71,20 +89,59 @@ export async function openDb(filePath: string): Promise<AtomDb> {
     );
     const initSqlJs = (await import("sql.js")).default;
     const SQL = await initSqlJs();
+    const existed = fs.existsSync(filePath);
     let db: SqlJsDatabase;
-    if (fs.existsSync(filePath)) {
+    if (existed) {
       const buf = fs.readFileSync(filePath);
       db = new SQL.Database(buf) as unknown as SqlJsDatabase;
     } else {
       db = new SQL.Database() as unknown as SqlJsDatabase;
     }
     db.run(SCHEMA);
-    const persist = () => {
-      const data = db.export();
-      fs.writeFileSync(filePath, Buffer.from(data));
+
+    const state = {
+      db,
+      mtimeMs: fileMtimeMs(filePath),
     };
-    persist();
-    return { kind: "sqljs", db, filePath, persist };
+
+    const persist = () => {
+      const data = state.db.export();
+      const tmp = `${filePath}.${process.pid}.tmp`;
+      fs.writeFileSync(tmp, Buffer.from(data));
+      fs.renameSync(tmp, filePath);
+      state.mtimeMs = fileMtimeMs(filePath);
+    };
+
+    const refresh = () => {
+      const mt = fileMtimeMs(filePath);
+      if (!mt || mt <= state.mtimeMs) return;
+      const buf = fs.readFileSync(filePath);
+      try {
+        state.db.close?.();
+      } catch {
+        /* ignore */
+      }
+      state.db = new SQL.Database(buf) as unknown as SqlJsDatabase;
+      state.mtimeMs = mt;
+    };
+
+    // Only create the file if missing — never rewrite an existing DB on open
+    // (that race is what killed Desk when CLI opened the same sql.js file).
+    if (!existed) persist();
+
+    return {
+      kind: "sqljs",
+      get db() {
+        return state.db;
+      },
+      filePath,
+      persist,
+      refresh,
+      get mtimeMs() {
+        return state.mtimeMs;
+      },
+      SQL,
+    };
   }
 }
 
@@ -93,6 +150,7 @@ export function dbAll(
   sql: string,
   params: unknown[] = []
 ): Record<string, unknown>[] {
+  if (atomDb.kind === "sqljs") atomDb.refresh();
   if (atomDb.kind === "better-sqlite3") {
     return atomDb.db.prepare(sql).all(...params);
   }
@@ -105,6 +163,7 @@ export function dbAll(
 }
 
 export function dbRun(atomDb: AtomDb, sql: string, params: unknown[] = []): void {
+  if (atomDb.kind === "sqljs") atomDb.refresh();
   if (atomDb.kind === "better-sqlite3") {
     atomDb.db.prepare(sql).run(...params);
     return;
