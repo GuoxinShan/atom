@@ -1,6 +1,8 @@
 # 07 · UI prototype (design)
 
-Status: **design only** — implement after visual sign-off. No ugly scaffold UI.
+Status: **superseded in part by [10-dispatch-desk.md](./10-dispatch-desk.md)** — Desk is the Lead/Projects-shaped shell; triage board remains.
+
+Earlier note: design-first, no ugly scaffold UI.
 
 ## Principles
 
