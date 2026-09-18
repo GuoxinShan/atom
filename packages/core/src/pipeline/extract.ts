@@ -2,6 +2,7 @@ import { ExtractAgent, RawMessage } from "../schema/types.js";
 import { EventStore } from "../store/events.js";
 import { newId } from "../schema/ids.js";
 import { HeuristicCandidateGate } from "../agents/heuristic.js";
+import { isNoiseProposal } from "../agents/noise.js";
 
 function messagesFromStore(store: EventStore, groupAllow?: Set<string>): RawMessage[] {
   return store
@@ -32,7 +33,7 @@ export async function runExtract(
     /** limit extract to these yzj group ids */
     groupAllowlist?: string[];
   }
-): Promise<{ proposed: number; skipped: number; seeded: number; gated: number }> {
+): Promise<{ proposed: number; skipped: number; seeded: number; gated: number; noiseDropped: number }> {
   const runId = newId("agent");
   const useGate = opts?.heuristicGate !== false;
   const groupAllow = opts?.groupAllowlist?.length
@@ -81,6 +82,7 @@ export async function runExtract(
 
     let proposed = 0;
     let skipped = 0;
+    let noiseDropped = 0;
     for (const p of proposals) {
       const key = p.cluster_key ?? p.title;
       if (seenKeys.has(key)) {
@@ -88,6 +90,11 @@ export async function runExtract(
         continue;
       }
       if (!p.refs.length) {
+        skipped += 1;
+        continue;
+      }
+      if (isNoiseProposal(p.title, p.body)) {
+        noiseDropped += 1;
         skipped += 1;
         continue;
       }
@@ -112,6 +119,10 @@ export async function runExtract(
       proposed += 1;
     }
 
+    if (noiseDropped > 0) {
+      console.log(`[extract] dropped ${noiseDropped} noise proposals`);
+    }
+
     store.append({
       type: "agent_completed",
       subject_id: runId,
@@ -120,13 +131,20 @@ export async function runExtract(
         agent_id: agent.id,
         proposed,
         skipped,
+        noise_dropped: noiseDropped,
         message_count: all.length,
         seed_count: seeded.length,
       },
       actor: `agent:${agent.id}`,
     });
 
-    return { proposed, skipped, seeded: seeded.length, gated: all.length - seeded.length };
+    return {
+      proposed,
+      skipped,
+      seeded: seeded.length,
+      gated: all.length - seeded.length,
+      noiseDropped,
+    };
   } catch (err) {
     store.append({
       type: "agent_failed",

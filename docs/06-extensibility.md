@@ -70,6 +70,10 @@ pnpm atom specs
 pnpm atom handoff <specOrCandidateId>          # write out/handoffs/*.md + handoff_exported
 pnpm atom handoff <id> --run                   # also spawn local grok -p on the pack
 pnpm atom evidence <handoffId> --path ./note.md
+pnpm atom checklist <handoffOrCandidateId>     # pr_checklist_started + status
+pnpm atom checklist-done <id> tests_green
+pnpm atom checklist-done <id> human_gate_ack --ack
+pnpm atom pr-open <id> --url <prUrl>           # pr_opened only after checklist_passed
 ```
 
 `GrokCliCodingAgent` is the default coding seam (CLI agent, not raw HTTP). Cursor can open the same markdown pack.

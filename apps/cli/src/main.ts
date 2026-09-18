@@ -7,6 +7,7 @@ import {
   candidatesByStatus,
   approveCandidate,
   rejectCandidate,
+  rejectNoiseCandidates,
   exportHandoff,
   attachEvidence,
   listSpecDrafts,
@@ -17,6 +18,10 @@ import {
   leadApplyConfig,
   AgentProviderRegistry,
   resolveCodingAgent,
+  startChecklist,
+  completeChecklistItem,
+  formatChecklist,
+  openPr,
 } from "@atom/core";
 import { createAppContext, resolveAgent } from "./context.js";
 
@@ -34,6 +39,10 @@ Usage:
   pnpm atom specs
   pnpm atom handoff <specOrCandidateId> [--run] [--target grok-cli|file]
   pnpm atom evidence <handoffId> --path <file>
+  pnpm atom checklist <handoffOrCandidateId>
+  pnpm atom checklist-done <handoffOrCandidateId> <itemKey> [--note ...] [--ack]
+  pnpm atom pr-open <handoffOrCandidateId> --url <prUrl> [--branch ...] [--force]
+  pnpm atom reject-noise
   pnpm atom route <specOrCandidateId>
   pnpm atom doctor
   pnpm atom setup
@@ -105,12 +114,12 @@ async function main() {
   if (cmd === "extract") {
     const agent = resolveAgent(agentName, ctx.repoRoot);
     const allow = groupAllowlistFor(ctx, sourceId);
-    const { proposed, skipped, seeded, gated } = await runExtract(ctx.store, agent, {
+    const { proposed, skipped, seeded, gated, noiseDropped } = await runExtract(ctx.store, agent, {
       heuristicGate: true,
       groupAllowlist: allow,
     });
     console.log(
-      `OK extract agent=${agent.id} seeds=${seeded} gated_out=${gated} proposed=${proposed} skipped=${skipped}`
+      `OK extract agent=${agent.id} seeds=${seeded} gated_out=${gated} proposed=${proposed} skipped=${skipped} noise_dropped=${noiseDropped}`
     );
     return;
   }
@@ -146,6 +155,19 @@ async function main() {
     if (!id) usage();
     rejectCandidate(ctx.store, id, flags.reason as string | undefined);
     console.log(`OK rejected ${id}`);
+    return;
+  }
+
+  if (cmd === "reject-noise") {
+    const { rejected, ids, titles } = rejectNoiseCandidates(ctx.store);
+    if (!rejected) {
+      console.log("OK reject-noise: nothing matched");
+      return;
+    }
+    console.log(`OK reject-noise rejected=${rejected} reason=noise-heuristic`);
+    for (let i = 0; i < ids.length; i++) {
+      console.log(`- ${ids[i]}  ${titles[i]}`);
+    }
     return;
   }
 
@@ -262,6 +284,40 @@ async function main() {
     return;
   }
 
+  if (cmd === "checklist") {
+    const id = positional(argv.slice(1));
+    if (!id) usage();
+    const view = startChecklist(ctx.store, id);
+    console.log(formatChecklist(view));
+    return;
+  }
+
+  if (cmd === "checklist-done") {
+    const [id, itemKey] = positionals(argv.slice(1));
+    if (!id || !itemKey) usage();
+    const view = completeChecklistItem(ctx.store, id, itemKey, {
+      note: flags.note as string | undefined,
+      ack: Boolean(flags.ack),
+    });
+    console.log(`OK checklist-done ${itemKey}`);
+    console.log(formatChecklist(view));
+    return;
+  }
+
+  if (cmd === "pr-open") {
+    const id = positional(argv.slice(1));
+    const url = flags.url as string | undefined;
+    if (!id || !url) usage();
+    const { prId, forced } = openPr(ctx.store, id, {
+      url,
+      branch: flags.branch as string | undefined,
+      force: Boolean(flags.force),
+    });
+    console.log(`OK pr-open ${prId}${forced ? " (forced)" : ""}`);
+    console.log(`url: ${url}`);
+    return;
+  }
+
   usage();
 }
 
@@ -301,8 +357,22 @@ function parseFlags(args: string[]): Record<string, string | boolean> {
   return out;
 }
 
+function positionals(args: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]!;
+    if (a.startsWith("--")) {
+      const next = args[i + 1];
+      if (next && !next.startsWith("--")) i += 1;
+      continue;
+    }
+    out.push(a);
+  }
+  return out;
+}
+
 function positional(args: string[]): string | undefined {
-  return args.find((a) => !a.startsWith("--"));
+  return positionals(args)[0];
 }
 
 main().catch((err) => {
