@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "defaults": {
+    "lead": "lead-local",
+    "extract": "extract-grok-cli",
+    "coding": "coding-grok-cli",
+    "execute": "execute-grok-cli"
+  },
+  "providers": [
+    {
+      "id": "lead-local",
+      "role": "lead",
+      "kind": "local-cli",
+      "bin": "builtin:lead",
+      "enabled": true,
+      "notes": "In-process LeadAgent (route + leadApplyConfig)"
+    },
+    {
+      "id": "lead-grokbot-webhook",
+      "role": "lead",
+      "kind": "grokbot-webhook",
+      "url": "",
+      "enabled": false,
+      "notes": "Set url to your Grok Bot inbound webhook, then enable and set defaults.lead"
+    },
+    {
+      "id": "extract-grok-cli",
+      "role": "extract",
+      "kind": "local-cli",
+      "bin": "grok",
+      "cwdMode": "atom",
+      "enabled": true
+    },
+    {
+      "id": "extract-webhook",
+      "role": "extract",
+      "kind": "webhook",
+      "url": "",
+      "enabled": false
+    },
+    {
+      "id": "coding-grok-cli",
+      "role": "coding",
+      "kind": "local-cli",
+      "bin": "grok",
+      "cwdMode": "routed",
+      "enabled": true
+    },
+    {
+      "id": "coding-webhook",
+      "role": "coding",
+      "kind": "webhook",
+      "url": "",
+      "enabled": false
+    },
+    {
+      "id": "execute-grok-cli",
+      "role": "execute",
+      "kind": "local-cli",
+      "bin": "grok",
+      "cwdMode": "routed",
+      "enabled": true
+    },
+    {
+      "id": "execute-webhook",
+      "role": "execute",
+      "kind": "webhook",
+      "url": "",
+      "enabled": false
+    }
+  ],
+  "workspaceOverrides": {}
+}

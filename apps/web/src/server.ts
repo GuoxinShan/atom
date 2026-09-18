@@ -14,7 +14,12 @@ import {
   GrokCliCodingAgent,
   runColdStart,
   leadApplyConfig,
+  AgentProviderRegistry,
+  runPipeline,
+  resolveExtractAgent,
+  SourceRegistry,
 } from "@atom/core";
+import { FixtureSource, YzjSource } from "@atom/adapters";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "public");
@@ -95,6 +100,12 @@ async function main() {
 
       // Inbound webhook Trigger seam: POST /hooks/run → pipeline not auto here (manual ack)
       
+      
+      if (req.method === "GET" && url.pathname === "/api/agents") {
+        const reg = new AgentProviderRegistry(repoRoot);
+        return json(res, reg.load());
+      }
+
       if (req.method === "GET" && url.pathname === "/api/setup") {
         return json(res, runColdStart(repoRoot));
       }
@@ -126,8 +137,54 @@ async function main() {
 
       if (req.method === "POST" && url.pathname.startsWith("/hooks/")) {
         const body = await readJson(req);
-        console.log(`[hook] ${url.pathname}`, body);
-        return json(res, { ok: true, received: true, path: url.pathname, note: "stub — wire to atom run next" });
+        const hook = url.pathname.slice("/hooks/".length) || "run";
+        console.log(`[hook] ${hook}`, body);
+
+        // Map: /hooks/run|/hooks/ingest|/hooks/extract → pipeline
+        if (hook === "run" || hook === "ingest" || hook === "extract" || hook === "digest") {
+          const registry = new SourceRegistry(repoRoot);
+          registry.register("fixture", (entry, root) => {
+            const rel = (entry as { path?: string }).path ?? "fixtures/messages.jsonl";
+            return new FixtureSource(path.join(root, rel), entry.id);
+          });
+          registry.register(
+            "yzj",
+            (entry) =>
+              new YzjSource({
+                id: entry.id,
+                groupIds: (entry as { groupIds?: string[] }).groupIds,
+                cli: (entry as { cli?: string }).cli,
+              })
+          );
+          const sourceId =
+            typeof body.source === "string"
+              ? body.source
+              : registry.loadConfig().defaultSourceId;
+          const source = registry.resolve(sourceId);
+          const agent = resolveExtractAgent(repoRoot);
+          const allow = (registry.loadConfig().sources.find((s) => s.id === source.id)?.groupIds) ?? [];
+
+          if (hook === "run") {
+            const result = await runPipeline({
+              store,
+              source,
+              agent,
+              repoRoot,
+              groupAllowlist: allow,
+              heuristicGate: true,
+            });
+            return json(res, { ok: true, hook, ...result });
+          }
+          // other hooks: acknowledge + note (full split later)
+          return json(res, {
+            ok: true,
+            hook,
+            note: "use /hooks/run for full ingest+extract+digest",
+            received: body,
+          });
+        }
+
+        return json(res, { ok: true, received: true, path: url.pathname });
       }
 
       if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {

@@ -36,6 +36,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@atom/adapters':
+        specifier: workspace:*
+        version: link:../../packages/adapters
       '@atom/core':
         specifier: workspace:*
         version: link:../../packages/core

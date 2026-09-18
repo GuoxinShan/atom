@@ -1,3 +1,58 @@
 {
-  "subscriptions": []
+  "version": 1,
+  "subscriptions": [
+    {
+      "id": "log-default",
+      "kind": "log",
+      "enabled": true,
+      "types": [
+        "*"
+      ],
+      "notes": "Dev stdout sink"
+    },
+    {
+      "id": "webhook-example",
+      "kind": "webhook",
+      "enabled": false,
+      "url": "",
+      "types": [
+        "digest",
+        "candidate_proposed",
+        "handoff_exported"
+      ],
+      "notes": "POST JSON envelope to any HTTP endpoint"
+    },
+    {
+      "id": "cli-example",
+      "kind": "cli",
+      "enabled": false,
+      "bin": "echo",
+      "args": [
+        "atom-sub"
+      ],
+      "types": [
+        "*"
+      ],
+      "notes": "Spawn local CLI; payload on stdin as JSON"
+    },
+    {
+      "id": "file-example",
+      "kind": "file",
+      "enabled": false,
+      "path": "out/subscriptions/events.jsonl",
+      "types": [
+        "*"
+      ],
+      "notes": "Append JSONL under ATOM repo"
+    },
+    {
+      "id": "file_mu69vvps",
+      "kind": "file",
+      "enabled": true,
+      "path": "out/subscriptions/events.jsonl",
+      "types": [
+        "*"
+      ]
+    }
+  ]
 }

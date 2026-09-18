@@ -16,6 +16,7 @@ function showPage(name) {
   if (name === "sources") loadSources();
   if (name === "subscriptions") loadSubs();
   if (name === "workspaces") loadWorkspaces();
+  if (name === "agents") loadAgents();
   if (name === "setup") loadSetup();
 }
 
@@ -115,7 +116,10 @@ async function loadSubs() {
   for (const s of list) {
     const card = document.createElement("div");
     card.className = "card";
-    card.innerHTML = `<h3>${escapeHtml(s.id)}</h3><div class="sub">${escapeHtml(s.url)}</div><span class="pill">${s.enabled === false ? "off" : "on"}</span>`;
+    card.innerHTML = `<h3>${escapeHtml(s.id)} <span class="pill">${escapeHtml(s.kind || "webhook")}</span></h3>
+      <div class="sub">${escapeHtml(s.url || s.bin || s.path || "")}</div>
+      <span class="pill">${s.enabled === false ? "off" : "on"}</span>
+      <div>${(s.types || ["*"]).map((x) => `<span class="pill">${escapeHtml(x)}</span>`).join("")}</div>`;
     root.appendChild(card);
   }
 }
@@ -182,3 +186,42 @@ function escapeHtml(s) {
 }
 
 showPage("board");
+
+
+async function loadAgents() {
+  const data = await fetch("/api/agents").then((r) => r.json());
+  const root = document.getElementById("agents-list");
+  root.innerHTML = "";
+  const defaults = data.defaults || {};
+  for (const p of data.providers || []) {
+    const card = document.createElement("div");
+    card.className = "card";
+    const isDefault = defaults[p.role] === p.id;
+    card.innerHTML = `
+      <h3>${escapeHtml(p.id)} ${isDefault ? '<span class="pill">default</span>' : ""}
+        <span class="pill">${escapeHtml(p.role)}</span>
+        <span class="pill">${escapeHtml(p.kind)}</span>
+        <span class="pill">${p.enabled === false ? "off" : "on"}</span></h3>
+      <div class="sub">${escapeHtml(p.notes || "")}</div>
+      <div class="sub">bin=${escapeHtml(p.bin || "-")} cwdMode=${escapeHtml(p.cwdMode || "-")}</div>
+      <div class="sub">url=${escapeHtml(p.url || "-")}</div>
+    `;
+    root.appendChild(card);
+  }
+}
+
+document.getElementById("agent-lead-send")?.addEventListener("click", async () => {
+  const input = document.getElementById("agent-lead-input");
+  const out = document.getElementById("agent-lead-result");
+  const utterance = input.value.trim();
+  if (!utterance) return;
+  out.textContent = "…";
+  const res = await fetch("/api/lead", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ utterance }),
+  });
+  const data = await res.json();
+  out.textContent = (data.ok ? "OK " : "NO ") + (data.message || JSON.stringify(data));
+  await loadAgents();
+});

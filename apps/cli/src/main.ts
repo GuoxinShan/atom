@@ -10,12 +10,13 @@ import {
   exportHandoff,
   attachEvidence,
   listSpecDrafts,
-  GrokCliCodingAgent,
   LeadAgent,
   findSpec,
   runColdStart,
   ensureColdStartFiles,
   leadApplyConfig,
+  AgentProviderRegistry,
+  resolveCodingAgent,
 } from "@atom/core";
 import { createAppContext, resolveAgent } from "./context.js";
 
@@ -38,6 +39,7 @@ Usage:
   pnpm atom setup
   pnpm atom sources
   pnpm atom lead "<自然语言改配置>"
+  pnpm atom agents
 
 Default run = yzj (scoped groups) + heuristic seed-gate + grok-cli agentic extract
 `);
@@ -72,7 +74,7 @@ async function main() {
 
   if (cmd === "run") {
     const source = ctx.registry.resolve(sourceId);
-    const agent = resolveAgent(agentName);
+    const agent = resolveAgent(agentName, ctx.repoRoot);
     const allow = groupAllowlistFor(ctx, sourceId ?? source.id);
     const result = await runPipeline({
       store: ctx.store,
@@ -101,7 +103,7 @@ async function main() {
   }
 
   if (cmd === "extract") {
-    const agent = resolveAgent(agentName);
+    const agent = resolveAgent(agentName, ctx.repoRoot);
     const allow = groupAllowlistFor(ctx, sourceId);
     const { proposed, skipped, seeded, gated } = await runExtract(ctx.store, agent, {
       heuristicGate: true,
@@ -166,9 +168,7 @@ async function main() {
     const target = (flags.target as string | undefined) ?? "grok-cli";
     const run = Boolean(flags.run);
     const coding =
-      target === "file"
-        ? undefined
-        : new GrokCliCodingAgent({ repoRoot: ctx.repoRoot });
+      target === "file" ? undefined : resolveCodingAgent(ctx.repoRoot);
     const pack = await exportHandoff(ctx.store, ctx.repoRoot, id, coding, {
       run,
       target: target === "file" ? "file" : "grok-cli",
@@ -176,6 +176,19 @@ async function main() {
     console.log(`OK handoff ${pack.id}`);
     console.log(`path: ${pack.path}`);
     console.log(`target: ${pack.target} run=${run}`);
+    return;
+  }
+
+  if (cmd === "agents") {
+    const reg = new AgentProviderRegistry(ctx.repoRoot);
+    const cfg = reg.load();
+    console.log("defaults:", JSON.stringify(cfg.defaults));
+    for (const p of cfg.providers) {
+      const star = cfg.defaults[p.role] === p.id ? "*" : " ";
+      console.log(
+        `${star} ${p.id} role=${p.role} kind=${p.kind} on=${p.enabled !== false} url=${p.url || "-"}`
+      );
+    }
     return;
   }
 

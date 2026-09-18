@@ -18,6 +18,7 @@
           <button data-page="sources">订阅源</button>
           <button data-page="subscriptions">出站订阅</button>
           <button data-page="workspaces">工作区</button>
+          <button data-page="agents">Agents</button>
           <button data-page="setup">冷启动</button>
         </nav>
         <div class="meta" id="meta">…</div>
@@ -53,6 +54,19 @@
           <h2>工作区地图</h2>
           <p class="hint">Lead 派活只进这里登记过的路径，不会无脑乱派。</p>
           <div id="ws-list" class="cards"></div>
+        </div>
+      </section>
+
+      <section id="page-agents" class="page">
+        <div class="panel">
+          <h2>Agent Providers</h2>
+          <p class="hint">Lead / Extract / Coding / Execute 都可换成本地 CLI 或 Webhook（含 Grok Bot）。跟 Lead 说也行。</p>
+          <div class="lead-box">
+            <input id="agent-lead-input" placeholder="主agent用webhook https://… / 抽取用本地grok / 有哪些agent" />
+            <button id="agent-lead-send" class="primary">让 Lead 改</button>
+          </div>
+          <pre id="agent-lead-result" class="result"></pre>
+          <div id="agents-list" class="cards"></div>
         </div>
       </section>
 

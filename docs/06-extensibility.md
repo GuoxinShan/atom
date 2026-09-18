@@ -73,3 +73,27 @@ pnpm atom evidence <handoffId> --path ./note.md
 ```
 
 `GrokCliCodingAgent` is the default coding seam (CLI agent, not raw HTTP). Cursor can open the same markdown pack.
+
+## Outbound subscriptions (pluggable)
+
+`data/subscriptions.json` — same freedom as agent providers:
+
+| kind | behavior |
+|---|---|
+| `webhook` / `http-json` | POST JSON envelope |
+| `cli` | spawn local binary, JSON on stdin |
+| `file` | append JSONL |
+| `log` | stdout |
+| `noop` | discard |
+
+Filter by `types` (`*` or atom/pipeline kinds). Lead: `订阅加 https://…` / `订阅cli …` / `订阅文件 jsonl`.
+
+## Inbound hooks
+
+Control UI server:
+
+```bash
+curl -X POST http://127.0.0.1:8787/hooks/run -H 'content-type: application/json' -d '{"source":"yzj"}'
+```
+
+Runs ingest → heuristic seed-gate → configured extract provider → digest. Extract/coding providers come from `data/agents.json`.

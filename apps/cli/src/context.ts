@@ -3,13 +3,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   EventStore,
-  GrokCliExtractAgent,
   SourceRegistry,
   ManualTrigger,
   LogSubscriptionSink,
   openDb,
   defaultDbPath,
   ExtractAgent,
+  resolveExtractAgent,
 } from "@atom/core";
 import { FixtureSource, YzjSource } from "@atom/adapters";
 
@@ -49,20 +49,17 @@ export async function createAppContext(repoRoot = resolveRepoRoot()) {
       new YzjSource({
         id: entry.id,
         groupIds: entry.groupIds,
-        cli: entry.cli,
+        cli: entry.cli as string | undefined,
       })
   );
 
   const trigger = new ManualTrigger();
-  const sink = new LogSubscriptionSink();
+  const sink = new LogSubscriptionSink(repoRoot);
 
   return { repoRoot, dbPath, atomDb, store, registry, trigger, sink };
 }
 
-export function resolveAgent(name: string): ExtractAgent {
-  // Agentic extract only — heuristic is a gate inside runExtract, not an ExtractAgent.
-  if (name === "heuristic") {
-    console.warn("[atom] heuristic is no longer an extract agent; using grok-cli (heuristic remains a seed gate)");
-  }
-  return new GrokCliExtractAgent();
+export function resolveAgent(_name: string, repoRoot = resolveRepoRoot()): ExtractAgent {
+  // Name flag kept for CLI compat; real selection is data/agents.json defaults.
+  return resolveExtractAgent(repoRoot);
 }

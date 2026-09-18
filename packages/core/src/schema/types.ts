@@ -110,5 +110,8 @@ export interface HandoffPack {
 /** Execute / coding seam — consumes a drafted spec, may spawn local agents. */
 export interface CodingAgent {
   id: string;
-  handoff(spec: SpecDraft, opts?: { run?: boolean }): Promise<HandoffPack>;
+  handoff(
+    spec: SpecDraft,
+    opts?: { run?: boolean; workDir?: string; briefing?: string }
+  ): Promise<HandoffPack>;
 }

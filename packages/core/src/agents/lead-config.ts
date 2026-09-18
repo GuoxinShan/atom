@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { AgentProviderRegistry } from "../registry/agents.js";
 
 export interface LeadConfigResult {
   ok: boolean;
@@ -116,7 +117,101 @@ export function leadApplyConfig(repoRoot: string, utterance: string): LeadConfig
     return { ok: true, message: `已添加出站订阅 ${id} → ${urlMatch[0]}`, changed };
   }
 
-  // list help
+  // agent provider switches
+  if (/抽取.*(webhook|grokbot)|extract.*(webhook|grokbot)/.test(text + lower)) {
+    const reg = new AgentProviderRegistry(repoRoot);
+    const id = /grokbot/.test(lower) ? "lead-grokbot-webhook" : "extract-webhook";
+    // for extract specifically:
+    const extractId = /抽取/.test(text) || /extract/.test(lower)
+      ? (/grokbot/.test(lower) ? "extract-webhook" : "extract-webhook")
+      : id;
+    try {
+      if (/抽取|extract/.test(text + lower)) {
+        // enable extract-webhook if url already set; else instruct
+        const cfgA = reg.load();
+        const p = cfgA.providers.find((x) => x.id === "extract-webhook");
+        if (!p?.url) {
+          return { ok: false, message: "先在 data/agents.json 给 extract-webhook 填 url，或说：配置抽取webhook https://..." };
+        }
+        p.enabled = true;
+        cfgA.defaults.extract = "extract-webhook";
+        reg.save(cfgA);
+        return { ok: true, message: "抽取已切到 extract-webhook", changed: ["agents.json"] };
+      }
+    } catch (e) {
+      return { ok: false, message: String(e) };
+    }
+  }
+
+  if (/抽取.*本地grok|extract.*grok-cli|用本地grok抽/.test(text + lower)) {
+    const reg = new AgentProviderRegistry(repoRoot);
+    reg.setDefault("extract", "extract-grok-cli");
+    return { ok: true, message: "抽取已切回本地 extract-grok-cli", changed: ["agents.json"] };
+  }
+
+  if (/主agent.*webhook|lead.*webhook|lead.*grokbot|主调度.*webhook|主调度.*grokbot/.test(text + lower)) {
+    const reg = new AgentProviderRegistry(repoRoot);
+    const cfgA = reg.load();
+    const p = cfgA.providers.find((x) => x.id === "lead-grokbot-webhook");
+    const urlMatch = text.match(/https?:\/\/\S+/);
+    if (urlMatch && p) {
+      p.url = urlMatch[0].replace(/[，。]$/, "");
+      p.enabled = true;
+      cfgA.defaults.lead = "lead-grokbot-webhook";
+      reg.save(cfgA);
+      return { ok: true, message: `主 Agent 已切到 Grok Bot webhook：${p.url}`, changed: ["agents.json"] };
+    }
+    if (p && !p.url) {
+      return { ok: false, message: "请带上 webhook URL：主agent用webhook https://..." };
+    }
+    if (p) {
+      p.enabled = true;
+      cfgA.defaults.lead = "lead-grokbot-webhook";
+      reg.save(cfgA);
+      return { ok: true, message: "主 Agent 已切到 lead-grokbot-webhook（沿用已有 url）", changed: ["agents.json"] };
+    }
+  }
+
+  if (/主agent.*本地|lead.*local|主调度.*本地/.test(text + lower)) {
+    const reg = new AgentProviderRegistry(repoRoot);
+    reg.setDefault("lead", "lead-local");
+    return { ok: true, message: "主 Agent 已切回 lead-local", changed: ["agents.json"] };
+  }
+
+  const agentUrl = text.match(/配置(抽取|coding|执行|主agent|lead)?\s*(webhook)?\s*(https?:\/\/\S+)/i);
+  if (agentUrl) {
+    const reg = new AgentProviderRegistry(repoRoot);
+    const cfgA = reg.load();
+    const url = agentUrl[3].replace(/[，。]$/, "");
+    const which = (agentUrl[1] || "抽取").toLowerCase();
+    let id = "extract-webhook";
+    let role: "extract" | "coding" | "execute" | "lead" = "extract";
+    if (/coding|代码/.test(which)) { id = "coding-webhook"; role = "coding"; }
+    else if (/执行|execute/.test(which)) { id = "execute-webhook"; role = "execute"; }
+    else if (/主|lead/.test(which)) { id = "lead-grokbot-webhook"; role = "lead"; }
+    const p = cfgA.providers.find((x) => x.id === id);
+    if (!p) return { ok: false, message: `missing provider ${id}` };
+    p.url = url;
+    p.enabled = true;
+    cfgA.defaults[role] = id;
+    reg.save(cfgA);
+    return { ok: true, message: `${role} 已指向 ${id} → ${url}`, changed: ["agents.json"] };
+  }
+
+  if (/有哪些agent|列出agent|list agents|agent提供者/.test(text + lower)) {
+    const reg = new AgentProviderRegistry(repoRoot);
+    const cfgA = reg.load();
+    const lines = cfgA.providers.map((p) => {
+      const mark = cfgA.defaults[p.role] === p.id ? "*" : " ";
+      return `${mark} ${p.id} role=${p.role} kind=${p.kind} enabled=${p.enabled !== false} url=${p.url || "-"}`;
+    });
+    return {
+      ok: true,
+      message: `defaults=${JSON.stringify(cfgA.defaults)}\n` + lines.join("\n"),
+    };
+  }
+
+    // list help
   if (/有哪些源|列出源|list sources|订阅源/.test(text + lower)) {
     const lines = sources.sources.map((s) => {
       const g = (s.groupIds ?? []).join(",") || "-";
@@ -125,7 +220,40 @@ export function leadApplyConfig(repoRoot: string, utterance: string): LeadConfig
     return { ok: true, message: "当前源：\n" + lines.join("\n") };
   }
 
-  return {
+
+  if (/订阅.*cli|cli订阅|出站.*cli/.test(text + lower)) {
+    const binMatch = text.match(/cli\s+(\S+)/i) || text.match(/用\s*(\S+)\s*接/);
+    const bin = binMatch ? binMatch[1] : "echo";
+    const subsPath = path.join(repoRoot, "data", "subscriptions.json");
+    const subs = fs.existsSync(subsPath)
+      ? JSON.parse(fs.readFileSync(subsPath, "utf8"))
+      : { subscriptions: [] };
+    const id = `cli_${Date.now().toString(36)}`;
+    subs.subscriptions = subs.subscriptions || [];
+    subs.subscriptions.push({ id, kind: "cli", enabled: true, bin, args: [], types: ["*"] });
+    fs.writeFileSync(subsPath, JSON.stringify(subs, null, 2) + "\n");
+    return { ok: true, message: `已添加 CLI 订阅 ${id} bin=${bin}`, changed: ["subscriptions.json"] };
+  }
+
+  if (/订阅.*文件|file订阅|jsonl/.test(text + lower)) {
+    const subsPath = path.join(repoRoot, "data", "subscriptions.json");
+    const subs = fs.existsSync(subsPath)
+      ? JSON.parse(fs.readFileSync(subsPath, "utf8"))
+      : { subscriptions: [] };
+    const id = `file_${Date.now().toString(36)}`;
+    subs.subscriptions = subs.subscriptions || [];
+    subs.subscriptions.push({
+      id,
+      kind: "file",
+      enabled: true,
+      path: "out/subscriptions/events.jsonl",
+      types: ["*"],
+    });
+    fs.writeFileSync(subsPath, JSON.stringify(subs, null, 2) + "\n");
+    return { ok: true, message: `已添加文件订阅 ${id} → out/subscriptions/events.jsonl`, changed: ["subscriptions.json"] };
+  }
+
+    return {
     ok: false,
     message:
       "没听懂配置意图。可以试：\n" +
@@ -133,6 +261,8 @@ export function leadApplyConfig(repoRoot: string, utterance: string): LeadConfig
       "- 只要 Agentic Working\n" +
       "- 用 grok 抽\n" +
       "- 订阅加 https://example.com/hook\n" +
+      "- 订阅cli notify\n" +
+      "- 订阅文件 jsonl\n" +
       "- 有哪些源",
   };
 }

@@ -19,3 +19,6 @@ export * from "./stubs/webhook-trigger.js";
 export * from "./agents/lead.js";
 export * from "./setup/cold-start.js";
 export * from "./agents/lead-config.js";
+export * from "./registry/agents.js";
+export * from "./registry/subscriptions.js";
+export * from "./agents/resolve.js";
