@@ -26,6 +26,7 @@ import {
   findSpec,
   LeadAgent,
   openPr,
+  readRuntimeMeta,
 } from "@atom/core";
 import type { Daemon } from "./context.js";
 import { json, readJson } from "./http.js";
@@ -47,6 +48,11 @@ export async function handleApi(
 
   if (method === "GET" && p === "/api/health") {
     json(res, { ok: true, service: "atom-desk" });
+    return true;
+  }
+
+  if (method === "GET" && p === "/api/meta") {
+    json(res, { ok: true, ...readRuntimeMeta(daemon.store) });
     return true;
   }
 

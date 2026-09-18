@@ -1,0 +1,99 @@
+{
+  "comment": "Lead routing haystack cases. Run: pnpm check:lead-routing. Body/ref digest tooling words must not steal yzj.",
+  "cases": [
+    {
+      "id": "context-graph-cli",
+      "expectWorkspace": "atom",
+      "note": "上下文图谱 CLI is not a yzj product ask; 云之家 / yzj-cli / CLI in body+digest must not steal yzj.",
+      "spec": {
+        "id": "spec_fx_graph",
+        "candidate_id": "cand_fx_graph",
+        "title": "上下文图谱 CLI 单机版",
+        "body": "用 yzj-cli 在云之家分发，需要 grok token key。本机单机分发。",
+        "acceptance_criteria": ["能在本机跑通 CLI", "分发说明写清"],
+        "refs": [
+          {
+            "token": "yzj:im:group:msg",
+            "kind": "im",
+            "digest": "yzj-cli 云之家 CLI grok token 本机分发 上下文图谱"
+          }
+        ]
+      }
+    },
+    {
+      "id": "yzj-calendar-1023",
+      "expectWorkspace": "yzj",
+      "note": "Title is a yzj product ask (日历 / 1023); 云之家 in title may count.",
+      "spec": {
+        "id": "spec_fx_cal",
+        "candidate_id": "cand_fx_cal",
+        "title": "云之家日历 1023 会议提醒",
+        "body": "日程同步",
+        "acceptance_criteria": ["日历提醒可关"],
+        "refs": [
+          {
+            "token": "yzj:im:group:cal",
+            "kind": "im",
+            "digest": "日历"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ai-advance-wutai",
+      "expectWorkspace": "ai-advance",
+      "note": "Company AI推进 rail — not stolen by 云之家 in the body.",
+      "spec": {
+        "id": "spec_fx_adv",
+        "candidate_id": "cand_fx_adv",
+        "title": "AI推进 推进五态",
+        "body": "在云之家用 yzj-cli 拉消息",
+        "acceptance_criteria": ["lingee-advance 域内可演示"],
+        "refs": [
+          {
+            "token": "yzj:im:group:adv",
+            "kind": "im",
+            "digest": "云之家 yzj-cli"
+          }
+        ]
+      }
+    },
+    {
+      "id": "atom-desk",
+      "expectWorkspace": "atom",
+      "note": "Personal ATOM product.",
+      "spec": {
+        "id": "spec_fx_atom",
+        "candidate_id": "cand_fx_atom",
+        "title": "ATOM Desk empty state",
+        "body": "Needs you 清空时显示文案",
+        "acceptance_criteria": ["今天没有要你拍板的"],
+        "refs": [
+          {
+            "token": "file:docs/12-operating-plan.md",
+            "kind": "file"
+          }
+        ]
+      }
+    },
+    {
+      "id": "unsure-company-noise",
+      "expectWorkspace": "atom",
+      "note": "Unsure company-ish ask — default personal atom, do not guess yzj.",
+      "spec": {
+        "id": "spec_fx_unsure",
+        "candidate_id": "cand_fx_unsure",
+        "title": "帮忙看一下这个接口",
+        "body": "云之家 yzj-cli grok token 本机分发 CLI",
+        "acceptance_criteria": ["给个结论"],
+        "refs": [
+          {
+            "token": "yzj:im:group:noise",
+            "kind": "im",
+            "digest": "yzj:im 前缀不得参与打分"
+          }
+        ]
+      }
+    }
+  ]
+}

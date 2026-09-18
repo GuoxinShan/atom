@@ -3,6 +3,7 @@ const state = {
   candidates: [],
   specs: [],
   checklists: [],
+  meta: {},
   selectedId: null,
   selectedKind: "candidate",
   handoffNote: "",
@@ -273,6 +274,16 @@ function awaitingChecklists() {
   return (state.checklists || []).filter((c) => c.awaitingHumanAck && !c.passed);
 }
 
+function formatLastActivity(info) {
+  const iso = info?.lastRunAt || info?.lastExtractAt;
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const label = info.lastRunAt ? "上次 run" : "上次 extract";
+  const when = d.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
+  return `${label} ${when}`;
+}
+
 function renderQueue() {
   const suggested = state.candidates.filter((c) => c.status === "suggested");
   const acks = awaitingChecklists();
@@ -288,8 +299,10 @@ function renderQueue() {
   queue.innerHTML = "";
 
   if (!suggested.length && !acks.length && !outbound) {
-    queue.innerHTML =
-      '<p class="clear">You\'re clear. Nothing needs a human gate. Listening, Lead, and providers stay in drawers.</p>';
+    const when = formatLastActivity(state.meta);
+    queue.innerHTML = `<p class="clear">今天没有要你拍板的</p>${
+      when ? `<p class="clear-meta">${escapeHtml(when)}</p>` : ""
+    }`;
     return;
   }
 
@@ -544,21 +557,27 @@ document.getElementById("lead-form").addEventListener("submit", async (e) => {
 
 async function loadDesk() {
   seedTranscript();
-  const [cands, specs, sources, triggersRes, workspaces, agents, subs, checks] = await Promise.all([
-    fetchJson("/api/candidates", { candidates: [] }),
-    fetchJson("/api/specs", { specs: [] }),
-    fetchJson("/api/sources", { sources: [] }),
-    fetch("/api/triggers")
-      .then(async (r) => ({ ok: r.ok, data: r.ok ? await r.json() : null }))
-      .catch(() => ({ ok: false, data: null })),
-    fetchJson("/api/workspaces", { workspaces: [] }),
-    fetchJson("/api/agents", { providers: [] }),
-    fetchJson("/api/subscriptions", { subscriptions: [] }),
-    fetchJson("/api/checklists", { checklists: [], awaitingHumanAck: [] }),
-  ]);
+  const [cands, specs, sources, triggersRes, workspaces, agents, subs, checks, runtime] =
+    await Promise.all([
+      fetchJson("/api/candidates", { candidates: [] }),
+      fetchJson("/api/specs", { specs: [] }),
+      fetchJson("/api/sources", { sources: [] }),
+      fetch("/api/triggers")
+        .then(async (r) => ({ ok: r.ok, data: r.ok ? await r.json() : null }))
+        .catch(() => ({ ok: false, data: null })),
+      fetchJson("/api/workspaces", { workspaces: [] }),
+      fetchJson("/api/agents", { providers: [] }),
+      fetchJson("/api/subscriptions", { subscriptions: [] }),
+      fetchJson("/api/checklists", { checklists: [], awaitingHumanAck: [] }),
+      fetchJson("/api/meta", {}),
+    ]);
   state.candidates = cands.candidates || [];
   state.specs = specs.specs || [];
   state.checklists = checks.checklists || [];
+  state.meta = {
+    lastExtractAt: runtime.lastExtractAt || null,
+    lastRunAt: runtime.lastRunAt || null,
+  };
   renderSources(sources);
   renderTriggers(triggersRes.data || {}, !triggersRes.ok);
   renderMatters();

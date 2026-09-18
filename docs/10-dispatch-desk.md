@@ -64,6 +64,8 @@ Home is **Needs you**, not a coordinator chat and not a three-column settled boa
 
 Accepted / Rejected are settled — they live under the **Matters** drawer, not the home queue.
 
+When Needs you has zero suggested and zero `awaitingHumanAck`, Desk shows calm copy: **今天没有要你拍板的**. Last extract/run time is appended only when `GET /api/meta` has a real timestamp — no invented stats.
+
 Top nav: **Desk** (default) · **Atoms** (log) · **Setup**.
 Lead / Listening / providers / workspaces / outbound live as **collapsed drawers**, not peer tabs and not the home screen.
 

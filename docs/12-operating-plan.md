@@ -74,7 +74,7 @@ Hard preference order when scoring workspaces:
 3. **Do not** let bare words `云之家` / `yzj-cli` inside an ask steal routing to `yzj` if the ask is about another product (e.g. 上下文图谱 CLI)
 4. Unsure → `atom` only for personal/side asks; otherwise leave unrouted and ask in Lead chat
 
-Week 1 engineering: strip or down-weight tooling mentions in haystack (keep human title/body product nouns).
+Week 1 engineering: score title + acceptance only; strip generic tooling mentions from the haystack (see `LeadAgent.routeSpec` + `fixtures/lead-routing.json`).
 
 ## 6. Two-week execution
 
