@@ -54,6 +54,12 @@ export async function runExtract(
 
   try {
     const all = messagesFromStore(store, groupAllow);
+    const ungatedCount = messagesFromStore(store).length;
+    if (groupAllow && groupAllow.size > 0 && all.length === 0 && ungatedCount > 0) {
+      console.warn(
+        `[extract] group allowlist matched 0/${ungatedCount} messages — check --source / sources.json groupIds`
+      );
+    }
     const gate = new HeuristicCandidateGate();
     const seeded = useGate ? gate.filter(all) : all;
 

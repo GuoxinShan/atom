@@ -26,6 +26,28 @@ const JSON_SCHEMA = {
   required: ["candidates"],
 };
 
+/** Strip every built-in tool so extract cannot wander the repo. */
+const EXTRACT_DISALLOWED_TOOLS = [
+  "run_terminal_cmd",
+  "bash",
+  "read_file",
+  "search_replace",
+  "grep",
+  "grep_search",
+  "list_dir",
+  "web_search",
+  "web_fetch",
+  "todo_write",
+  "task",
+  "kill_task",
+  "get_task_output",
+  "memory_search",
+  "memory_get",
+  "search_tool",
+  "use_tool",
+  "lsp",
+].join(",");
+
 /**
  * Agentic extract via local Grok Build CLI (not raw model HTTP).
  * Input should already be heuristic-gated seeds.
@@ -47,7 +69,8 @@ export class GrokCliExtractAgent implements ExtractAgent {
     const bin = this.opts.bin ?? process.env.ATOM_GROK_BIN ?? "grok";
     const prompt = buildPrompt(messages);
     const schemaStr = JSON.stringify(JSON_SCHEMA);
-    const promptFile = path.join(os.tmpdir(), `atom-extract-${Date.now()}.md`);
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "atom-extract-"));
+    const promptFile = path.join(tmpDir, "prompt.md");
     fs.writeFileSync(promptFile, prompt, "utf8");
 
     let stdout: string;
@@ -56,12 +79,13 @@ export class GrokCliExtractAgent implements ExtractAgent {
         bin,
         promptFile,
         schemaStr,
+        tmpDir,
         this.opts.timeoutMs ?? Number(process.env.ATOM_GROK_TIMEOUT_MS ?? 180_000),
-        this.opts.maxTurns ?? Number(process.env.ATOM_GROK_MAX_TURNS ?? 12)
+        this.opts.maxTurns ?? Number(process.env.ATOM_GROK_MAX_TURNS ?? 3)
       );
     } finally {
       try {
-        fs.unlinkSync(promptFile);
+        fs.rmSync(tmpDir, { recursive: true, force: true });
       } catch {
         /* ignore */
       }
@@ -72,6 +96,8 @@ export class GrokCliExtractAgent implements ExtractAgent {
     const out: CandidateProposal[] = [];
 
     for (const c of parsed.candidates ?? []) {
+      const title = String(c.title ?? "").trim();
+      if (!title || /^placeholder$/i.test(title)) continue;
       const ids = Array.isArray(c.source_message_ids) ? c.source_message_ids.map(String) : [];
       const refs = ids
         .map((id) => byId.get(id))
@@ -83,7 +109,7 @@ export class GrokCliExtractAgent implements ExtractAgent {
         }));
       if (refs.length < 1) continue;
       const proposal = CandidateProposalSchema.safeParse({
-        title: String(c.title ?? "").trim() || "Untitled demand",
+        title: title || "Untitled demand",
         body: String(c.body ?? ""),
         confidence: Number(c.confidence ?? 0.7),
         cluster_key: c.cluster_key ? String(c.cluster_key) : undefined,
@@ -106,7 +132,10 @@ function buildPrompt(messages: RawMessage[]): string {
     "These messages were already shortlisted as *candidate seeds* by a heuristic gate.",
     "Your job: turn them into real product/demand candidates for an approve queue.",
     "",
-    "Rules:",
+    "Hard constraints:",
+    "- Do NOT use tools, read files, or explore any repository.",
+    "- Emit exactly ONE JSON object matching the schema. No markdown fences.",
+    "- Never emit a Placeholder / draft / TODO title.",
     "- Only keep actionable demands / asks / bugs / missing capabilities.",
     "- Drop acknowledgements, FYIs, already-finished digests, and chatter.",
     "- Merge duplicates into one candidate when they are the same ask.",
@@ -123,28 +152,25 @@ function runGrok(
   bin: string,
   promptFile: string,
   schema: string,
+  cwd: string,
   timeoutMs: number,
   maxTurns: number
 ): Promise<string> {
   return new Promise((resolve, reject) => {
-    const args = [
-      "--always-approve",
-      "--max-turns",
-      String(maxTurns),
-      "--json-schema",
-      schema,
-      "--prompt-file",
-      promptFile,
-      "-p",
-      "", // headless single; prompt comes from --prompt-file
-    ];
-    // Prefer: grok -p --prompt-file PATH  (if empty -p fails, use only --prompt-file)
     const child = spawn(
       bin,
       [
         "--always-approve",
         "--max-turns",
         String(maxTurns),
+        "--cwd",
+        cwd,
+        "--disable-web-search",
+        "--no-subagents",
+        "--disallowed-tools",
+        EXTRACT_DISALLOWED_TOOLS,
+        "--rules",
+        "Do not use tools. Return exactly one JSON object matching the provided schema. No Placeholder titles.",
         "--json-schema",
         schema,
         "--prompt-file",
@@ -152,7 +178,7 @@ function runGrok(
         "--output-format",
         "json",
       ],
-      { stdio: ["ignore", "pipe", "pipe"] }
+      { stdio: ["ignore", "pipe", "pipe"], cwd }
     );
     let stdout = "";
     let stderr = "";
@@ -178,13 +204,91 @@ function runGrok(
   });
 }
 
-function parseGrokJson(stdout: string): { candidates?: Array<Record<string, unknown>> } {
+type CandidatesBlob = { candidates?: Array<Record<string, unknown>> };
+
+/** Exported for unit tests / debug. */
+export function parseGrokJson(stdout: string): CandidatesBlob {
   const trimmed = stdout.trim();
+  if (!trimmed) return { candidates: [] };
+
+  const blobs: CandidatesBlob[] = [];
+
+  const consider = (value: unknown): void => {
+    if (!value || typeof value !== "object") return;
+    const obj = value as Record<string, unknown>;
+    if (Array.isArray(obj.candidates)) {
+      blobs.push(obj as CandidatesBlob);
+    }
+    // Envelope from `grok --output-format json`
+    if (typeof obj.text === "string" && obj.text.trim()) {
+      for (const nested of extractJsonObjects(obj.text)) consider(nested);
+      try {
+        consider(JSON.parse(obj.text));
+      } catch {
+        /* concatenated handled by extractJsonObjects */
+      }
+    }
+  };
+
   try {
-    return JSON.parse(trimmed) as { candidates?: Array<Record<string, unknown>> };
+    consider(JSON.parse(trimmed));
   } catch {
-    const match = trimmed.match(/\{[\s\S]*\}/);
-    if (!match) throw new Error("grok stdout was not JSON");
-    return JSON.parse(match[0]) as { candidates?: Array<Record<string, unknown>> };
+    for (const obj of extractJsonObjects(trimmed)) consider(obj);
   }
+
+  if (blobs.length === 0) {
+    throw new Error("grok stdout had no candidates JSON");
+  }
+
+  // Prefer the richest non-placeholder blob (Grok sometimes emits a draft then a final).
+  const scored = blobs.map((b) => {
+    const list = (b.candidates ?? []).filter((c) => {
+      const t = String(c.title ?? "").trim();
+      return t && !/^placeholder$/i.test(t);
+    });
+    return { blob: { candidates: list }, score: list.length };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0]?.blob ?? { candidates: [] };
+}
+
+/** Pull every top-level `{...}` object from a string (handles `}{` concatenation). */
+export function extractJsonObjects(s: string): unknown[] {
+  const out: unknown[] = [];
+  let i = 0;
+  while (i < s.length) {
+    const start = s.indexOf("{", i);
+    if (start < 0) break;
+    let depth = 0;
+    let inStr = false;
+    let esc = false;
+    let closed = false;
+    for (let j = start; j < s.length; j++) {
+      const ch = s[j]!;
+      if (inStr) {
+        if (esc) esc = false;
+        else if (ch === "\\") esc = true;
+        else if (ch === '"') inStr = false;
+        continue;
+      }
+      if (ch === '"') inStr = true;
+      else if (ch === "{") depth++;
+      else if (ch === "}") {
+        depth--;
+        if (depth === 0) {
+          const slice = s.slice(start, j + 1);
+          try {
+            out.push(JSON.parse(slice));
+          } catch {
+            /* skip malformed */
+          }
+          i = j + 1;
+          closed = true;
+          break;
+        }
+      }
+    }
+    if (!closed) break;
+  }
+  return out;
 }
