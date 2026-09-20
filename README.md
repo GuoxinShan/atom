@@ -55,6 +55,8 @@ It does not fall back to in-process `@atom/core`. Optional `ATOM_API_AUTO_START=
 
 Default extract agent is **heuristic** (offline). Primary LLM path is **GrokCliExtractAgent** (`grok -p --always-approve --json-schema …`).
 
+Optional **Laya** System-1 HTTP (`LAYA_URL`, default `http://127.0.0.1:8790`) is two gates only: extract demand-vs-noise, and lead ornith/bonsai intensity on handoff. If Laya is down or low-confidence, ATOM fail-opens to today’s behavior. Set `LAYA_ENABLED=0` to skip. See [`docs/08-lead-agent.md`](docs/08-lead-agent.md).
+
 ```bash
 pnpm atom run --agent grok-cli
 ```

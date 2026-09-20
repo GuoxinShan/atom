@@ -20,6 +20,7 @@ export * from "./pipeline/checklist.js";
 export * from "./agents/grok-coding.js";
 export * from "./stubs/webhook-trigger.js";
 export * from "./agents/lead.js";
+export * from "./agents/laya.js";
 export * from "./setup/cold-start.js";
 export * from "./agents/lead-config.js";
 export * from "./registry/agents.js";

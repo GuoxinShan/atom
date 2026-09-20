@@ -98,3 +98,5 @@ export function isNoiseProposal(title: string, body = ""): boolean {
 }
 
 export const NOISE_REJECT_REASON = "noise-heuristic";
+/** Laya extract-gate reason when high-confidence chat/noise is dropped. */
+export const LAYA_NOISE_REJECT_REASON = "noise-laya";

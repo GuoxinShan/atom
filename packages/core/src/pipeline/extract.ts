@@ -3,6 +3,11 @@ import { EventStore } from "../store/events.js";
 import { newId } from "../schema/ids.js";
 import { HeuristicCandidateGate } from "../agents/heuristic.js";
 import { isNoiseProposal } from "../agents/noise.js";
+import {
+  LayaClient,
+  layaGateToDetail,
+  type LayaCandidateGate,
+} from "../agents/laya.js";
 import { recordExtractFinished } from "./runtime-meta.js";
 
 function messagesFromStore(store: EventStore, groupAllow?: Set<string>): RawMessage[] {
@@ -33,6 +38,8 @@ export async function runExtract(
     heuristicGate?: boolean;
     /** limit extract to these yzj group ids */
     groupAllowlist?: string[];
+    /** inject Laya client; `false` skips the optional gate (tests / LAYA_ENABLED=0) */
+    laya?: LayaClient | false;
   }
 ): Promise<{ proposed: number; skipped: number; seeded: number; gated: number; noiseDropped: number }> {
   const runId = newId("agent");
@@ -81,9 +88,20 @@ export async function runExtract(
       })
     );
 
+    const laya = opts?.laya === false ? null : opts?.laya ?? LayaClient.fromEnv();
+    let layaAvailable = false;
+    if (laya?.isEnabled()) {
+      layaAvailable = await laya.ensureUp();
+      if (!layaAvailable) {
+        console.warn("[extract] Laya unavailable — fail-open (keep suggested)");
+      }
+    }
+
     let proposed = 0;
     let skipped = 0;
     let noiseDropped = 0;
+    let layaNoiseDropped = 0;
+    let layaFailOpen = !layaAvailable && Boolean(laya?.isEnabled());
     for (const p of proposals) {
       const key = p.cluster_key ?? p.title;
       if (seenKeys.has(key)) {
@@ -99,6 +117,22 @@ export async function runExtract(
         skipped += 1;
         continue;
       }
+
+      let layaGate: LayaCandidateGate | undefined;
+      if (laya?.isEnabled() && layaAvailable && !laya.unavailable) {
+        layaGate = await laya.gateCandidate({ title: p.title, body: p.body });
+        if (layaGate.failOpen) layaFailOpen = true;
+        if (layaGate.action === "noise") {
+          layaNoiseDropped += 1;
+          noiseDropped += 1;
+          skipped += 1;
+          console.log(`[extract] laya dropped noise: ${p.title}`);
+          continue;
+        }
+      } else if (laya?.isEnabled() && !layaAvailable) {
+        layaFailOpen = true;
+      }
+
       const candId = newId("cand");
       store.append({
         type: "candidate_proposed",
@@ -112,6 +146,7 @@ export async function runExtract(
           source_message_ids: p.source_message_ids,
           agent_id: agent.id,
           gated_by: useGate ? "heuristic-gate" : "none",
+          ...(layaGate ? { laya_gate: layaGateToDetail(layaGate) } : {}),
         },
         refs: p.refs,
         actor: `agent:${agent.id}`,
@@ -134,6 +169,8 @@ export async function runExtract(
         proposed,
         skipped,
         noise_dropped: noiseDropped,
+        laya_noise_dropped: layaNoiseDropped,
+        laya_fail_open: layaFailOpen,
         message_count: all.length,
         seed_count: seeded.length,
       },
