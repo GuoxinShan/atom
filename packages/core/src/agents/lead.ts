@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import type { SpecDraft } from "../schema/types.js";
+import type { LayaModelRoute } from "./laya.js";
 
 export interface WorkspaceEntry {
   id: string;
@@ -130,7 +131,17 @@ export class LeadAgent {
     };
   }
 
-  briefing(route: RouteDecision, spec: SpecDraft): string {
+  briefing(route: RouteDecision, spec: SpecDraft, modelRoute?: LayaModelRoute): string {
+    const modelLines =
+      modelRoute && !modelRoute.failOpen
+        ? [
+            `- laya model: ${modelRoute.model ?? modelRoute.intensity}`,
+            `- laya intensity: ${modelRoute.intensity}`,
+            `- laya confidence: ${modelRoute.confidence ?? "n/a"}`,
+          ]
+        : modelRoute
+          ? [`- laya model: fail-open (${modelRoute.reason})`]
+          : [];
     return [
       "# Lead agent briefing",
       "",
@@ -142,6 +153,7 @@ export class LeadAgent {
       `- path: ${route.workspace.path}`,
       `- confidence: ${route.confidence}`,
       `- reason: ${route.reason}`,
+      ...modelLines,
       "",
       "## Task",
       `- title: ${spec.title}`,

@@ -5,6 +5,11 @@ import { projectCandidates } from "../store/candidates.js";
 import { newId } from "../schema/ids.js";
 import type { Ref, SpecDraft, HandoffPack, CodingAgent } from "../schema/types.js";
 import { LeadAgent } from "../agents/lead.js";
+import {
+  LayaClient,
+  layaModelRouteToDetail,
+  type LayaModelRoute,
+} from "../agents/laya.js";
 
 export function listSpecDrafts(store: EventStore): SpecDraft[] {
   const events = store.list({ type: "spec_drafted", limit: 500 });
@@ -99,14 +104,32 @@ export async function exportHandoff(
   repoRoot: string,
   specOrCandidateId: string,
   coding?: CodingAgent,
-  opts?: { run?: boolean; target?: "grok-cli" | "cursor" | "file" }
+  opts?: { run?: boolean; target?: "grok-cli" | "cursor" | "file"; laya?: LayaClient | false }
 ): Promise<HandoffPack> {
   const spec = findSpec(store, specOrCandidateId);
   const target = opts?.target ?? (coding ? "grok-cli" : "file");
   const lead = new LeadAgent(repoRoot);
   const route = lead.routeSpec(spec);
   console.log(`[lead] route → ${route.workspace.id} (${route.reason})`);
-  const briefing = lead.briefing(route, spec);
+
+  const laya = opts?.laya === false ? null : opts?.laya ?? LayaClient.fromEnv();
+  let modelRoute: LayaModelRoute | undefined;
+  if (laya?.isEnabled()) {
+    const summary = [spec.title, spec.body, ...spec.acceptance_criteria]
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .join("\n");
+    modelRoute = await laya.routeModel(summary);
+    if (modelRoute.failOpen) {
+      console.warn(`[lead] Laya route-model fail-open (${modelRoute.reason})`);
+    } else {
+      console.log(
+        `[lead] laya model-route → ${modelRoute.model ?? modelRoute.intensity} (${modelRoute.intensity}, conf=${modelRoute.confidence ?? "?"})`
+      );
+    }
+  }
+
+  const briefing = lead.briefing(route, spec, modelRoute);
 
   let pack: HandoffPack;
   if (coding) {
@@ -149,6 +172,7 @@ export async function exportHandoff(
         confidence: route.confidence,
         reason: route.reason,
       },
+      ...(modelRoute ? { laya_model_route: layaModelRouteToDetail(modelRoute) } : {}),
     },
     refs: spec.refs,
     actor: coding ? `agent:${coding.id}` : "system",
