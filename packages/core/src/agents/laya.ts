@@ -2,10 +2,11 @@
  * Laya System-1 HTTP client (typed decisions only — never text generation).
  *
  * ATOM uses two endpoints:
- * - POST /v1/predict  — extract → candidate gate (demand vs chat/noise)
+ * - POST /v1/predict  — extract → candidate noise gate, then duplicate-merge gate
  * - POST /v1/route-model — lead handoff → ornith (heavy) vs bonsai (light)
  *
  * Fail-open: timeout, 5xx, or low confidence never blocks the pipeline.
+ * Laya never auto-approves; Desk remains the human accept/reject gate.
  */
 
 import { LAYA_NOISE_REJECT_REASON } from "./noise.js";
@@ -41,6 +42,25 @@ export type LayaCandidateGate = {
   confidence?: number;
   demandNoul?: number;
   noiseNoul?: number;
+};
+
+/** Open Needs-you / suggested item sent to Laya for duplicate detection. */
+export type OpenItemSnippet = {
+  id: string;
+  title: string;
+  snippet: string;
+};
+
+export const MERGE_OPEN_ITEMS_CAP = 8;
+export const MERGE_SNIPPET_CHARS = 160;
+
+export type LayaMergeGate = {
+  action: "merge" | "new";
+  failOpen: boolean;
+  reason: string;
+  confidence?: number;
+  sameRequest?: number;
+  targetId?: string;
 };
 
 export type LayaModelRoute = {
@@ -82,6 +102,48 @@ export const CANDIDATE_GATE_QUESTIONS: Record<string, unknown> = {
       "Is this casual chat or noise rather than a work demand? Treat 「明天一起吃饭」 as noise.",
   },
 };
+
+/** Static merge-gate questions (dict schema, never a list). `target` is filled per open set. */
+export const MERGE_GATE_QUESTIONS: Record<string, unknown> = {
+  action: {
+    type: "choice",
+    instructions:
+      "Merge this candidate into an existing open Needs-you/suggested item, or create a new suggested ticket?",
+    criteria: {
+      merge: "duplicate of an existing open item — same underlying user request",
+      new: "distinct request that should become its own suggested ticket",
+    },
+  },
+  same_request: {
+    type: "noul",
+    instructions:
+      "Is this the same underlying user request as the best matching open item listed in state.open_items (first item is the best candidate)?",
+  },
+};
+
+export function snippetText(text: string, max = MERGE_SNIPPET_CHARS): string {
+  const t = (text ?? "").replace(/\s+/g, " ").trim();
+  if (t.length <= max) return t;
+  return `${t.slice(0, Math.max(0, max - 1))}…`;
+}
+
+export function mergeGateQuestions(openItems: OpenItemSnippet[]): Record<string, unknown> {
+  const criteria: Record<string, string> = {
+    none: "not a duplicate — create a new suggested ticket",
+  };
+  for (const item of openItems) {
+    criteria[item.id] = `${item.title} — ${item.snippet}`;
+  }
+  return {
+    ...MERGE_GATE_QUESTIONS,
+    target: {
+      type: "choice",
+      instructions:
+        "If this is a duplicate, pick the matching open item id. Use none if it is a new request.",
+      criteria,
+    },
+  };
+}
 
 function parseEnabled(raw: string | undefined): boolean {
   if (raw == null || raw.trim() === "") return true;
@@ -198,6 +260,58 @@ export function interpretCandidateAnswers(
   };
 }
 
+export function interpretMergeAnswers(
+  answers: Record<string, LayaAnswer>,
+  openItems: OpenItemSnippet[],
+  minConfidence = DEFAULT_LAYA_MIN_CONFIDENCE
+): LayaMergeGate {
+  const action = answers.action;
+  const choice = action?.choice?.toLowerCase();
+  const conf = action?.confidence ?? answers.target?.confidence ?? 0;
+  const sameRequest = answers.same_request?.noul;
+  const targetRaw = answers.target?.choice?.trim();
+  const targetIsNone = Boolean(targetRaw && targetRaw.toLowerCase() === "none");
+  const validTarget =
+    targetRaw && !targetIsNone
+      ? openItems.find((item) => item.id === targetRaw)?.id
+      : undefined;
+
+  const sameOk = typeof sameRequest !== "number" || sameRequest >= minConfidence;
+  const highMerge = choice === "merge" && conf >= minConfidence && sameOk && !targetIsNone;
+  const targetId = validTarget ?? openItems[0]?.id;
+
+  if (highMerge && targetId) {
+    return {
+      action: "merge",
+      failOpen: false,
+      reason: "duplicate",
+      confidence: conf || sameRequest,
+      sameRequest,
+      targetId,
+    };
+  }
+
+  if (choice === "new" && conf >= minConfidence) {
+    return {
+      action: "new",
+      failOpen: false,
+      reason: "distinct",
+      confidence: conf || sameRequest,
+      sameRequest,
+      targetId: validTarget,
+    };
+  }
+
+  return {
+    action: "new",
+    failOpen: true,
+    reason: openItems.length === 0 ? "no-open-items" : "ambiguous",
+    confidence: conf || sameRequest,
+    sameRequest,
+    targetId: validTarget,
+  };
+}
+
 function scanModelName(raw: unknown): string | undefined {
   const text = JSON.stringify(raw ?? "").toLowerCase();
   if (/\bornith\b/.test(text)) return "ornith";
@@ -273,6 +387,17 @@ export function layaGateToDetail(gate: LayaCandidateGate): Record<string, unknow
     confidence: gate.confidence ?? null,
     fail_open: gate.failOpen,
     reason: gate.reason,
+  };
+}
+
+export function layaMergeToDetail(gate: LayaMergeGate): Record<string, unknown> {
+  return {
+    action: gate.action,
+    fail_open: gate.failOpen,
+    reason: gate.reason,
+    confidence: gate.confidence ?? null,
+    same_request: gate.sameRequest ?? null,
+    target_id: gate.targetId ?? null,
   };
 }
 
@@ -418,5 +543,33 @@ export class LayaClient {
     });
     if (!predicted) return fail;
     return interpretCandidateAnswers(predicted.answers, this.minConfidence);
+  }
+
+  async gateMerge(input: {
+    title: string;
+    body?: string;
+    openItems: OpenItemSnippet[];
+  }): Promise<LayaMergeGate> {
+    const fail: LayaMergeGate = {
+      action: "new",
+      failOpen: true,
+      reason: "unavailable",
+    };
+    if (!this.enabled) return fail;
+    if (!input.openItems.length) {
+      return { action: "new", failOpen: false, reason: "no-open-items" };
+    }
+    const predicted = await this.predict(
+      {
+        title: input.title,
+        body: input.body ?? "",
+        text: [input.title, input.body].filter(Boolean).join("\n"),
+        open_items: input.openItems,
+        best_candidate: input.openItems[0],
+      },
+      mergeGateQuestions(input.openItems)
+    );
+    if (!predicted) return fail;
+    return interpretMergeAnswers(predicted.answers, input.openItems, this.minConfidence);
   }
 }

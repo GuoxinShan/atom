@@ -3,9 +3,11 @@ import { afterEach, describe, it } from "node:test";
 import {
   LayaClient,
   interpretCandidateAnswers,
+  interpretMergeAnswers,
   interpretRouteModel,
   intensityFromLayaModel,
   type LayaFetch,
+  type OpenItemSnippet,
 } from "./laya.js";
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -79,6 +81,75 @@ describe("interpretCandidateAnswers", () => {
       is_work_demand: { noul: 0.48 },
     });
     assert.equal(gate.action, "suggested");
+    assert.equal(gate.failOpen, true);
+  });
+});
+
+const openItems: OpenItemSnippet[] = [
+  {
+    id: "cand_oauth",
+    title: "需要给 ATOM Desk 加上 OAuth 登录",
+    snippet: "必须支持本机登录后才能批候选",
+  },
+  {
+    id: "cand_other",
+    title: "日历同步失败",
+    snippet: "1023 日历拉不到日程",
+  },
+];
+
+describe("interpretMergeAnswers", () => {
+  it("merges high-confidence duplicates into the named open item", () => {
+    const gate = interpretMergeAnswers(
+      {
+        action: { choice: "merge", confidence: 0.94 },
+        same_request: { noul: 0.91 },
+        target: { choice: "cand_oauth", confidence: 0.9 },
+      },
+      openItems
+    );
+    assert.equal(gate.action, "merge");
+    assert.equal(gate.failOpen, false);
+    assert.equal(gate.targetId, "cand_oauth");
+    assert.equal(gate.reason, "duplicate");
+  });
+
+  it("creates new when Laya says the request is distinct", () => {
+    const gate = interpretMergeAnswers(
+      {
+        action: { choice: "new", confidence: 0.9 },
+        same_request: { noul: 0.08 },
+        target: { choice: "none", confidence: 0.88 },
+      },
+      openItems
+    );
+    assert.equal(gate.action, "new");
+    assert.equal(gate.failOpen, false);
+    assert.equal(gate.reason, "distinct");
+  });
+
+  it("fail-opens low-confidence merge to new (never auto-approve)", () => {
+    const gate = interpretMergeAnswers(
+      {
+        action: { choice: "merge", confidence: 0.41 },
+        same_request: { noul: 0.5 },
+      },
+      openItems
+    );
+    assert.equal(gate.action, "new");
+    assert.equal(gate.failOpen, true);
+  });
+
+  it("fail-opens when same_request is below min confidence", () => {
+    const gate = interpretMergeAnswers(
+      {
+        action: { choice: "merge", confidence: 0.95 },
+        same_request: { noul: 0.2 },
+        target: { choice: "cand_oauth" },
+      },
+      openItems
+    );
+    assert.equal(gate.action, "new");
     assert.equal(gate.failOpen, true);
   });
 });
@@ -171,6 +242,47 @@ describe("LayaClient", () => {
     assert.equal(gate.action, "suggested");
     assert.equal(gate.failOpen, true);
     assert.ok(Date.now() - t0 < 500);
+    assert.equal(client.unavailable, true);
+  });
+
+  it("POSTs /v1/predict merge questions as a dict and merges into the target", async () => {
+    const { fetch, calls } = recordingFetch(async (url) => {
+      if (url.endsWith("/health")) return jsonResponse({ ok: true });
+      assert.match(url, /\/v1\/predict$/);
+      return jsonResponse({
+        answers: {
+          action: { type: "choice", choice: "merge", confidence: 0.93 },
+          same_request: { type: "noul", noul: 0.9, confidence: 0.9 },
+          target: { type: "choice", choice: "cand_oauth", confidence: 0.9 },
+        },
+      });
+    });
+    const client = new LayaClient({ fetch, enabled: true, timeoutMs: 200 });
+    const gate = await client.gateMerge({
+      title: "Desk 需要 OAuth 本机登录",
+      body: "同一需求",
+      openItems,
+    });
+    assert.equal(gate.action, "merge");
+    assert.equal(gate.targetId, "cand_oauth");
+    const predict = calls.find((c) => c.url.endsWith("/v1/predict"));
+    assert.ok(predict);
+    const questions = (predict?.body as { questions?: Record<string, { type?: string }> }).questions;
+    assert.equal(Array.isArray(questions), false);
+    assert.equal(questions?.action?.type, "choice");
+    assert.equal(questions?.same_request?.type, "noul");
+    const state = (predict?.body as { state?: { open_items?: OpenItemSnippet[] } }).state;
+    assert.equal(state?.open_items?.length, 2);
+  });
+
+  it("fail-opens merge predict on timeout to new", async () => {
+    const client = new LayaClient({ fetch: hangFetch(), enabled: true, timeoutMs: 40 });
+    const gate = await client.gateMerge({
+      title: "Desk 需要 OAuth 本机登录",
+      openItems,
+    });
+    assert.equal(gate.action, "new");
+    assert.equal(gate.failOpen, true);
     assert.equal(client.unavailable, true);
   });
 
