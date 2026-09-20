@@ -300,19 +300,17 @@ body {
   font-weight: 500;
   line-height: 1.35;
 }
-.detail-title-row {
+.detail-kicker {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
-.detail-title-row h3 {
-  flex: 1;
-  min-width: 0;
+.detail-kicker h2 {
+  margin: 0;
 }
 .copy-id {
   flex: 0 0 auto;
-  margin-top: 6px;
   background: transparent;
   color: var(--muted);
   border: 1px solid transparent;

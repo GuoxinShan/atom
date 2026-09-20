@@ -334,18 +334,21 @@ function buildMatters() {
       specId: spec?.id,
       title: firstHuman(spec?.title, c.title) || "未命名事项",
       kind: spec ? "spec" : "accepted",
+      status: c.status,
       updatedAt: c.updated_at,
       refs: spec?.refs || c.refs || [],
     });
   }
   for (const s of state.specs) {
     if (seenSpec.has(s.id)) continue;
+    const cand = state.candidates.find((c) => c.id === s.candidate_id);
     rows.push({
       key: s.id,
       candidateId: s.candidate_id,
       specId: s.id,
       title: firstHuman(s.title) || "未命名事项",
       kind: "spec",
+      status: cand?.status || "spec",
       refs: s.refs || [],
     });
   }
@@ -368,7 +371,7 @@ function renderMatters() {
     btn.dataset.select = m.specId || m.candidateId;
     btn.innerHTML = `
       <h3>${escapeHtml(m.title)}</h3>
-      ${metaLine({ sources: citeLabels(m.refs), status: m.kind, when: relativeTime(m.updatedAt) })}
+      ${metaLine({ sources: citeLabels(m.refs), status: m.status || m.kind, when: relativeTime(m.updatedAt) })}
     `;
     root.appendChild(btn);
   }
@@ -438,11 +441,11 @@ function renderDetail() {
     const linked = state.candidates.find((c) => c.id === chk.candidateId);
     const when = relativeTime(linked?.updated_at);
     root.innerHTML = `
-      <h2>确认清单</h2>
-      <div class="detail-title-row">
-        <h3>${escapeHtml(firstHuman(chk.title, linked?.title) || "确认清单")}</h3>
+      <div class="detail-kicker">
+        <h2>确认清单</h2>
         ${copyIdButton(chk.subjectId)}
       </div>
+      <h3>${escapeHtml(firstHuman(chk.title, linked?.title) || "确认清单")}</h3>
       ${metaLine({
         sources: citeLabels(linked?.refs),
         status: chk.passed ? "accepted" : "suggested",
@@ -475,11 +478,11 @@ function renderDetail() {
       }</p>`
     : "";
   root.innerHTML = `
-    <h2>Matter</h2>
-    <div class="detail-title-row">
-      <h3>${escapeHtml(title)}</h3>
+    <div class="detail-kicker">
+      <h2>Matter</h2>
       ${copyIdButton(sel.candidateId || sel.id)}
     </div>
+    <h3>${escapeHtml(title)}</h3>
     ${metaLine({ sources, status, when: relativeTime(sel.cand?.updated_at) })}
     <p class="body">${escapeHtml(body)}</p>
     ${citeHint}
