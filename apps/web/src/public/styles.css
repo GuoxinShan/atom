@@ -242,6 +242,7 @@ body {
 .item h3 { margin: 0; font-size: 13px; font-weight: 500; line-height: 1.35; }
 .item p { margin: 4px 0 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .item .refs { margin-top: 6px; }
+.item .meta-line { margin-top: 6px; margin-bottom: 0; }
 .item:hover { border-color: var(--line-strong); }
 .item.selected {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
@@ -299,16 +300,85 @@ body {
   font-weight: 500;
   line-height: 1.35;
 }
+.detail-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.detail-title-row h3 {
+  flex: 1;
+  min-width: 0;
+}
+.copy-id {
+  flex: 0 0 auto;
+  margin-top: 6px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 2px 6px;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+.copy-id:hover {
+  color: var(--text);
+  border-color: var(--line);
+}
+.meta-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.meta-line .when {
+  margin: 5px 0 0;
+  color: var(--muted);
+}
+.cite-hint {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.check-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+}
+.check-list li {
+  position: relative;
+  padding: 3px 0 3px 16px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+}
+.check-list li::before {
+  content: "○";
+  position: absolute;
+  left: 0;
+  color: var(--muted);
+  font-size: 10px;
+  top: 5px;
+}
+.check-list li.done {
+  color: var(--muted);
+}
+.check-list li.done::before {
+  content: "●";
+  color: var(--ok);
+}
 .matter-detail .body {
   color: var(--text);
   font-size: 13px;
   line-height: 1.5;
   white-space: pre-wrap;
-}
-.matter-detail .meta-id {
-  color: var(--muted);
-  font-size: 11px;
-  word-break: break-all;
 }
 .handoff-out {
   margin-top: 10px;
@@ -381,12 +451,12 @@ body {
   border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
   box-shadow: inset 2px 0 0 var(--accent);
 }
-.drawer-row .sub, .source .sub {
+.drawer-row .sub, .source .sub, .trigger .sub {
   color: var(--muted);
   font-size: 11px;
   line-height: 1.4;
   margin-top: 3px;
-  word-break: break-all;
+  word-break: break-word;
 }
 
 .lead-chat {
