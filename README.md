@@ -68,7 +68,7 @@ pnpm atom serve
 # open Desk at http://127.0.0.1:8787
 ```
 
-Dark editorial UI (charcoal + copper). Listen → propose → approve → route.
+Calm zinc UI (near-black + indigo `#6e7bf2`). Listen → propose → approve → route.
 
 ### Cron / webhooks
 

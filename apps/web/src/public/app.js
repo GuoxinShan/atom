@@ -258,8 +258,8 @@ function renderDetail() {
     ${
       status === "suggested"
         ? `<div class="card-actions">
-            <button type="button" data-act="approve" data-id="${escapeHtml(sel.candidateId)}">Approve</button>
-            <button type="button" data-act="reject" data-id="${escapeHtml(sel.candidateId)}">Reject</button>
+            <button type="button" class="primary" data-act="approve" data-id="${escapeHtml(sel.candidateId)}">Approve</button>
+            <button type="button" class="ghost" data-act="reject" data-id="${escapeHtml(sel.candidateId)}">Reject</button>
           </div>`
         : ""
     }
@@ -323,8 +323,8 @@ function renderQueue() {
         <p>${escapeHtml((c.body || "").slice(0, 220))}</p>
         <div class="refs">${refs || '<span class="pill">no refs</span>'}</div>
         <div class="card-actions">
-          <button type="button" data-act="approve" data-id="${escapeHtml(c.id)}">Approve</button>
-          <button type="button" data-act="reject" data-id="${escapeHtml(c.id)}">Reject</button>
+          <button type="button" class="primary" data-act="approve" data-id="${escapeHtml(c.id)}">Approve</button>
+          <button type="button" class="ghost" data-act="reject" data-id="${escapeHtml(c.id)}">Reject</button>
         </div>
       `;
       section.appendChild(card);
@@ -345,7 +345,7 @@ function renderQueue() {
         <h3>${escapeHtml(chk.title || chk.subjectId)}</h3>
         <p>All required items are done except <code>human_gate_ack</code>. ATOM will not auto-ack.</p>
         <div class="card-actions">
-          <button type="button" data-ack="${escapeHtml(chk.subjectId)}">Ack</button>
+          <button type="button" class="primary" data-ack="${escapeHtml(chk.subjectId)}">Ack</button>
         </div>
       `;
       section.appendChild(card);

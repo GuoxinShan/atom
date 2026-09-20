@@ -32,7 +32,7 @@ Top nav: **Desk** (default) · **Atoms** (stub) · **Setup**.
 
 ## Visual direction
 
-Dark editorial: charcoal ground, copper `#c4a574` accent, Agents Window / Projects density without purple SaaS clichés.
+Calm zinc inbox: near-black `#0a0a0b` / `#111113`, panels `#161618`, cards `#1c1c1f`, hairline `#27272a`, one cool accent `#6e7bf2`. Linear / Cursor Agents Window density — not copper editorial, no purple SaaS.
 
 ## Agent-assisted setup
 
