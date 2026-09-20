@@ -63,6 +63,22 @@ export function projectCandidates(store: EventStore): CandidateView[] {
           other.updated_at = ev.created_at;
         }
       }
+      // Laya duplicate fold: subject is the loser; attach refs onto the survivor
+      // without taking it off the Needs-you queue.
+      const mergedInto = detail.merged_into ? String(detail.merged_into) : undefined;
+      if (mergedInto) {
+        const survivor = map.get(mergedInto);
+        if (survivor) {
+          const seen = new Set(survivor.refs.map((r) => r.token));
+          for (const r of refs) {
+            if (!seen.has(r.token)) {
+              survivor.refs.push(r);
+              seen.add(r.token);
+            }
+          }
+          survivor.updated_at = ev.created_at;
+        }
+      }
     }
   }
 

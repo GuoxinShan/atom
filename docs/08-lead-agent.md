@@ -41,9 +41,10 @@ Heuristic = seed gate only. Agentic Grok CLI = extract. Group scope from `data/s
 
 ## Laya (optional System 1 gates)
 
-ATOM calls Laya HTTP (`LAYA_URL`, default `http://127.0.0.1:8790`) for two decisions only — never text generation.
+ATOM calls Laya HTTP (`LAYA_URL`, default `http://127.0.0.1:8790`) for typed decisions only — never text generation.
 
 1. **Extract → candidate gate** — after extract proposals, `POST /v1/predict`. High-confidence chat/noise is dropped (same path as `agents/noise.ts`); high-confidence demand stays `suggested`. Ambiguous or Laya down → fail-open to suggested (never auto-approve).
-2. **Lead handoff → model route** — before coding handoff, `POST /v1/route-model` with the task summary. `ornith` = heavier, `bonsai` = lighter; recorded on `handoff_exported` as `laya_model_route`. No intensity-split coding providers yet, so handoff is unchanged.
+2. **Extract → duplicate merge gate** — after the noise filter, `POST /v1/predict` again with the new candidate plus a short list of recent open Needs-you / suggested items. High-confidence `merge` folds the duplicate into that existing item (`decision_merged` on the loser; survivor stays suggested). Ambiguous, timeout, or Laya down → fail-open and create a new suggested ticket. Desk remains the accept/reject gate.
+3. **Lead handoff → model route** — before coding handoff, `POST /v1/route-model` with the task summary. `ornith` = heavier, `bonsai` = lighter; recorded on `handoff_exported` as `laya_model_route`. No intensity-split coding providers yet, so handoff is unchanged.
 
 `LAYA_ENABLED=0` disables. Timeouts ~1–2s; outage never blocks the pipeline. CI does not need `:8790`.

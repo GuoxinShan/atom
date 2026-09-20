@@ -1,12 +1,18 @@
 import { ExtractAgent, RawMessage } from "../schema/types.js";
 import { EventStore } from "../store/events.js";
+import { candidatesByStatus } from "../store/candidates.js";
 import { newId } from "../schema/ids.js";
 import { HeuristicCandidateGate } from "../agents/heuristic.js";
 import { isNoiseProposal } from "../agents/noise.js";
 import {
   LayaClient,
+  MERGE_OPEN_ITEMS_CAP,
   layaGateToDetail,
+  layaMergeToDetail,
+  snippetText,
   type LayaCandidateGate,
+  type LayaMergeGate,
+  type OpenItemSnippet,
 } from "../agents/laya.js";
 import { recordExtractFinished } from "./runtime-meta.js";
 
@@ -30,6 +36,20 @@ function messagesFromStore(store: EventStore, groupAllow?: Set<string>): RawMess
     });
 }
 
+/** Recent open Needs-you / suggested items for the Laya duplicate-merge gate. */
+export function openSuggestedItems(
+  store: EventStore,
+  cap = MERGE_OPEN_ITEMS_CAP
+): OpenItemSnippet[] {
+  return candidatesByStatus(store, "suggested")
+    .slice(0, cap)
+    .map((c) => ({
+      id: c.id,
+      title: c.title,
+      snippet: snippetText(c.body || c.title),
+    }));
+}
+
 export async function runExtract(
   store: EventStore,
   agent: ExtractAgent,
@@ -41,7 +61,14 @@ export async function runExtract(
     /** inject Laya client; `false` skips the optional gate (tests / LAYA_ENABLED=0) */
     laya?: LayaClient | false;
   }
-): Promise<{ proposed: number; skipped: number; seeded: number; gated: number; noiseDropped: number }> {
+): Promise<{
+  proposed: number;
+  skipped: number;
+  seeded: number;
+  gated: number;
+  noiseDropped: number;
+  merged: number;
+}> {
   const runId = newId("agent");
   const useGate = opts?.heuristicGate !== false;
   const groupAllow = opts?.groupAllowlist?.length
@@ -100,7 +127,9 @@ export async function runExtract(
     let proposed = 0;
     let skipped = 0;
     let noiseDropped = 0;
+    let merged = 0;
     let layaNoiseDropped = 0;
+    let layaMerged = 0;
     let layaFailOpen = !layaAvailable && Boolean(laya?.isEnabled());
     for (const p of proposals) {
       const key = p.cluster_key ?? p.title;
@@ -133,7 +162,21 @@ export async function runExtract(
         layaFailOpen = true;
       }
 
+      let layaMerge: LayaMergeGate | undefined;
+      const openItems = openSuggestedItems(store);
+      if (laya?.isEnabled() && layaAvailable && !laya.unavailable && openItems.length > 0) {
+        layaMerge = await laya.gateMerge({
+          title: p.title,
+          body: p.body,
+          openItems,
+        });
+        if (layaMerge.failOpen) layaFailOpen = true;
+      }
+
       const candId = newId("cand");
+      const mergeNow =
+        layaMerge?.action === "merge" && Boolean(layaMerge.targetId) && !layaMerge.failOpen;
+
       store.append({
         type: "candidate_proposed",
         subject_id: candId,
@@ -147,11 +190,37 @@ export async function runExtract(
           agent_id: agent.id,
           gated_by: useGate ? "heuristic-gate" : "none",
           ...(layaGate ? { laya_gate: layaGateToDetail(layaGate) } : {}),
+          ...(layaMerge ? { laya_merge: layaMergeToDetail(layaMerge) } : {}),
         },
         refs: p.refs,
         actor: `agent:${agent.id}`,
       });
       seenKeys.add(key);
+
+      if (mergeNow && layaMerge?.targetId) {
+        // Fold the duplicate off Needs-you. Survivor stays suggested — Desk
+        // is still the accept/reject gate. Subject is the loser so projection
+        // does not mark the existing item merged.
+        store.append({
+          type: "decision_merged",
+          subject_id: candId,
+          summary: `laya merge into ${layaMerge.targetId}: ${p.title}`,
+          detail: {
+            merged_into: layaMerge.targetId,
+            merged_ids: [candId],
+            laya_merge: layaMergeToDetail(layaMerge),
+          },
+          refs: p.refs,
+          actor: "system:laya-merge",
+        });
+        merged += 1;
+        layaMerged += 1;
+        console.log(
+          `[extract] laya merged duplicate into ${layaMerge.targetId}: ${p.title}`
+        );
+        continue;
+      }
+
       proposed += 1;
     }
 
@@ -168,8 +237,10 @@ export async function runExtract(
         kind: "extract",
         proposed,
         skipped,
+        merged,
         noise_dropped: noiseDropped,
         laya_noise_dropped: layaNoiseDropped,
+        laya_merged: layaMerged,
         laya_fail_open: layaFailOpen,
         message_count: all.length,
         seed_count: seeded.length,
@@ -184,6 +255,7 @@ export async function runExtract(
       seeded: seeded.length,
       gated: all.length - seeded.length,
       noiseDropped,
+      merged,
     };
   } catch (err) {
     store.append({
