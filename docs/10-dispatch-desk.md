@@ -79,4 +79,4 @@ Lead / Listening / providers / workspaces / outbound live as **collapsed drawers
 
 - No fake “New Project” empty chat as the home screen
 - No pretending Lead writes production code in-page
-- No purple SaaS; keep calm zinc + one indigo accent (`#6e7bf2`), Linear / Cursor Agents Window density
+- No purple SaaS; keep a light zinc inbox + one indigo accent (`#6e7bf2`), Linear / Cursor Agents Window density
