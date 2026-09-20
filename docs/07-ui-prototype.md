@@ -32,7 +32,7 @@ Top nav: **Desk** (default) · **Atoms** (stub) · **Setup**.
 
 ## Visual direction
 
-Calm zinc inbox: near-black `#0a0a0b` / `#111113`, panels `#161618`, cards `#1c1c1f`, hairline `#27272a`, one cool accent `#6e7bf2`. Linear / Cursor Agents Window density — not copper editorial, no purple SaaS.
+Light zinc inbox: page `#f7f7f8`, cards `#ffffff`, hairline `#e4e4e7`, text `#18181b` / muted `#71717a`, one cool accent `#6e7bf2`. Linear / Cursor Agents Window density — not copper editorial, no near-black charcoal, no purple SaaS.
 
 ## Agent-assisted setup
 
