@@ -9,7 +9,10 @@ import {
 import type { CandidateView } from "../schema/types.js";
 import {
   DEFAULT_THEME_VOCABULARY,
+  divertProjectFromText,
+  divertThemeFromText,
   mapToAllowlist,
+  tryMapAllowlist,
   type ThemeVocabulary,
 } from "../agents/theme-vocabulary.js";
 
@@ -90,7 +93,7 @@ export function groupNeedsYouCandidates(
     }
   }
 
-  const assigned = tentatives.map((t) => assignHeuristic(t, workspaces, stemCount, wsStemCount));
+  const assigned = tentatives.map((t) => assignHeuristic(t, workspaces, stemCount, wsStemCount, vocab));
   const buckets = new Map<string, { title: string; kind: NeedsGroupKind; ids: string[]; latest: string }>();
   for (const a of assigned) {
     const cur = buckets.get(a.key);
@@ -116,8 +119,8 @@ export function groupNeedsYouCandidates(
 
   const kindRank: Record<NeedsGroupKind, number> = { theme: 0, project: 1, heuristic: 2 };
   groups.sort((a, b) => {
-    const otherA = a.key === "heuristic:other" ? 1 : 0;
-    const otherB = b.key === "heuristic:other" ? 1 : 0;
+    const otherA = a.title === "其他" ? 1 : 0;
+    const otherB = b.title === "其他" ? 1 : 0;
     if (otherA !== otherB) return otherA - otherB;
     const kr = kindRank[a.kind] - kindRank[b.kind];
     if (kr !== 0) return kr;
@@ -125,7 +128,7 @@ export function groupNeedsYouCandidates(
     const latestB = buckets.get(b.key)?.latest ?? "";
     return latestB.localeCompare(latestA);
   });
-  return groups;
+  return coalesceOtherGroups(groups);
 }
 
 export function loadGroupingWorkspaces(repoRoot: string): WorkspaceEntry[] {
@@ -139,8 +142,23 @@ export function loadGroupingWorkspaces(repoRoot: string): WorkspaceEntry[] {
   }
 }
 
+function coalesceOtherGroups(groups: NeedsGroup[]): NeedsGroup[] {
+  const others = groups.filter((g) => g.title === "其他");
+  if (others.length < 2) return groups;
+  const winner = others.find((g) => g.kind === "theme") ?? others[0]!;
+  const ids = [...new Set(others.flatMap((g) => g.candidate_ids))];
+  winner.candidate_ids = ids;
+  const drop = new Set(others.filter((g) => g.key !== winner.key).map((g) => g.key));
+  return groups.filter((g) => !drop.has(g.key));
+}
+
 function classify(cand: CandidateView, workspaces: WorkspaceEntry[], vocab: ThemeVocabulary) {
-  const theme = pickTheme(cand, vocab);
+  const storedTheme = optionalHuman(cand.theme) ?? optionalHuman(cand.tags?.theme);
+  const mappedTheme = storedTheme ? tryMapAllowlist(storedTheme, vocab.themes) : undefined;
+  const theme =
+    mappedTheme && mappedTheme !== vocab.other
+      ? mappedTheme
+      : divertThemeFromText(cand.title, cand.body, vocab);
   if (theme) {
     return {
       cand,
@@ -149,13 +167,26 @@ function classify(cand: CandidateView, workspaces: WorkspaceEntry[], vocab: Them
       title: theme,
     };
   }
-  const project = pickProject(cand, vocab);
+  const storedProject = optionalHuman(cand.project) ?? optionalHuman(cand.tags?.project);
+  const mappedProject = storedProject ? tryMapAllowlist(storedProject, vocab.projects) : undefined;
+  const project =
+    mappedProject && mappedProject !== vocab.other
+      ? mappedProject
+      : divertProjectFromText(cand.title, cand.body, vocab);
   if (project) {
     return {
       cand,
       kind: "project" as const,
       key: `project:${normKey(project)}`,
       title: project,
+    };
+  }
+  if (storedTheme) {
+    return {
+      cand,
+      kind: "theme" as const,
+      key: `theme:${normKey(vocab.other)}`,
+      title: vocab.other,
     };
   }
   const ws = matchWorkspace(cand, workspaces);
@@ -182,7 +213,8 @@ function assignHeuristic(
   },
   workspaces: WorkspaceEntry[],
   stemCount: Map<string, number>,
-  wsStemCount: Map<string, number>
+  wsStemCount: Map<string, number>,
+  vocab: ThemeVocabulary
 ) {
   if (t.kind !== "heuristic") return t;
   const ws = t.wsId ? workspaces.find((w) => w.id === t.wsId) : undefined;
@@ -190,6 +222,18 @@ function assignHeuristic(
   const stem = t.stem || "";
   const sharedStem = stem && (stemCount.get(stem) ?? 0) >= 2;
   const sharedWsStem = Boolean(t.wsId && stem && (wsStemCount.get(`${t.wsId}\0${stem}`) ?? 0) >= 2);
+
+  const foldTheme =
+    tryMapAllowlist(wsTitle, vocab.themes) ??
+    (stem ? tryMapAllowlist(prettyStem(stem, t.cand.title), vocab.themes) : undefined);
+  if (foldTheme && foldTheme !== vocab.other) {
+    return {
+      ...t,
+      kind: "theme" as const,
+      key: `theme:${normKey(foldTheme)}`,
+      title: foldTheme,
+    };
+  }
 
   if (t.wsId && wsTitle && sharedWsStem) {
     return {

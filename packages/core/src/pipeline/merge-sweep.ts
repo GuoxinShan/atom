@@ -21,10 +21,12 @@ import { candidatesByStatus, projectCandidates } from "../store/candidates.js";
 import {
   LayaClient,
   MERGE_OPEN_ITEMS_CAP,
+  rankOpenItemsForMerge,
   snippetText,
   type LayaMergeGate,
   type OpenItemSnippet,
 } from "../agents/laya.js";
+import { loadThemeVocabulary } from "../agents/theme-vocabulary.js";
 import { appendLayaMergeDecision, isLayaMergeNow } from "./laya-merge.js";
 
 export type MergeSweepPair = {
@@ -61,6 +63,7 @@ export function openItemSnippet(c: CandidateView): OpenItemSnippet {
     id: c.id,
     title: c.title,
     snippet: snippetText(c.body || c.title),
+    refs: c.refs.map((r) => r.token),
   };
 }
 
@@ -169,16 +172,18 @@ export async function runMergeSweep(
         continue;
       }
 
-      // Newest earlier first — same recency bias as extract's openSuggestedItems.
-      const openItems = [...earlier]
-        .reverse()
-        .slice(0, MERGE_OPEN_ITEMS_CAP)
-        .map(openItemSnippet);
+      // Rank by local near-duplicate score so the cap-8 window sees the twin.
+      const openItems = rankOpenItemsForMerge(
+        { title: item.title, body: item.body, refs: item.refs.map((r) => r.token) },
+        earlier.map(openItemSnippet),
+        MERGE_OPEN_ITEMS_CAP
+      );
 
       compared += 1;
       const gate = await laya.gateMerge({
         title: item.title,
         body: item.body,
+        refs: item.refs.map((r) => r.token),
         openItems,
       });
       if (gate.failOpen) failOpen = true;
@@ -210,6 +215,8 @@ export async function runMergeSweep(
           loserRefs: loserLive.refs,
           targetId: targetLive.id,
           gate,
+          loser: loserLive,
+          vocab: loadThemeVocabulary(opts?.repoRoot),
         });
         console.log(
           `[merge-sweep] merged ${loserLive.id} → ${targetLive.id}: ${loserLive.title}`

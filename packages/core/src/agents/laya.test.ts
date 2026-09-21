@@ -398,15 +398,73 @@ describe("interpretMergeAnswers", () => {
     }
   });
 
-  it("creates new when same_request is below the 0.90 merge floor", () => {
+  it("merges near-duplicate paraphrases when same_request is below the 0.90 floor but locally the same ask", () => {
     const gate = interpretMergeAnswers(
       mergeAnswers("cand_oauth", 0.89),
       openItems,
       DEFAULT_LAYA_MERGE_MIN_CONFIDENCE,
       similarOauth
     );
+    assert.equal(gate.action, "merge");
+    assert.equal(gate.failOpen, false);
+    assert.equal(gate.targetId, "cand_oauth");
+  });
+
+  it("still creates new when same_request is below 0.90 and titles are unrelated", () => {
+    const gate = interpretMergeAnswers(
+      mergeAnswers("cand_oauth", 0.89),
+      openItems,
+      DEFAULT_LAYA_MERGE_MIN_CONFIDENCE,
+      dissimilarShorthand
+    );
     assert.equal(gate.action, "new");
     assert.notEqual(gate.reason, "duplicate");
+  });
+
+  it("merges 速记迁灵基鉴权 paraphrases as the same request", () => {
+    const items: OpenItemSnippet[] = [
+      {
+        id: "cand_shorthand",
+        title: "评估速记迁入灵基并重做lingee壳鉴权",
+        snippet: "速记迁入灵基，重做 lingee 壳鉴权",
+      },
+    ];
+    const gate = interpretMergeAnswers(
+      {
+        action: { choice: "new", confidence: 0.22 },
+        same_request: { noul: 0.78 },
+        target: { choice: "cand_shorthand" },
+      },
+      items,
+      DEFAULT_LAYA_MERGE_MIN_CONFIDENCE,
+      { title: "速记迁入灵基鉴权", body: "评估速记迁入灵基并重做鉴权" }
+    );
+    assert.equal(gate.action, "merge");
+    assert.equal(gate.failOpen, false);
+    assert.equal(gate.targetId, "cand_shorthand");
+  });
+
+  it("does not merge 速记 twins into 日程 MCP even when Laya names that target", () => {
+    const mixed: OpenItemSnippet[] = [
+      ...calendarMcpItems,
+      {
+        id: "cand_shorthand",
+        title: "评估速记迁入灵基并重做lingee壳鉴权",
+        snippet: "速记迁入灵基",
+      },
+    ];
+    const gate = interpretMergeAnswers(
+      {
+        action: { choice: "merge", confidence: 0.2 },
+        same_request: { noul: 0.97 },
+        target: { choice: "cand_cal_mcp" },
+      },
+      mixed,
+      DEFAULT_LAYA_MERGE_MIN_CONFIDENCE,
+      { title: "速记迁入灵基鉴权", body: "评估速记迁入灵基并重做鉴权" }
+    );
+    assert.equal(gate.action, "merge");
+    assert.equal(gate.targetId, "cand_shorthand");
   });
 });
 
@@ -521,6 +579,24 @@ describe("interpretTagAnswers", () => {
     assert.equal(none.reason, "other");
     assert.equal(none.theme, "其他");
     assert.equal(none.project, undefined);
+  });
+
+  it("diverts Laya 「其他」 onto title/body vocabulary hits without new labels", () => {
+    const diverted = interpretTagAnswers(
+      {
+        theme: { choice: "其他", confidence: 0.93 },
+        project: { choice: "none", confidence: 0.9 },
+      },
+      DEFAULT_TAG_LABELS,
+      0.8,
+      DEFAULT_PROJECT_LABELS,
+      "其他",
+      { title: "速记迁入灵基鉴权", body: "评估速记迁入灵基" }
+    );
+    assert.equal(diverted.failOpen, false);
+    assert.equal(diverted.reason, "diverted");
+    assert.equal(diverted.theme, "速记");
+    assert.equal(diverted.project, undefined);
   });
 
   it("does not apply low-confidence labels", () => {

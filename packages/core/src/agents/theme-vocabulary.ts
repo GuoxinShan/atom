@@ -265,6 +265,78 @@ export function mapToAllowlist(
   return tryMapAllowlist(raw, labels) ?? otherTitle;
 }
 
+function needleIndex(hay: string, needle: string): number {
+  if (!needle || needle.length < 2) return -1;
+  return hay.indexOf(needle);
+}
+
+type DivertHit = { title: string; index: number; len: number };
+
+function scanAllowlistHits(text: string, labels: ThemeLabel[], otherTitle: string): DivertHit[] {
+  const hay = (text ?? "").toLowerCase();
+  if (!hay.trim()) return [];
+  const hits: DivertHit[] = [];
+  for (const label of labels) {
+    const title = label.title.trim();
+    if (!title || title === otherTitle) continue;
+    for (const raw of [title, ...(label.aliases ?? [])]) {
+      const needle = raw.trim().toLowerCase();
+      if (needle.length < 2) continue;
+      // Skip 1–3 letter English aliases (bug, gap) — too easy to false-hit.
+      if (!hasCjk(needle) && needle.length < 4) continue;
+      const index = needleIndex(hay, needle);
+      if (index < 0) continue;
+      hits.push({ title, index, len: needle.length });
+    }
+  }
+  return hits;
+}
+
+function pickDivertHit(hits: DivertHit[]): string | undefined {
+  if (!hits.length) return undefined;
+  const unique = [...new Set(hits.map((h) => h.title))];
+  if (unique.length === 1) return unique[0];
+  hits.sort((a, b) => a.index - b.index || b.len - a.len);
+  return hits[0]?.title;
+}
+
+/**
+ * Map title/body onto the closed allowlist without new labels.
+ * Unique hit wins; multiple hits prefer the earliest, longest needle
+ * (速记迁入灵基 → 速记, not 迁移方案 / AI推进).
+ */
+export function divertThemeFromText(
+  title: string | undefined,
+  body: string | undefined,
+  vocab: ThemeVocabulary = DEFAULT_THEME_VOCABULARY
+): string | undefined {
+  const titleHits = scanAllowlistHits(title ?? "", vocab.themes, vocab.other);
+  const picked = pickDivertHit(titleHits);
+  if (picked) return picked;
+  return pickDivertHit(scanAllowlistHits(`${title ?? ""}\n${body ?? ""}`, vocab.themes, vocab.other));
+}
+
+export function divertProjectFromText(
+  title: string | undefined,
+  body: string | undefined,
+  vocab: ThemeVocabulary = DEFAULT_THEME_VOCABULARY
+): string | undefined {
+  const titleHits = scanAllowlistHits(title ?? "", vocab.projects, vocab.other);
+  const picked = pickDivertHit(titleHits);
+  if (picked) return picked;
+  return pickDivertHit(scanAllowlistHits(`${title ?? ""}\n${body ?? ""}`, vocab.projects, vocab.other));
+}
+
+/** Stored or diverted non-其他 theme, if any. */
+export function canonicalNonOtherTheme(
+  cand: { title?: string; body?: string; theme?: string; tags?: { theme?: string } },
+  vocab: ThemeVocabulary = DEFAULT_THEME_VOCABULARY
+): string | undefined {
+  const stored = tryMapAllowlist(cand.theme ?? cand.tags?.theme, vocab.themes);
+  if (stored && stored !== vocab.other) return stored;
+  return divertThemeFromText(cand.title, cand.body, vocab);
+}
+
 export function normalizeTheme(raw: string | undefined, vocab: ThemeVocabulary = DEFAULT_THEME_VOCABULARY): string {
   return mapToAllowlist(raw, vocab.themes, vocab.other);
 }

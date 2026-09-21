@@ -127,7 +127,60 @@ describe("Needs-you display grouping", () => {
     assert.ok(groups.length <= 4);
   });
 
-  it("clusters untagged cards by workspace instead of one flat list", () => {
+  it("diverts untagged 速记 / 日程 cards out of 其他 into the closed vocabulary", () => {
+    const groups = groupNeedsYouCandidates(
+      [
+        cand("a", "速记迁入灵基鉴权", { theme: "其他" }),
+        cand("b", "评估速记迁入灵基并重做lingee壳鉴权"),
+        cand("c", "修复日程 MCP 云之家授权失败"),
+        cand("d", "leftover freeform ticket xyz", { theme: "OAuth" }),
+      ],
+      workspaces
+    );
+    const shorthand = groups.find((g) => g.title === "速记");
+    const cal = groups.find((g) => g.title === "日程/会议");
+    const other = groups.find((g) => g.title === "其他");
+    assert.ok(shorthand);
+    assert.deepEqual(shorthand?.candidate_ids.sort(), ["a", "b"]);
+    assert.equal(shorthand?.kind, "theme");
+    assert.deepEqual(cal?.candidate_ids, ["c"]);
+    assert.deepEqual(other?.candidate_ids, ["d"]);
+    assert.equal(groups.filter((g) => g.title === "其他").length, 1);
+    assert.equal(
+      groups.some((g) => g.title === "迁移方案" || g.key.startsWith("heuristic:")),
+      false
+    );
+  });
+
+  it("folds heuristic AI推进 leftovers into the canonical theme bucket", () => {
+    const groups = groupNeedsYouCandidates(
+      [
+        cand("a", "推进五态任务拆解", { theme: "AI推进" }),
+        cand("b", "Task Ui 交互", {
+          body: "lingee 推进五态 Task Ui",
+          cluster_key: "task-ui",
+        }),
+        cand("c", "AI推进 · 鉴权壳", { body: "lingee 壳鉴权" }),
+      ],
+      [
+        {
+          id: "ai-advance",
+          machine: "rock-shan",
+          path: "/ai-advance",
+          kind: "work",
+          tags: ["ai-advance", "lingee"],
+          match: ["AI推进", "lingee", "推进五态"],
+        },
+      ]
+    );
+    const ai = groups.filter((g) => g.title === "AI推进");
+    assert.equal(ai.length, 1);
+    assert.equal(ai[0]?.kind, "theme");
+    assert.deepEqual(ai[0]?.candidate_ids.sort(), ["a", "b", "c"]);
+    assert.equal(groups.some((g) => g.kind === "heuristic"), false);
+  });
+
+  it("diverts untagged workspace-looking cards onto allowlist theme/project", () => {
     const groups = groupNeedsYouCandidates(
       [
         cand("a", "需要给 ATOM Desk 加上 OAuth 登录", { cluster_key: "existing-cand_aaa111" }),
@@ -139,15 +192,14 @@ describe("Needs-you display grouping", () => {
     );
     assert.ok(groups.length >= 2, `expected split groups, got ${groups.map((g) => g.title).join(",")}`);
     const atom = groups.find((g) => g.candidate_ids.includes("a") && g.candidate_ids.includes("b"));
-    const yzj = groups.find((g) => g.candidate_ids.includes("c") && g.candidate_ids.includes("d"));
-    assert.ok(atom, `missing ATOM group: ${JSON.stringify(groups)}`);
-    assert.ok(yzj, `missing yzj group: ${JSON.stringify(groups)}`);
-    assert.equal(atom?.kind, "heuristic");
-    assert.equal(yzj?.kind, "heuristic");
-    assert.match(atom?.key ?? "", /^heuristic:ws:atom/);
-    assert.match(yzj?.key ?? "", /^heuristic:ws:yzj/);
-    assert.match(atom?.title ?? "", /ATOM/);
-    assert.match(yzj?.title ?? "", /云之家|日历/);
+    const cal = groups.find((g) => g.candidate_ids.includes("c") || g.candidate_ids.includes("d"));
+    assert.ok(atom, `missing ATOM/事元 group: ${JSON.stringify(groups)}`);
+    assert.ok(cal, `missing calendar/云之家 group: ${JSON.stringify(groups)}`);
+    assert.equal(atom?.kind, "project");
+    assert.equal(atom?.title, "事元");
+    assert.equal(cal?.kind, "theme");
+    assert.equal(["日程/会议", "云之家"].includes(cal?.title ?? ""), true);
+    assert.equal(groups.some((g) => g.kind === "heuristic"), false);
   });
 
   it("clusters untagged cards sharing a title stem / cluster_key", () => {

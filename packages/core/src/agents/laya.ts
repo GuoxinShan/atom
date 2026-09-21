@@ -24,8 +24,19 @@ import {
   type LayaGateThresholds,
 } from "./preference-memory.js";
 import {
+  bestNearDuplicate,
+  DEFAULT_LAYA_MERGE_TOPIC_MIN,
+  NEAR_DUP_MERGE_NOUL_MIN,
+  NEAR_DUP_OVERRIDE_TITLE_MIN,
+  rankOpenItemsForMerge,
+  scoreNearDuplicate,
+  titleTopicOverlap,
+} from "./near-duplicate.js";
+import {
   DEFAULT_PROJECT_LABELS,
   DEFAULT_THEME_LABELS,
+  divertProjectFromText,
+  divertThemeFromText,
   TAG_NONE,
   TAG_OTHER,
   isNoneLabel,
@@ -33,6 +44,22 @@ import {
   tryMapAllowlist,
   type ThemeLabel,
 } from "./theme-vocabulary.js";
+
+export {
+  DEFAULT_LAYA_MERGE_TOPIC_MIN,
+  NEAR_DUP_MERGE_NOUL_MIN,
+  NEAR_DUP_OVERRIDE_TITLE_MIN,
+  NEAR_DUP_SUPPORT_MIN,
+  NEAR_DUP_TEXT_MIN,
+  NEAR_DUP_TITLE_MIN,
+  bestNearDuplicate,
+  isNearDuplicate,
+  rankOpenItemsForMerge,
+  scoreNearDuplicate,
+  titleTopicOverlap,
+  titleTopicTokens,
+  titlesAreSameTopic,
+} from "./near-duplicate.js";
 
 export const DEFAULT_LAYA_URL = "http://127.0.0.1:8790";
 /**
@@ -50,8 +77,6 @@ export const LAYA_UNAVAILABLE_AFTER_5XX = 2;
 export const DEFAULT_LAYA_MIN_CONFIDENCE = 0.8;
 /** Auto-merge floor for `same_request`. Preference memory may raise this; never lower. */
 export const DEFAULT_LAYA_MERGE_MIN_CONFIDENCE = 0.9;
-/** Jaccard floor: below this, titles are a different topic even if same_request is high. */
-export const DEFAULT_LAYA_MERGE_TOPIC_MIN = 0.18;
 export const LAYA_NOISE_REASON = LAYA_NOISE_REJECT_REASON;
 export type LayaTransportFail = "timeout" | "unavailable";
 
@@ -88,6 +113,8 @@ export type OpenItemSnippet = {
   id: string;
   title: string;
   snippet: string;
+  /** Local ranking only — stripped before the Laya HTTP body. */
+  refs?: string[];
 };
 
 export const MERGE_OPEN_ITEMS_CAP = 8;
@@ -383,75 +410,11 @@ function noulClears(noul: number | undefined, min: number): boolean {
   return typeof noul === "number" && noul >= min;
 }
 
-/** Process words that should not glue unrelated work items together. */
-const TITLE_TOPIC_STOP = new Set([
-  "需要",
-  "给",
-  "加上",
-  "修复",
-  "评估",
-  "并",
-  "重做",
-  "新增",
-  "落地",
-  "版本",
-  "一个",
-  "这个",
-  "进行",
-  "实现",
-  "支持",
-  "必须",
-  "才能",
-  "一下",
-]);
-
 export function effectiveMergeFloor(raw?: number): number {
   if (typeof raw === "number" && Number.isFinite(raw)) {
     return Math.max(DEFAULT_LAYA_MERGE_MIN_CONFIDENCE, raw);
   }
   return DEFAULT_LAYA_MERGE_MIN_CONFIDENCE;
-}
-
-export function titleTopicTokens(text: string): string[] {
-  const t = (text ?? "").toLowerCase();
-  const tokens = new Set<string>();
-  for (const m of t.matchAll(/[a-z0-9][a-z0-9._-]{1,}/g)) {
-    tokens.add(m[0]);
-  }
-  const runs = t.match(/[\u3400-\u9fff]+/g) ?? [];
-  for (const run of runs) {
-    if (run.length === 1) {
-      if (!TITLE_TOPIC_STOP.has(run)) tokens.add(run);
-      continue;
-    }
-    if (run.length <= 4 && !TITLE_TOPIC_STOP.has(run)) tokens.add(run);
-    for (let i = 0; i < run.length - 1; i++) {
-      const bg = run.slice(i, i + 2);
-      if (!TITLE_TOPIC_STOP.has(bg)) tokens.add(bg);
-    }
-  }
-  return [...tokens];
-}
-
-/** Jaccard overlap of title/topic tokens. 1 when either side is empty (do not veto). */
-export function titleTopicOverlap(a: string, b: string): number {
-  const A = new Set(titleTopicTokens(a));
-  const B = new Set(titleTopicTokens(b));
-  if (A.size === 0 || B.size === 0) return 1;
-  let inter = 0;
-  for (const tok of A) {
-    if (B.has(tok)) inter += 1;
-  }
-  const union = A.size + B.size - inter;
-  return union === 0 ? 1 : inter / union;
-}
-
-export function titlesAreSameTopic(
-  a: string,
-  b: string,
-  minOverlap = DEFAULT_LAYA_MERGE_TOPIC_MIN
-): boolean {
-  return titleTopicOverlap(a, b) >= minOverlap;
 }
 
 export function interpretCandidateAnswers(
@@ -593,7 +556,12 @@ export function interpretOutboundAnswers(
 export type MergeCandidateText = {
   title?: string;
   body?: string;
+  refs?: string[];
 };
+
+function mergeTextFromItem(item: OpenItemSnippet): MergeCandidateText {
+  return { title: item.title, body: item.snippet, refs: item.refs };
+}
 
 export function interpretMergeAnswers(
   answers: Record<string, LayaAnswer>,
@@ -613,42 +581,46 @@ export function interpretMergeAnswers(
       ? openItems.find((item) => item.id === targetRaw)?.id
       : undefined;
 
-  // Confidence policy (noul-first):
+  // Confidence policy (noul-first + local near-duplicate):
   // `action` choice calibration is weak in live Laya; `same_request` noul is
-  // the reliable duplicate signal. Do not require high action.confidence when
-  // noul already clears the merge floor (default / minimum 0.90).
-  //
-  // Merge (auto, no Desk) when:
-  //   same_request >= mergeFloor
-  //   AND a real open-item target id (named, or first item if target omitted —
-  //       same_request is defined against the best/first open item)
-  //   AND action is merge, missing, or low-confidence (same_request dominates)
-  //   AND candidate title/topic is not far from the target card title
-  //
-  // Conservative fail-open when:
-  //   same_request high BUT action is high-confidence "new" (conflict)
-  //   same_request high BUT target is "none" or a hallucinated id
-  //   both signals weak / timeout / Laya down
-  //
-  // Distinct new (not fail-open) when:
-  //   action is high-confidence "new" AND same_request is not high
-  //   OR titles/topics are far apart (even if same_request is high)
+  // the reliable duplicate signal. Local title/body/ref overlap raises
+  // sensitivity for paraphrases (速记迁灵基鉴权 twins) without re-merging
+  // unrelated work (速记 vs 日程 MCP stays topic-mismatch).
   const sameHigh = noulClears(sameRequest, mergeFloor);
   const actionHigh = conf >= mergeFloor;
   const actionMerge = choice === "merge";
   const actionNew = choice === "new";
-  const highConfNewConflict = sameHigh && actionNew && actionHigh;
 
-  const targetId =
+  const nearDupItem = candidate ? bestNearDuplicate(candidate, openItems) : undefined;
+  let targetId =
     validTarget ??
     (!targetRaw && (sameHigh || actionMerge) ? openItems[0]?.id : undefined);
-  const targetItem = targetId ? openItems.find((item) => item.id === targetId) : undefined;
-  const topicOverlap =
-    candidate?.title && targetItem?.title
-      ? titleTopicOverlap(candidate.title, targetItem.title)
-      : undefined;
+  let targetItem = targetId ? openItems.find((item) => item.id === targetId) : undefined;
+  let namedScore =
+    candidate && targetItem ? scoreNearDuplicate(candidate, mergeTextFromItem(targetItem)) : undefined;
+  const namedTopicFar =
+    Boolean(candidate?.title && targetItem?.title) &&
+    (namedScore?.titleOverlap ??
+      titleTopicOverlap(candidate?.title ?? "", targetItem?.title ?? "")) < DEFAULT_LAYA_MERGE_TOPIC_MIN;
+
+  if (namedTopicFar && nearDupItem && nearDupItem.id !== targetId) {
+    targetId = nearDupItem.id;
+    targetItem = nearDupItem;
+    namedScore = scoreNearDuplicate(candidate!, mergeTextFromItem(nearDupItem));
+  }
+  if (!targetId && nearDupItem) {
+    targetId = nearDupItem.id;
+    targetItem = nearDupItem;
+    namedScore = scoreNearDuplicate(candidate!, mergeTextFromItem(nearDupItem));
+  }
+
+  const topicOverlap = namedScore?.titleOverlap;
   const topicFar =
     typeof topicOverlap === "number" && topicOverlap < DEFAULT_LAYA_MERGE_TOPIC_MIN;
+  const nearDup = Boolean(namedScore?.nearDuplicate);
+  const strongNearDup = (namedScore?.titleOverlap ?? 0) >= NEAR_DUP_OVERRIDE_TITLE_MIN;
+  const sameNear = noulClears(sameRequest, NEAR_DUP_MERGE_NOUL_MIN);
+  const highConfNewConflict = sameHigh && actionNew && actionHigh && !strongNearDup;
 
   if (highConfNewConflict) {
     return {
@@ -663,11 +635,17 @@ export function interpretMergeAnswers(
   }
 
   const noulMerge = sameHigh && Boolean(targetId) && !targetIsNone;
-  const sameOk = typeof sameRequest !== "number" || sameHigh;
+  const nearNoulMerge = nearDup && sameNear && Boolean(targetId);
+  const sameOk = typeof sameRequest !== "number" || sameHigh || (nearDup && sameNear);
   const choiceMerge = actionMerge && actionHigh && sameOk && Boolean(targetId) && !targetIsNone;
+  const localMerge =
+    nearDup &&
+    Boolean(targetId) &&
+    !topicFar &&
+    (actionMerge || !actionNew || strongNearDup || sameNear || sameHigh);
 
-  if ((noulMerge || choiceMerge) && targetId) {
-    if (topicFar) {
+  if ((noulMerge || choiceMerge || nearNoulMerge || localMerge) && targetId) {
+    if (topicFar && !nearDup) {
       return {
         action: "new",
         failOpen: false,
@@ -681,7 +659,7 @@ export function interpretMergeAnswers(
     return {
       action: "merge",
       failOpen: false,
-      reason: "duplicate",
+      reason: nearDup && !noulMerge && !choiceMerge ? "near-duplicate" : "duplicate",
       confidence: sameRequest ?? conf,
       sameRequest,
       topicOverlap,
@@ -689,7 +667,7 @@ export function interpretMergeAnswers(
     };
   }
 
-  if (actionNew && actionHigh) {
+  if (actionNew && actionHigh && !nearDup) {
     return {
       action: "new",
       failOpen: false,
@@ -754,12 +732,25 @@ export function interpretTagAnswers(
   themeLabels: TagLabel[],
   minConfidence = DEFAULT_LAYA_MIN_CONFIDENCE,
   projectLabels: TagLabel[] = themeLabels,
-  otherTitle = TAG_OTHER
+  otherTitle = TAG_OTHER,
+  candidate?: MergeCandidateText
 ): LayaTagGate {
   const theme = readTagChoice(answers.theme, themeLabels, minConfidence, otherTitle);
   const project = readTagChoice(answers.project, projectLabels, minConfidence, otherTitle);
+  const divertedTheme = divertThemeFromText(candidate?.title, candidate?.body, {
+    version: 1,
+    other: otherTitle,
+    themes: themeLabels,
+    projects: projectLabels,
+  });
+  const divertedProject = divertProjectFromText(candidate?.title, candidate?.body, {
+    version: 1,
+    other: otherTitle,
+    themes: themeLabels,
+    projects: projectLabels,
+  });
 
-  if (theme.weak && !project.hit) {
+  if (theme.weak && !project.hit && !divertedTheme) {
     return {
       failOpen: true,
       reason: "ambiguous",
@@ -767,7 +758,7 @@ export function interpretTagAnswers(
       projectConfidence: project.confidence,
     };
   }
-  if (project.weak && !theme.hit && !theme.other) {
+  if (project.weak && !theme.hit && !theme.other && !divertedTheme) {
     return {
       failOpen: true,
       reason: "ambiguous",
@@ -782,6 +773,17 @@ export function interpretTagAnswers(
       ...(project.hit ? { project: project.hit } : {}),
       failOpen: false,
       reason: "tagged",
+      themeConfidence: theme.confidence,
+      projectConfidence: project.confidence,
+    };
+  }
+
+  if (divertedTheme || divertedProject) {
+    return {
+      ...(divertedTheme ? { theme: divertedTheme } : {}),
+      ...(divertedProject ? { project: divertedProject } : {}),
+      failOpen: false,
+      reason: "diverted",
       themeConfidence: theme.confidence,
       projectConfidence: project.confidence,
     };
@@ -1117,6 +1119,7 @@ export class LayaClient {
   async gateMerge(input: {
     title: string;
     body?: string;
+    refs?: string[];
     openItems: OpenItemSnippet[];
   }): Promise<LayaMergeGate> {
     if (!this.enabled) {
@@ -1125,22 +1128,30 @@ export class LayaClient {
     if (!input.openItems.length) {
       return { action: "new", failOpen: false, reason: "no-open-items" };
     }
+    const items = rankOpenItemsForMerge(
+      { title: input.title, body: input.body, refs: input.refs },
+      input.openItems,
+      MERGE_OPEN_ITEMS_CAP
+    );
     const predicted = await this.predict(
       {
         title: input.title,
         body: input.body ?? "",
         text: [input.title, input.body].filter(Boolean).join("\n"),
-        open_items: input.openItems,
-        best_candidate: input.openItems[0],
+        open_items: items.map(({ id, title, snippet }) => ({ id, title, snippet })),
+        best_candidate: items[0]
+          ? { id: items[0].id, title: items[0].title, snippet: items[0].snippet }
+          : undefined,
       },
-      mergeGateQuestions(input.openItems)
+      mergeGateQuestions(items.map(({ id, title, snippet }) => ({ id, title, snippet })))
     );
     if (!predicted) {
       return { action: "new", failOpen: true, reason: this.transportFail() };
     }
-    return interpretMergeAnswers(predicted.answers, input.openItems, this.thresholds.merge, {
+    return interpretMergeAnswers(predicted.answers, items, this.thresholds.merge, {
       title: input.title,
       body: input.body,
+      refs: input.refs,
     });
   }
 
@@ -1181,6 +1192,13 @@ export class LayaClient {
     if (!predicted) {
       return { failOpen: true, reason: this.transportFail() };
     }
-    return interpretTagAnswers(predicted.answers, themeLabels, this.minConfidence, projectLabels);
+    return interpretTagAnswers(
+      predicted.answers,
+      themeLabels,
+      this.minConfidence,
+      projectLabels,
+      TAG_OTHER,
+      { title: input.title, body: input.body }
+    );
   }
 }

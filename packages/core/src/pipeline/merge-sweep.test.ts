@@ -452,4 +452,71 @@ describe("merge-sweep dry-run vs apply", () => {
     assert.equal(store.list({ type: "decision_merged" }).length, 0);
     assert.equal(store.list({ type: "agent_started" }).length, 0);
   });
+
+  it("ranks a near-duplicate twin into the cap-8 window ahead of newer unrelated cards", async () => {
+    const store = await tempStore();
+    const twin = seedSuggested(
+      store,
+      "评估速记迁入灵基并重做lingee壳鉴权",
+      "速记迁入灵基，重做 lingee 壳鉴权",
+      [{ token: "yzj:im:g:shorthand", kind: "im", digest: "sh" }],
+      "2026-09-20T08:00:00.000Z"
+    );
+    const fillers = [
+      "纪要弹窗右上角新增拆解任务入口",
+      "按0918版本落地任务待办交互文案与信息架构",
+      "需要给 ATOM Desk 加上空状态文案",
+      "导出 CSV 乱码修复",
+      "文档 README 目录重排",
+      "产品缺陷 保存崩溃",
+      "发布 checklist 卡住",
+      "能力缺口 缺少批量导出",
+      "leftover freeform ticket xyz",
+      "随便写个周报催一下",
+    ];
+    for (let i = 0; i < fillers.length; i++) {
+      seedSuggested(
+        store,
+        fillers[i]!,
+        fillers[i]!,
+        [{ token: `yzj:im:g:fill-${i}`, kind: "im", digest: `e${i}` }],
+        `2026-09-20T09:${String(i).padStart(2, "0")}:00.000Z`
+      );
+    }
+    const newer = seedSuggested(
+      store,
+      "速记迁入灵基鉴权",
+      "评估速记迁入灵基并重做鉴权",
+      [{ token: "yzj:im:g:shorthand-dup", kind: "im", digest: "sh2" }],
+      "2026-09-20T12:00:00.000Z"
+    );
+    const { fetch, calls } = recordingFetch(async (url, init) => {
+      if (url.endsWith("/health")) return jsonResponse({ ok: true });
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      assert.equal(isMergePredict(body), true);
+      const title = String((body as { state?: { title?: string } }).state?.title ?? "");
+      const items = (body.state as { open_items?: Array<{ id: string; title: string }> })?.open_items ?? [];
+      assert.ok(items.length <= 8);
+      if (title.includes("速记迁入灵基鉴权")) {
+        assert.equal(items[0]?.id, twin, `expected twin first, got ${items.map((i) => i.title).join(" | ")}`);
+        return jsonResponse({
+          answers: {
+            action: { choice: "merge", confidence: 0.2 },
+            same_request: { noul: 0.78 },
+            target: { choice: twin, confidence: 0.2 },
+          },
+        });
+      }
+      return jsonResponse(distinctAnswers());
+    });
+    const laya = new LayaClient({ fetch, enabled: true, timeoutMs: 200 });
+    const result = await runMergeSweep(store, { apply: true, laya });
+    assert.equal(result.merged, 1);
+    assert.equal(result.pairs[0]?.loserId, newer);
+    assert.equal(result.pairs[0]?.survivorId, twin);
+    assert.equal(
+      calls.filter((c) => c.url.endsWith("/v1/predict")).some((c) => true),
+      true
+    );
+  });
 });

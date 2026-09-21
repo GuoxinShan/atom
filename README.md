@@ -68,7 +68,7 @@ pnpm atom run --agent grok-cli
 
 ### Dispatch Desk
 
-Same daemon, same SQLite. Home is **需要你拍板** (Approve/Reject). Cards fold into collapsible **theme/project groups**. After extract, Laya labels new candidates from the closed Chinese list in `data/theme-vocabulary.json` (「AI推进」, 「日程/会议」, 「其他」, …). Timeout/5xx leave cards untagged (workspace heuristic). Unknown slugs map onto that list or become 「其他」. Approve/Reject is still per card. Hard-refresh `http://127.0.0.1:8787` after pull. **系统已处理** is a read-only 24h gate-digest. **我的偏好** shows `data/preference-memory.json`. **高级** hides the Atoms log placeholder. Lead NL configures sources.
+Same daemon, same SQLite. Home is **需要你拍板** (Approve/Reject). Cards fold into collapsible **theme/project groups**. After extract, Laya labels new candidates from the closed Chinese list in `data/theme-vocabulary.json` (「AI推进」, 「日程/会议」, 「其他」, …). Untagged / 「其他」 titles divert onto that same list from title/body (no new labels). Timeout/5xx never drop the card; Laya tags stay off, but local divert still shrinks 「其他」. Near-duplicate merge needs Laya up and fail-opens if it is down. Unknown slugs map onto that list or become 「其他」. Approve/Reject is still per card. Hard-refresh `http://127.0.0.1:8787` after pull. **系统已处理** is a read-only 24h gate-digest. **我的偏好** shows `data/preference-memory.json`. **高级** hides the Atoms log placeholder. Lead NL configures sources.
 
 ```bash
 pnpm atom serve

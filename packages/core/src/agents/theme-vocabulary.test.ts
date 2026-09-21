@@ -10,6 +10,8 @@ import {
   DEFAULT_THEME_VOCABULARY,
   TAG_OTHER,
   collectTagLabels,
+  divertProjectFromText,
+  divertThemeFromText,
   loadThemeVocabulary,
   mapToAllowlist,
   tryMapAllowlist,
@@ -65,6 +67,28 @@ describe("theme vocabulary allowlist", () => {
     assert.equal(tryMapAllowlist("release-process", DEFAULT_THEME_LABELS), "发布与发布流程");
     assert.equal(tryMapAllowlist("product-bug", DEFAULT_THEME_LABELS), "产品缺陷");
     assert.equal(tryMapAllowlist("ATOM", DEFAULT_PROJECT_LABELS), "事元");
+  });
+
+  it("diverts title/body onto the closed vocabulary without new labels", () => {
+    assert.equal(divertThemeFromText("速记迁入灵基鉴权", "评估速记迁入灵基"), "速记");
+    assert.equal(
+      divertThemeFromText("评估速记迁入灵基并重做lingee壳鉴权", "lingee 鉴权"),
+      "速记"
+    );
+    assert.equal(divertThemeFromText("修复日程 MCP 云之家授权失败", ""), "日程/会议");
+    assert.equal(divertThemeFromText("Schedule Mcp 授权失败", "AI推进里的日程 MCP"), "日程/会议");
+    assert.equal(divertThemeFromText("Desk OAuth leftover", "need login"), undefined);
+    assert.equal(divertProjectFromText("需要给 ATOM Desk 加上空状态文案", ""), "事元");
+  });
+
+  it("does not add vocabulary entries when diverting 其他", () => {
+    const titles = DEFAULT_THEME_VOCABULARY.themes.map((l) => l.title).sort();
+    assert.deepEqual(
+      titles,
+      ["AI推进", "云之家", "其他", "发布与发布流程", "产品缺陷", "文档", "日程/会议", "能力缺口", "迁移方案", "速记"].sort()
+    );
+    assert.equal(tryMapAllowlist("OAuth", DEFAULT_THEME_LABELS), undefined);
+    assert.equal(tryMapAllowlist("Task Ui", DEFAULT_THEME_LABELS), undefined);
   });
 
   it("maps unknown or empty values to 其他", () => {
