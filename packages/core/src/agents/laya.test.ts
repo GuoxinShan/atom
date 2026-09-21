@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import {
+  DEFAULT_LAYA_MERGE_MIN_CONFIDENCE,
   DEFAULT_LAYA_TIMEOUT_MS,
   LAYA_UNAVAILABLE_AFTER_5XX,
   LayaClient,
@@ -9,6 +10,7 @@ import {
   interpretOutboundAnswers,
   interpretRouteModel,
   intensityFromLayaModel,
+  titleTopicOverlap,
   type LayaFetch,
   type OpenItemSnippet,
 } from "./laya.js";
@@ -198,6 +200,25 @@ const openItems: OpenItemSnippet[] = [
   },
 ];
 
+const calendarMcpItems: OpenItemSnippet[] = [
+  {
+    id: "cand_cal_mcp",
+    title: "修复日程 MCP 云之家授权失败",
+    snippet: "云之家授权失败导致日程 MCP 拉不下来",
+  },
+];
+
+const similarOauth = { title: "Desk 需要 OAuth 本机登录", body: "同一需求" };
+const dissimilarShorthand = { title: "评估速记迁入灵基并重做lingee壳鉴权" };
+
+function mergeAnswers(target = "cand_oauth", sameRequest = 0.97) {
+  return {
+    action: { choice: "merge" as const, confidence: 0.94 },
+    same_request: { noul: sameRequest },
+    target: { choice: target, confidence: 0.9 },
+  };
+}
+
 describe("interpretMergeAnswers", () => {
   it("merges high-confidence duplicates into the named open item", () => {
     const gate = interpretMergeAnswers(
@@ -206,7 +227,9 @@ describe("interpretMergeAnswers", () => {
         same_request: { noul: 0.91 },
         target: { choice: "cand_oauth", confidence: 0.9 },
       },
-      openItems
+      openItems,
+      undefined,
+      similarOauth
     );
     assert.equal(gate.action, "merge");
     assert.equal(gate.failOpen, false);
@@ -260,7 +283,9 @@ describe("interpretMergeAnswers", () => {
         same_request: { noul: 0.98 },
         target: { choice: "cand_oauth", confidence: 0.19 },
       },
-      openItems
+      openItems,
+      undefined,
+      similarOauth
     );
     assert.equal(gate.action, "merge");
     assert.equal(gate.failOpen, false);
@@ -276,7 +301,9 @@ describe("interpretMergeAnswers", () => {
         same_request: { noul: 0.96 },
         target: { choice: "cand_oauth" },
       },
-      openItems
+      openItems,
+      undefined,
+      similarOauth
     );
     assert.equal(gate.action, "merge");
     assert.equal(gate.failOpen, false);
@@ -303,7 +330,9 @@ describe("interpretMergeAnswers", () => {
         action: { choice: "merge", confidence: 0.2 },
         same_request: { noul: 0.94 },
       },
-      openItems
+      openItems,
+      undefined,
+      similarOauth
     );
     assert.equal(gate.action, "merge");
     assert.equal(gate.failOpen, false);
@@ -321,6 +350,77 @@ describe("interpretMergeAnswers", () => {
     );
     assert.equal(gate.action, "new");
     assert.equal(gate.failOpen, true);
+  });
+
+  it("merges when same_request is high and titles are the same topic", () => {
+    const gate = interpretMergeAnswers(mergeAnswers("cand_oauth", 0.97), openItems, undefined, similarOauth);
+    assert.equal(gate.action, "merge");
+    assert.equal(gate.failOpen, false);
+    assert.equal(gate.reason, "duplicate");
+    assert.equal(gate.targetId, "cand_oauth");
+    assert.ok((gate.topicOverlap ?? 0) >= 0.18);
+  });
+
+  it("forces new when same_request is high but titles are a different topic (速记 vs 日程 MCP)", () => {
+    const gate = interpretMergeAnswers(
+      {
+        action: { choice: "merge", confidence: 0.2 },
+        same_request: { noul: 0.97 },
+        target: { choice: "cand_cal_mcp" },
+      },
+      calendarMcpItems,
+      DEFAULT_LAYA_MERGE_MIN_CONFIDENCE,
+      dissimilarShorthand
+    );
+    assert.equal(gate.action, "new");
+    assert.equal(gate.failOpen, false);
+    assert.equal(gate.reason, "topic-mismatch");
+    assert.ok((gate.topicOverlap ?? 1) < 0.18);
+  });
+
+  it("forces new for other dogfood titles that Laya over-merged into 日程 MCP", () => {
+    for (const title of [
+      "纪要弹窗右上角新增拆解任务入口",
+      "按0918版本落地任务待办交互文案与信息架构",
+    ]) {
+      const gate = interpretMergeAnswers(
+        mergeAnswers("cand_cal_mcp", 0.97),
+        calendarMcpItems,
+        DEFAULT_LAYA_MERGE_MIN_CONFIDENCE,
+        { title }
+      );
+      assert.equal(gate.action, "new", title);
+      assert.equal(gate.reason, "topic-mismatch", title);
+    }
+  });
+
+  it("creates new when same_request is below the 0.90 merge floor", () => {
+    const gate = interpretMergeAnswers(
+      mergeAnswers("cand_oauth", 0.89),
+      openItems,
+      DEFAULT_LAYA_MERGE_MIN_CONFIDENCE,
+      similarOauth
+    );
+    assert.equal(gate.action, "new");
+    assert.notEqual(gate.reason, "duplicate");
+  });
+});
+
+describe("titleTopicOverlap", () => {
+  it("scores OAuth login paraphrases as the same topic", () => {
+    const overlap = titleTopicOverlap(
+      "需要给 ATOM Desk 加上 OAuth 登录",
+      "Desk 需要 OAuth 本机登录"
+    );
+    assert.ok(overlap >= 0.18, `overlap=${overlap}`);
+  });
+
+  it("scores 速记 vs 日程 MCP as far apart", () => {
+    const overlap = titleTopicOverlap(
+      "修复日程 MCP 云之家授权失败",
+      "评估速记迁入灵基并重做lingee壳鉴权"
+    );
+    assert.ok(overlap < 0.18, `overlap=${overlap}`);
   });
 });
 
@@ -442,6 +542,28 @@ describe("LayaClient", () => {
     assert.equal(second.action, "suggested");
     assert.equal(second.reason, "demand");
     assert.equal(n, 2);
+  });
+
+  it("does not merge a high same_request when the candidate title is a different topic", async () => {
+    const { fetch } = recordingFetch(async (url) => {
+      if (url.endsWith("/health")) return jsonResponse({ ok: true });
+      return jsonResponse({
+        answers: {
+          action: { type: "choice", choice: "merge", confidence: 0.2 },
+          same_request: { type: "noul", noul: 0.97, confidence: 0.97 },
+          target: { type: "choice", choice: "cand_cal_mcp", confidence: 0.2 },
+        },
+      });
+    });
+    const client = new LayaClient({ fetch, enabled: true, timeoutMs: 200 });
+    const gate = await client.gateMerge({
+      title: "评估速记迁入灵基并重做lingee壳鉴权",
+      openItems: calendarMcpItems,
+    });
+    assert.equal(gate.action, "new");
+    assert.equal(gate.failOpen, false);
+    assert.equal(gate.reason, "topic-mismatch");
+    assert.equal(gate.sameRequest, 0.97);
   });
 
   it("POSTs /v1/predict merge questions as a dict and merges into the target", async () => {

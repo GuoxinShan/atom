@@ -5,6 +5,7 @@ import path from "node:path";
 import { after, describe, it } from "node:test";
 import { LayaClient } from "../agents/laya.js";
 import {
+  RSI_DEFAULT_MERGE_THRESHOLD,
   RSI_DEFAULT_THRESHOLD,
   RSI_MAX_THRESHOLD,
   RSI_MIN_SAMPLES,
@@ -13,6 +14,7 @@ import {
   loadPreferenceMemory,
   matchesAllowlist,
   matchesBlocklist,
+  parsePreferenceMemory,
   preferenceMemoryPath,
   savePreferenceMemory,
   type PreferenceMemory,
@@ -153,7 +155,7 @@ describe("preference RSI", () => {
     assert.equal(result.after.noise, 0.78);
     assert.ok(result.after.noise >= RSI_MIN_THRESHOLD);
     assert.ok(result.after.noise <= RSI_MAX_THRESHOLD);
-    assert.equal(result.after.merge, RSI_DEFAULT_THRESHOLD);
+    assert.equal(result.after.merge, RSI_DEFAULT_MERGE_THRESHOLD);
     assert.ok(result.eventId);
     assert.ok(result.path);
     assert.equal(fs.existsSync(preferenceMemoryPath(repoRoot)), true);
@@ -185,14 +187,25 @@ describe("preference RSI", () => {
     assert.ok(result.added_allowlist.length >= 1);
   });
 
-  it("enough later-merged fail-opens lower the merge floor", async () => {
+  it("enough later-merged fail-opens lower the merge floor but not below 0.90", async () => {
     const { store, repoRoot } = await tempCtx();
     seedMergeFailOpens(store, RSI_MIN_SAMPLES);
-    const result = runPreferenceRsi(store, { apply: true, repoRoot });
+    const current: PreferenceMemory = {
+      ...defaultPreferenceMemory(),
+      thresholds: { noise: 0.8, merge: 0.94, outbound: 0.8 },
+    };
+    const result = runPreferenceRsi(store, { apply: true, repoRoot, current });
     assert.equal(result.reason, "adjusted");
     assert.equal(result.samples.merge_fail_open_merged, RSI_MIN_SAMPLES);
-    assert.equal(result.after.merge, 0.78);
-    assert.equal(result.after.noise, RSI_DEFAULT_THRESHOLD);
+    assert.equal(result.after.merge, 0.92);
+    assert.ok(result.after.merge >= RSI_DEFAULT_MERGE_THRESHOLD);
+
+    const atFloor = runPreferenceRsi(store, {
+      apply: false,
+      repoRoot,
+      current: { ...defaultPreferenceMemory() },
+    });
+    assert.equal(atFloor.after.merge, RSI_DEFAULT_MERGE_THRESHOLD);
   });
 
   it("clamps so a low floor cannot fall below the minimum", async () => {
@@ -253,12 +266,22 @@ describe("preference memory → Laya callers", () => {
     savePreferenceMemory(repoRoot, {
       ...defaultPreferenceMemory(),
       updated_at: new Date().toISOString(),
-      thresholds: { noise: 0.74, merge: 0.82, outbound: 0.9 },
+      thresholds: { noise: 0.74, merge: 0.93, outbound: 0.9 },
     });
     const client = LayaClient.fromEnv({ repoRoot, enabled: false });
     assert.equal(client.thresholds.noise, 0.74);
-    assert.equal(client.thresholds.merge, 0.82);
+    assert.equal(client.thresholds.merge, 0.93);
     assert.equal(client.thresholds.outbound, 0.9);
+  });
+
+  it("raises a stale merge floor of 0.80 to the 0.90 auto-merge minimum", () => {
+    const parsed = parsePreferenceMemory({
+      version: 1,
+      thresholds: { noise: 0.8, merge: 0.8, outbound: 0.8 },
+    });
+    assert.equal(parsed.thresholds.merge, RSI_DEFAULT_MERGE_THRESHOLD);
+    const client = new LayaClient({ enabled: false, thresholds: { merge: 0.8 } });
+    assert.equal(client.thresholds.merge, RSI_DEFAULT_MERGE_THRESHOLD);
   });
 
   it("allowlist / blocklist match title stems", () => {

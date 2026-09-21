@@ -584,6 +584,55 @@ describe("extract → Laya duplicate merge gate", () => {
     assert.equal(detail.laya_merge?.same_request, 0.98);
     assert.equal(detail.laya_merge?.confidence, 0.98);
   });
+
+  it("does not merge high same_request when titles are a different topic (速记 vs 日程 MCP)", async () => {
+    const store = await tempStore();
+    const existingId = seedSuggested(
+      store,
+      "修复日程 MCP 云之家授权失败",
+      "云之家授权失败导致日程 MCP 拉不下来"
+    );
+    const shorthand: CandidateProposal = {
+      title: "评估速记迁入灵基并重做lingee壳鉴权",
+      body: "速记迁入灵基，重做 lingee 壳鉴权",
+      confidence: 0.84,
+      cluster_key: "shorthand-lingee",
+      refs: [dupRef],
+      source_message_ids: ["m-shorthand"],
+    };
+    const { fetch } = recordingFetch(async (url, init) => {
+      if (url.endsWith("/health")) return jsonResponse({ ok: true });
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      if (isMergePredict(body)) {
+        return jsonResponse({
+          answers: {
+            action: { choice: "merge", confidence: 0.2 },
+            same_request: { noul: 0.97 },
+            target: { choice: existingId, confidence: 0.2 },
+          },
+        });
+      }
+      return jsonResponse(demandAnswers());
+    });
+    const laya = new LayaClient({ fetch, enabled: true, timeoutMs: 200 });
+    const result = await runExtract(store, stubAgent([shorthand]), {
+      heuristicGate: false,
+      laya,
+    });
+
+    assert.equal(result.proposed, 1);
+    assert.equal(result.merged, 0);
+    const suggested = projectCandidates(store).filter((c) => c.status === "suggested");
+    assert.equal(suggested.length, 2);
+    const proposedEv = store.list({ type: "candidate_proposed" }).at(-1);
+    const detail = JSON.parse(proposedEv!.detail_json) as {
+      laya_merge?: { action?: string; reason?: string; fail_open?: boolean; same_request?: number };
+    };
+    assert.equal(detail.laya_merge?.action, "new");
+    assert.equal(detail.laya_merge?.reason, "topic-mismatch");
+    assert.equal(detail.laya_merge?.fail_open, false);
+    assert.equal(detail.laya_merge?.same_request, 0.97);
+  });
 });
 
 function isOutboundPredict(body: unknown): boolean {
