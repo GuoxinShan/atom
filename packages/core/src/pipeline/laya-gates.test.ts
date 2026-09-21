@@ -474,10 +474,61 @@ describe("extract → Laya duplicate merge gate", () => {
       .list({ type: "candidate_proposed" })
       .find((e) => e.summary === duplicateProposal.title);
     const detail = JSON.parse(proposedEv!.detail_json) as {
-      laya_merge?: { action?: string; fail_open?: boolean };
+      laya_merge?: { action?: string; fail_open?: boolean; reason?: string };
     };
     assert.equal(detail.laya_merge?.action, "new");
     assert.equal(detail.laya_merge?.fail_open, true);
+    assert.equal(detail.laya_merge?.reason, "timeout");
+    assert.equal(laya.unavailable, false);
+  });
+
+  it("still merge-gates later candidates after one merge predict times out", async () => {
+    const store = await tempStore();
+    seedSuggested(store, demandProposal.title, demandProposal.body);
+    let mergeAttempts = 0;
+    const { fetch } = recordingFetch(async (url, init) => {
+      if (url.endsWith("/health")) return jsonResponse({ ok: true });
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      if (isMergePredict(body)) {
+        mergeAttempts += 1;
+        if (mergeAttempts === 1) return hangFetch()(url, init);
+        return jsonResponse({
+          answers: {
+            action: { choice: "new", confidence: 0.91 },
+            same_request: { noul: 0.07 },
+            target: { choice: "none", confidence: 0.9 },
+          },
+        });
+      }
+      return jsonResponse(demandAnswers());
+    });
+    const laya = new LayaClient({ fetch, enabled: true, timeoutMs: 40 });
+    const result = await runExtract(
+      store,
+      stubAgent([duplicateProposal, distinctProposal]),
+      { heuristicGate: false, laya }
+    );
+
+    assert.equal(mergeAttempts, 2);
+    assert.equal(laya.unavailable, false);
+    assert.equal(result.proposed, 2);
+    assert.equal(result.merged, 0);
+    const timedOut = store
+      .list({ type: "candidate_proposed" })
+      .find((e) => e.summary === duplicateProposal.title);
+    const later = store
+      .list({ type: "candidate_proposed" })
+      .find((e) => e.summary === distinctProposal.title);
+    const timedOutDetail = JSON.parse(timedOut!.detail_json) as {
+      laya_merge?: { fail_open?: boolean; reason?: string };
+    };
+    const laterDetail = JSON.parse(later!.detail_json) as {
+      laya_merge?: { fail_open?: boolean; reason?: string; action?: string };
+    };
+    assert.equal(timedOutDetail.laya_merge?.fail_open, true);
+    assert.equal(timedOutDetail.laya_merge?.reason, "timeout");
+    assert.equal(laterDetail.laya_merge?.fail_open, false);
+    assert.equal(laterDetail.laya_merge?.action, "new");
   });
 
   it("merges when same_request noul is high even if action confidence is low", async () => {

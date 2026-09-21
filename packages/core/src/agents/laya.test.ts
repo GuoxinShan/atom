@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 import {
+  DEFAULT_LAYA_TIMEOUT_MS,
+  LAYA_UNAVAILABLE_AFTER_5XX,
   LayaClient,
   interpretCandidateAnswers,
   interpretMergeAnswers,
@@ -337,14 +339,43 @@ describe("LayaClient", () => {
     assert.equal((calls[0]?.body as { request?: string }).request?.includes("Refactor"), true);
   });
 
-  it("fail-opens predict on timeout", async () => {
-    const client = new LayaClient({ fetch: hangFetch(), enabled: true, timeoutMs: 40 });
+  it("defaults LAYA_TIMEOUT_MS to 10s for Mac CPU open-list predict", () => {
+    stash("LAYA_TIMEOUT_MS");
+    delete process.env.LAYA_TIMEOUT_MS;
+    const client = LayaClient.fromEnv({
+      fetch: async () => jsonResponse({ ok: true }),
+    });
+    assert.equal(client.timeoutMs, 10_000);
+    assert.equal(DEFAULT_LAYA_TIMEOUT_MS, 10_000);
+  });
+
+  it("fail-opens predict on timeout without marking the client unavailable", async () => {
+    let n = 0;
+    const fetch: LayaFetch = async (url, init) => {
+      n += 1;
+      if (n === 1) return hangFetch()(url, init);
+      return jsonResponse({
+        answers: {
+          kind: { type: "choice", choice: "demand", confidence: 0.9 },
+          is_work_demand: { type: "noul", noul: 0.88, confidence: 0.88 },
+          is_chat_noise: { type: "noul", noul: 0.04, confidence: 0.04 },
+        },
+      });
+    };
+    const client = new LayaClient({ fetch, enabled: true, timeoutMs: 40 });
     const t0 = Date.now();
-    const gate = await client.gateCandidate({ title: "需要接入 OAuth 登录" });
-    assert.equal(gate.action, "suggested");
-    assert.equal(gate.failOpen, true);
+    const first = await client.gateCandidate({ title: "需要接入 OAuth 登录" });
+    assert.equal(first.action, "suggested");
+    assert.equal(first.failOpen, true);
+    assert.equal(first.reason, "timeout");
     assert.ok(Date.now() - t0 < 500);
-    assert.equal(client.unavailable, true);
+    assert.equal(client.unavailable, false);
+
+    const second = await client.gateCandidate({ title: "需要接入 OAuth 登录" });
+    assert.equal(second.failOpen, false);
+    assert.equal(second.action, "suggested");
+    assert.equal(second.reason, "demand");
+    assert.equal(n, 2);
   });
 
   it("POSTs /v1/predict merge questions as a dict and merges into the target", async () => {
@@ -377,23 +408,112 @@ describe("LayaClient", () => {
     assert.equal(state?.open_items?.length, 2);
   });
 
-  it("fail-opens merge predict on timeout to new", async () => {
-    const client = new LayaClient({ fetch: hangFetch(), enabled: true, timeoutMs: 40 });
-    const gate = await client.gateMerge({
+  it("fail-opens merge predict on timeout to new without marking unavailable", async () => {
+    let n = 0;
+    const fetch: LayaFetch = async (url, init) => {
+      n += 1;
+      if (n === 1) return hangFetch()(url, init);
+      return jsonResponse({
+        answers: {
+          action: { type: "choice", choice: "merge", confidence: 0.93 },
+          same_request: { type: "noul", noul: 0.9, confidence: 0.9 },
+          target: { type: "choice", choice: "cand_oauth", confidence: 0.9 },
+        },
+      });
+    };
+    const client = new LayaClient({ fetch, enabled: true, timeoutMs: 40 });
+    const first = await client.gateMerge({
       title: "Desk 需要 OAuth 本机登录",
       openItems,
     });
-    assert.equal(gate.action, "new");
+    assert.equal(first.action, "new");
+    assert.equal(first.failOpen, true);
+    assert.equal(first.reason, "timeout");
+    assert.equal(client.unavailable, false);
+
+    const second = await client.gateMerge({
+      title: "Desk 需要 OAuth 本机登录",
+      openItems,
+    });
+    assert.equal(second.action, "merge");
+    assert.equal(second.failOpen, false);
+    assert.equal(second.targetId, "cand_oauth");
+    assert.equal(n, 2);
+  });
+
+  it("fail-opens route-model on timeout without marking unavailable", async () => {
+    let n = 0;
+    const fetch: LayaFetch = async (url, init) => {
+      n += 1;
+      if (n === 1) return hangFetch()(url, init);
+      return jsonResponse({ model: "ornith", confidence: 0.91 });
+    };
+    const client = new LayaClient({ fetch, enabled: true, timeoutMs: 40 });
+    const first = await client.routeModel("Implement OAuth");
+    assert.equal(first.failOpen, true);
+    assert.equal(first.intensity, "unknown");
+    assert.equal(first.reason, "timeout");
+    assert.equal(client.unavailable, false);
+
+    const second = await client.routeModel("Implement OAuth");
+    assert.equal(second.failOpen, false);
+    assert.equal(second.model, "ornith");
+    assert.equal(n, 2);
+  });
+
+  it("marks unavailable on connection refused, not timeout", async () => {
+    const fetch: LayaFetch = async () => {
+      const err = new TypeError("fetch failed");
+      (err as TypeError & { cause: { code: string } }).cause = { code: "ECONNREFUSED" };
+      throw err;
+    };
+    const client = new LayaClient({ fetch, enabled: true, timeoutMs: 200 });
+    const gate = await client.gateCandidate({ title: "需要接入 OAuth 登录" });
     assert.equal(gate.failOpen, true);
+    assert.equal(gate.reason, "unavailable");
     assert.equal(client.unavailable, true);
   });
 
-  it("fail-opens route-model on timeout", async () => {
-    const client = new LayaClient({ fetch: hangFetch(), enabled: true, timeoutMs: 40 });
-    const route = await client.routeModel("Implement OAuth");
-    assert.equal(route.failOpen, true);
-    assert.equal(route.intensity, "unknown");
-    assert.equal(route.reason, "unavailable");
+  it("does not mark unavailable on a single 5xx; next predict still runs", async () => {
+    let n = 0;
+    const fetch: LayaFetch = async () => {
+      n += 1;
+      if (n === 1) return jsonResponse({ error: "boom" }, 503);
+      return jsonResponse({
+        answers: {
+          kind: { type: "choice", choice: "demand", confidence: 0.9 },
+          is_work_demand: { type: "noul", noul: 0.88 },
+          is_chat_noise: { type: "noul", noul: 0.04 },
+        },
+      });
+    };
+    const client = new LayaClient({ fetch, enabled: true, timeoutMs: 200 });
+    const first = await client.gateCandidate({ title: "需要接入 OAuth 登录" });
+    assert.equal(first.failOpen, true);
+    assert.equal(first.reason, "unavailable");
+    assert.equal(client.unavailable, false);
+
+    const second = await client.gateCandidate({ title: "需要接入 OAuth 登录" });
+    assert.equal(second.failOpen, false);
+    assert.equal(second.reason, "demand");
+    assert.equal(n, 2);
+  });
+
+  it("marks unavailable after repeated 5xx and skips further HTTP", async () => {
+    let n = 0;
+    const fetch: LayaFetch = async () => {
+      n += 1;
+      return jsonResponse({ error: "boom" }, 503);
+    };
+    const client = new LayaClient({ fetch, enabled: true, timeoutMs: 200 });
+    for (let i = 0; i < LAYA_UNAVAILABLE_AFTER_5XX; i++) {
+      const gate = await client.gateCandidate({ title: "需要接入 OAuth 登录" });
+      assert.equal(gate.reason, "unavailable");
+    }
+    assert.equal(client.unavailable, true);
+    const after = await client.gateCandidate({ title: "later sibling" });
+    assert.equal(after.reason, "unavailable");
+    assert.equal(n, LAYA_UNAVAILABLE_AFTER_5XX);
   });
 
   it("skips HTTP when LAYA_ENABLED=0", async () => {
