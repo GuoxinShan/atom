@@ -50,8 +50,8 @@ Home is **Needs you**, not a coordinator chat and not a three-column settled boa
 
 ```
 ┌────────────────────────────────────────┬──────────────────┐
-│ Needs you                              │ Matter detail    │
-│ · Suggested (approve / reject)         │ + human CTAs     │
+│ 需要你拍板 (Needs you) — default home  │ Matter detail    │
+│ · Suggested (Approve / Reject)         │ + human CTAs     │
 │ · Checklist ack (when any)             │                  │
 │ · Outbound confirm (when enabled)      │ ▸ Listening      │
 │                                        │ ▸ Lead           │
@@ -64,10 +64,16 @@ Home is **Needs you**, not a coordinator chat and not a three-column settled boa
 
 Accepted / Rejected are settled — they live under the **Matters** drawer, not the home queue.
 
-When Needs you has zero suggested and zero `awaitingHumanAck`, Desk shows calm copy: **今天没有要你拍板的**. Last extract/run time is appended only when `GET /api/meta` has a real timestamp — no invented stats.
+When Needs you has zero suggested and zero `awaitingHumanAck`, Desk shows calm copy: **今天没有要你拍板的**, plus that an empty queue is normal and new cards appear when watched groups have new topics. Last `atom run` time, preference floors, and cheap Desk/Laya health live on a one-line **status strip** (`GET /api/status`) — no invented clocks.
 
-Top nav: **Desk** (default) · **Atoms** (log) · **Setup**.
-Lead / Listening / providers / workspaces / outbound live as **collapsed drawers**, not peer tabs and not the home screen.
+Top nav (Chinese labels, English page keys):
+
+1. **需要你拍板** (`needs-you`) — default home
+2. **系统已处理** (`processed`) — read-only last-24h gate-digest (noise dropped / merged / outbound allow-drop-hold / auto_rate)
+3. **我的偏好** (`preferences`) — view + clamped light-edit of `data/preference-memory.json`; RSI via existing `POST /api/preference-rsi`
+4. **高级** (`advanced`) — Atoms append-only log placeholder (collapsed) + cold-start/Setup. Not the home screen; backend log/API unchanged.
+
+Lead / Listening / providers / workspaces / outbound stay **collapsed drawers** on Needs you, not peer tabs.
 
 ## Primary verbs
 

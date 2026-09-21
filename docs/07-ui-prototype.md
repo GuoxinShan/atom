@@ -16,17 +16,21 @@ Default view is **Needs you** (human gates only). Suggested triage is the home s
 
 ## Implemented shell
 
-Top nav: **Desk** (default) · **Atoms** (stub) · **Setup**.
+Top nav: **需要你拍板** (default) · **系统已处理** · **我的偏好** · **高级**.
 
 | Region | What it is |
 |---|---|
-| Center | **Needs you** — Suggested approve/reject, checklist `human_gate_ack` (when any); outbound confirm only when a post is waiting. Empty: 「今天没有要你拍板的」 + last run/extract from `GET /api/meta` when known |
+| Status strip | Last `atom run` if known, preference floors, Desk/Laya health (`GET /api/status`) |
+| Center | **需要你拍板** — Suggested Approve/Reject, checklist `human_gate_ack` (when any); outbound confirm only when a post is waiting. Empty: 「今天没有要你拍板的」+ that a clear queue is normal until watched groups produce new topics |
 | Right rail | Selected **matter** (title, body, refs, Approve/Reject/Handoff/Ack) |
+| 系统已处理 | Read-only 24h gate-digest: noise dropped / merged / outbound allow-drop-hold / auto_rate |
+| 我的偏好 | `data/preference-memory.json` thresholds + blocklist; clamped PATCH; RSI dry-run/apply |
 | Drawers | Listening, Lead, Matters (settled), Workspaces, Agents, Outbound — collapsed by default |
+| 高级 | Atoms append-only log placeholder (collapsed) + Setup/cold-start |
 
 ## Not in v1
 
-- Full Atoms log viewer (stub page only; use SQLite `events` / CLI).
+- Full Atoms log viewer (stub under **高级** only; use SQLite `events` / CLI).
 - Blank “New Project” home chat.
 - Outbound digest / chat-post confirm queue (no pending-confirm API yet; the slot is omitted until a post needs a gate).
 

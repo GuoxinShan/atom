@@ -208,7 +208,8 @@ function thresholdsOrNull(v: unknown): LayaGateThresholds | null {
   return { noise: r.noise, merge: r.merge, outbound: r.outbound };
 }
 
-function lastRsiApply(store: EventStore): GateDigestLastRsi | null {
+/** Latest auditable preference_rsi apply/dry-run with before/after floors. */
+export function readLastPreferenceRsi(store: EventStore): GateDigestLastRsi | null {
   const events = store.listNewest({ type: "preference_rsi", limit: 20 });
   for (const ev of events) {
     const detail = parseDetail(ev.detail_json);
@@ -438,7 +439,7 @@ export function runGateDigest(
     floors: { ...memory.thresholds },
     allowlist: [...memory.allowlist],
     blocklist: [...memory.blocklist],
-    last_rsi: lastRsiApply(store),
+    last_rsi: readLastPreferenceRsi(store),
   };
 
   const autoHandled = extract.noise_dropped + merge.merged;

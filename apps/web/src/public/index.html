@@ -13,22 +13,23 @@
           <h1>ATOM <span>Desk</span></h1>
         </div>
         <nav class="nav" id="nav">
-          <button type="button" data-page="desk" class="active">Desk</button>
-          <button type="button" data-page="atoms">Atoms</button>
-          <button type="button" data-page="setup">Setup</button>
+          <button type="button" data-page="needs-you" class="active">需要你拍板</button>
+          <button type="button" data-page="processed">系统已处理</button>
+          <button type="button" data-page="preferences">我的偏好</button>
+          <button type="button" data-page="advanced">高级</button>
         </nav>
         <div class="top-meta">
           <span class="listening-pill" id="listening-pill" hidden>Listening</span>
-          <span id="meta">…</span>
+          <p class="status-strip" id="status-strip">…</p>
         </div>
       </header>
 
-      <section id="page-desk" class="page desk active">
+      <section id="page-needs-you" class="page desk active">
         <main class="center">
           <header class="needs-head">
             <div>
-              <h2>Needs you</h2>
-              <p class="hint tiny">Human gates only. Approve, reject, or confirm — Lead and Listening stay collapsed.</p>
+              <h2>需要你拍板</h2>
+              <p class="hint tiny">只放需要人决定的卡片。主操作是 Approve / Reject。</p>
             </div>
             <div class="gate-counts" id="gate-counts"></div>
           </header>
@@ -81,23 +82,49 @@
         </aside>
       </section>
 
-      <section id="page-atoms" class="page page-plain">
-        <div class="stub">
-          <p class="eyebrow">Atoms</p>
-          <h2>Append-only log</h2>
-          <p>
-            Full event viewer is not in Desk v1. The unit is still a cited atom in SQLite
-            (<code>events</code> table, never <code>atoms</code>).
-          </p>
-          <p class="hint">Use <code>pnpm atom candidates</code> or inspect <code>data/atom.sqlite</code>.</p>
+      <section id="page-processed" class="page page-plain">
+        <div class="panel wide">
+          <p class="eyebrow">系统已处理</p>
+          <h2>最近 24 小时，机器已经帮你挡掉的</h2>
+          <p class="hint">只读摘要，不用拍板。数字来自 gate-digest，缺的字段显示 n/a，不会编造。</p>
+          <div id="processed-root" class="processed-root"></div>
         </div>
       </section>
 
-      <section id="page-setup" class="page page-plain">
+      <section id="page-preferences" class="page page-plain">
         <div class="panel">
-          <h2>Cold start</h2>
-          <p class="hint">New machine: get READY here, then <code>pnpm atom run</code>.</p>
-          <div id="setup-list" class="checks"></div>
+          <p class="eyebrow">我的偏好</p>
+          <h2>门槛与屏蔽词</h2>
+          <p class="hint">
+            真实来源是 <code>data/preference-memory.json</code>。这里只做查看和有夹紧的轻改；不会发云之家，也不会训练 Laya。
+          </p>
+          <div id="preferences-root" class="preferences-root"></div>
+        </div>
+      </section>
+
+      <section id="page-advanced" class="page page-plain">
+        <div class="panel wide">
+          <p class="eyebrow">高级</p>
+          <h2>调试与冷启动</h2>
+          <p class="hint">日常拍板请回「需要你拍板」。这里是日志占位和机器检查，不是首页。</p>
+
+          <div class="advanced-stack">
+            <details id="advanced-atoms">
+              <summary>Atoms · 追加日志（占位）</summary>
+              <div class="stub nested">
+                <p>
+                  Full event viewer is not in Desk v1. The unit is still a cited atom in SQLite
+                  (<code>events</code> table, never <code>atoms</code>).
+                </p>
+                <p class="hint">Use <code>pnpm atom candidates</code> or inspect <code>data/atom.sqlite</code>.</p>
+              </div>
+            </details>
+            <details id="advanced-setup">
+              <summary>冷启动 / Setup</summary>
+              <p class="hint tiny">New machine: get READY here, then <code>pnpm atom run</code>.</p>
+              <div id="setup-list" class="checks"></div>
+            </details>
+          </div>
         </div>
       </section>
     </div>
