@@ -2,8 +2,9 @@
  * Laya System-1 HTTP client (typed decisions only — never text generation).
  *
  * ATOM uses two endpoints:
- * - POST /v1/predict  — extract → candidate noise gate, then duplicate-merge gate;
- *   outbound / pre-post gate (digest, subscription emit, Desk/CLI check)
+ * - POST /v1/predict  — extract → candidate noise gate, then duplicate-merge gate,
+ *   then theme/project tags (display grouping only); outbound / pre-post gate
+ *   (digest, subscription emit, Desk/CLI check)
  * - POST /v1/route-model — lead handoff → ornith (heavy) vs bonsai (light)
  *
  * Fail-open: timeout, 5xx, or truly ambiguous (both noul and choice weak)
@@ -109,6 +110,59 @@ export type LayaOutboundGate = {
   noiseNoul?: number;
 };
 
+/** Human theme/project label Laya may pick for Needs-you display grouping. */
+export type TagLabel = {
+  title: string;
+  hint?: string;
+  aliases?: string[];
+};
+
+/**
+ * Display-only tags. Never merge, never drop, never block extract.
+ * Fail-open keeps the candidate as-is (Desk falls back to workspace+title
+ * heuristic grouping).
+ */
+export type LayaTagGate = {
+  theme?: string;
+  project?: string;
+  failOpen: boolean;
+  reason: string;
+  themeConfidence?: number;
+  projectConfidence?: number;
+};
+
+export const TAG_NONE = "none";
+export const TAG_LABELS_CAP = 12;
+
+/** Curated Chinese-first titles. Prefer these over English slugs (Schedule Mcp). */
+export const DEFAULT_TAG_LABELS: TagLabel[] = [
+  {
+    title: "AI推进",
+    hint: "company AI advance / lingee / 推进五态 — use AI推进, not ai-advance",
+    aliases: ["ai-advance", "lingee-advance", "lingee", "ai 推进"],
+  },
+  {
+    title: "云之家",
+    hint: "yunzhijia client / 1023 IM",
+    aliases: ["yunzhijia", "yzj", "1023"],
+  },
+  {
+    title: "日历",
+    hint: "calendar / 日程 / schedule MCP — use 日历, not Schedule Mcp",
+    aliases: ["schedule mcp", "schedule/mcp", "calendar", "日程"],
+  },
+  {
+    title: "ATOM",
+    hint: "personal ATOM / Desk / 事元产品",
+    aliases: ["atom", "desk", "事元", "事元产品"],
+  },
+  {
+    title: "速记",
+    hint: "shorthand / 速记",
+    aliases: ["shorthand"],
+  },
+];
+
 export type LayaModelRoute = {
   model?: string;
   intensity: CodingIntensity;
@@ -181,6 +235,19 @@ export const OUTBOUND_GATE_QUESTIONS: Record<string, unknown> = {
   },
 };
 
+/** Static tag-gate questions; `criteria` is filled per known labels. */
+export const TAG_GATE_QUESTION_THEME = {
+  type: "choice",
+  instructions:
+    "Pick a short human theme for Desk Needs-you grouping. Prefer Chinese titles (e.g. AI推进, not Schedule Mcp or ai-advance). Use none if nothing fits.",
+};
+
+export const TAG_GATE_QUESTION_PROJECT = {
+  type: "choice",
+  instructions:
+    "Pick the project this work belongs to. Prefer Chinese human titles (e.g. AI推进, 云之家). Use none if unsure.",
+};
+
 /** Static merge-gate questions (dict schema, never a list). `target` is filled per open set. */
 export const MERGE_GATE_QUESTIONS: Record<string, unknown> = {
   action: {
@@ -203,6 +270,26 @@ export function snippetText(text: string, max = MERGE_SNIPPET_CHARS): string {
   const t = (text ?? "").replace(/\s+/g, " ").trim();
   if (t.length <= max) return t;
   return `${t.slice(0, Math.max(0, max - 1))}…`;
+}
+
+export function tagGateQuestions(labels: TagLabel[]): Record<string, unknown> {
+  const themeCriteria: Record<string, string> = {
+    [TAG_NONE]: "no clear theme — leave untagged so Desk uses workspace+title heuristic grouping",
+  };
+  const projectCriteria: Record<string, string> = {
+    [TAG_NONE]: "no clear project — leave untagged for heuristic grouping",
+  };
+  for (const label of labels) {
+    const title = label.title.trim();
+    if (!title || title.toLowerCase() === TAG_NONE) continue;
+    const hint = label.hint?.trim() || title;
+    themeCriteria[title] = hint;
+    projectCriteria[title] = hint;
+  }
+  return {
+    theme: { ...TAG_GATE_QUESTION_THEME, criteria: themeCriteria },
+    project: { ...TAG_GATE_QUESTION_PROJECT, criteria: projectCriteria },
+  };
 }
 
 export function mergeGateQuestions(openItems: OpenItemSnippet[]): Record<string, unknown> {
@@ -629,6 +716,108 @@ export function interpretMergeAnswers(
   };
 }
 
+function stripLabelDecor(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^[「『【\[\s]+|[」』】\]\s]+$/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isNoneLabel(raw: string): boolean {
+  return /^(none|null|n\/a|unknown|无|-)$/i.test(raw);
+}
+
+function looksLikeEnglishSlug(s: string): boolean {
+  if (/[\u3400-\u9fff]/.test(s)) return false;
+  if (/[/_]/.test(s)) return true;
+  if (/mcp/i.test(s) && /schedule/i.test(s)) return true;
+  return false;
+}
+
+function isHumanTagTitle(s: string): boolean {
+  const t = s.trim();
+  if (!t || t.length > 16) return false;
+  if (t.includes("/") || /^https?:/i.test(t)) return false;
+  if (/^(cand|spec|evt|chkitem|handoff|chk)_/i.test(t)) return false;
+  if (/^[a-f0-9]{16,}$/i.test(t)) return false;
+  return true;
+}
+
+export function resolveTagLabel(raw: string | undefined, labels: TagLabel[]): string | undefined {
+  const choice = stripLabelDecor(raw ?? "");
+  if (!choice || isNoneLabel(choice)) return undefined;
+  const key = choice.toLowerCase();
+  for (const label of labels) {
+    if (label.title.trim().toLowerCase() === key) return label.title;
+    for (const alias of label.aliases ?? []) {
+      if (alias.trim().toLowerCase() === key) return label.title;
+    }
+  }
+  if (!isHumanTagTitle(choice) || looksLikeEnglishSlug(choice)) return undefined;
+  return choice;
+}
+
+function readTagChoice(
+  answer: LayaAnswer | undefined,
+  labels: TagLabel[],
+  minConfidence: number
+): { value?: string; confidence?: number; none: boolean; weak: boolean } {
+  const choice = answer?.choice?.trim();
+  const confidence = answer?.confidence;
+  const none = Boolean(choice && isNoneLabel(stripLabelDecor(choice)));
+  const weak = typeof confidence === "number" && confidence < minConfidence;
+  if (!choice) return { confidence, none: false, weak };
+  if (none) return { confidence, none: true, weak };
+  if (weak) return { confidence, none: false, weak: true };
+  return {
+    value: resolveTagLabel(choice, labels),
+    confidence,
+    none: false,
+    weak: false,
+  };
+}
+
+export function interpretTagAnswers(
+  answers: Record<string, LayaAnswer>,
+  labels: TagLabel[],
+  minConfidence = DEFAULT_LAYA_MIN_CONFIDENCE
+): LayaTagGate {
+  const theme = readTagChoice(answers.theme, labels, minConfidence);
+  const project = readTagChoice(answers.project, labels, minConfidence);
+  const hasTheme = Boolean(theme.value);
+  const hasProject = Boolean(project.value);
+  const explicitNone = (theme.none || !answers.theme) && (project.none || !answers.project);
+  const bothAnsweredNone = theme.none && project.none && !theme.weak && !project.weak;
+
+  if (hasTheme || hasProject) {
+    return {
+      ...(hasTheme ? { theme: theme.value } : {}),
+      ...(hasProject ? { project: project.value } : {}),
+      failOpen: false,
+      reason: "tagged",
+      themeConfidence: theme.confidence,
+      projectConfidence: project.confidence,
+    };
+  }
+
+  if (bothAnsweredNone || (explicitNone && (theme.none || project.none) && !theme.weak && !project.weak)) {
+    return {
+      failOpen: false,
+      reason: "none",
+      themeConfidence: theme.confidence,
+      projectConfidence: project.confidence,
+    };
+  }
+
+  return {
+    failOpen: true,
+    reason: "ambiguous",
+    themeConfidence: theme.confidence,
+    projectConfidence: project.confidence,
+  };
+}
+
 function scanModelName(raw: unknown): string | undefined {
   const text = JSON.stringify(raw ?? "").toLowerCase();
   if (/\bornith\b/.test(text)) return "ornith";
@@ -730,6 +919,17 @@ export function layaMergeToDetail(gate: LayaMergeGate): Record<string, unknown> 
     same_request: gate.sameRequest ?? null,
     topic_overlap: gate.topicOverlap ?? null,
     target_id: gate.targetId ?? null,
+  };
+}
+
+export function layaTagsToDetail(gate: LayaTagGate): Record<string, unknown> {
+  return {
+    theme: gate.theme ?? null,
+    project: gate.project ?? null,
+    fail_open: gate.failOpen,
+    reason: gate.reason,
+    theme_confidence: gate.themeConfidence ?? null,
+    project_confidence: gate.projectConfidence ?? null,
   };
 }
 
@@ -964,5 +1164,30 @@ export class LayaClient {
       title: input.title,
       body: input.body,
     });
+  }
+
+  async tagCandidate(input: {
+    title: string;
+    body?: string;
+    labels?: TagLabel[];
+  }): Promise<LayaTagGate> {
+    if (!this.enabled) {
+      return { failOpen: true, reason: "unavailable" };
+    }
+    const labels = (input.labels?.length ? input.labels : DEFAULT_TAG_LABELS).slice(0, TAG_LABELS_CAP);
+    const predicted = await this.predict(
+      {
+        title: input.title,
+        body: input.body ?? "",
+        text: [input.title, input.body].filter(Boolean).join("\n"),
+        known_themes: labels.map((l) => l.title),
+        known_projects: labels.map((l) => l.title),
+      },
+      tagGateQuestions(labels)
+    );
+    if (!predicted) {
+      return { failOpen: true, reason: this.transportFail() };
+    }
+    return interpretTagAnswers(predicted.answers, labels, this.minConfidence);
   }
 }

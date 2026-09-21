@@ -29,6 +29,7 @@ export * from "./agents/grok-coding.js";
 export * from "./stubs/webhook-trigger.js";
 export * from "./agents/lead.js";
 export * from "./agents/laya.js";
+export * from "./agents/laya-tags.js";
 export * from "./setup/cold-start.js";
 export * from "./agents/lead-config.js";
 export * from "./registry/agents.js";

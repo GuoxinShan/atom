@@ -81,6 +81,17 @@ describe("Needs-you display grouping", () => {
     assert.deepEqual(groups[0]?.candidate_ids.sort(), ["a", "b"]);
   });
 
+  it("prefers stored Chinese theme over workspace heuristic", () => {
+    const groups = groupNeedsYouCandidates(
+      [cand("a", "需要给 1023 日历加上 schedule/mcp 超时修复", { theme: "AI推进" })],
+      workspaces
+    );
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0]?.kind, "theme");
+    assert.equal(groups[0]?.title, "AI推进");
+    assert.deepEqual(groups[0]?.candidate_ids, ["a"]);
+  });
+
   it("prefers theme over project on the same card", () => {
     const groups = groupNeedsYouCandidates(
       [cand("a", "x", { theme: "OAuth", project: "ATOM" })],

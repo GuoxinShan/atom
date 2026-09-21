@@ -1,4 +1,4 @@
-import { ExtractAgent, RawMessage } from "../schema/types.js";
+import { ExtractAgent, RawMessage, type CandidateProposal, type CandidateTags } from "../schema/types.js";
 import { EventStore } from "../store/events.js";
 import { candidatesByStatus } from "../store/candidates.js";
 import { newId } from "../schema/ids.js";
@@ -15,13 +15,45 @@ import {
   MERGE_OPEN_ITEMS_CAP,
   layaGateToDetail,
   layaMergeToDetail,
+  layaTagsToDetail,
   snippetText,
   type LayaCandidateGate,
   type LayaMergeGate,
+  type LayaTagGate,
   type OpenItemSnippet,
+  type TagLabel,
 } from "../agents/laya.js";
+import { tagLabelsForExtract } from "../agents/laya-tags.js";
 import { appendLayaMergeDecision, isLayaMergeNow } from "./laya-merge.js";
 import { recordExtractFinished } from "./runtime-meta.js";
+
+/** Laya tags overlay extract-provided theme/project; fail-open keeps them. */
+export function persistCandidateTags(
+  p: Pick<CandidateProposal, "theme" | "project" | "tags">,
+  gate?: LayaTagGate
+): { theme?: string; project?: string; tags?: CandidateTags } {
+  if (gate && !gate.failOpen) {
+    const theme = gate.theme;
+    const project = gate.project;
+    const tags: CandidateTags | undefined =
+      theme || project
+        ? { ...(theme ? { theme } : {}), ...(project ? { project } : {}) }
+        : undefined;
+    return {
+      ...(theme ? { theme } : {}),
+      ...(project ? { project } : {}),
+      ...(tags ? { tags } : {}),
+    };
+  }
+  const theme = p.theme ?? p.tags?.theme;
+  const project = p.project ?? p.tags?.project;
+  const tags = p.tags ?? (theme || project ? { ...(theme ? { theme } : {}), ...(project ? { project } : {}) } : undefined);
+  return {
+    ...(theme ? { theme } : {}),
+    ...(project ? { project } : {}),
+    ...(tags ? { tags } : {}),
+  };
+}
 
 function messagesFromStore(store: EventStore, groupAllow?: Set<string>): RawMessage[] {
   return store
@@ -142,7 +174,12 @@ export async function runExtract(
     let merged = 0;
     let layaNoiseDropped = 0;
     let layaMerged = 0;
+    let layaTagged = 0;
     let layaFailOpen = !layaAvailable && Boolean(laya?.isEnabled());
+    const tagLabels: TagLabel[] = tagLabelsForExtract(
+      opts?.repoRoot,
+      candidatesByStatus(store, "suggested")
+    );
     for (const p of proposals) {
       const key = p.cluster_key ?? p.title;
       if (seenKeys.has(key)) {
@@ -194,33 +231,29 @@ export async function runExtract(
       // action choice confidence is low — unless titles/topics are far apart.
       // Do not re-check choice confidence here.
 
-      store.append({
-        type: "candidate_proposed",
-        subject_id: candId,
-        summary: p.title,
-        detail: {
-          title: p.title,
-          body: p.body,
-          confidence: p.confidence,
-          cluster_key: key,
-          source_message_ids: p.source_message_ids,
-          agent_id: agent.id,
-          gated_by: useGate ? "heuristic-gate" : "none",
-          ...(p.theme ? { theme: p.theme } : {}),
-          ...(p.project ? { project: p.project } : {}),
-          ...(p.tags ? { tags: p.tags } : {}),
-          ...(layaGate ? { laya_gate: layaGateToDetail(layaGate) } : {}),
-          ...(layaMerge ? { laya_merge: layaMergeToDetail(layaMerge) } : {}),
-        },
-        refs: p.refs,
-        actor: `agent:${agent.id}`,
-      });
-      seenKeys.add(key);
-
       if (isLayaMergeNow(layaMerge)) {
+        store.append({
+          type: "candidate_proposed",
+          subject_id: candId,
+          summary: p.title,
+          detail: {
+            title: p.title,
+            body: p.body,
+            confidence: p.confidence,
+            cluster_key: key,
+            source_message_ids: p.source_message_ids,
+            agent_id: agent.id,
+            gated_by: useGate ? "heuristic-gate" : "none",
+            ...(layaGate ? { laya_gate: layaGateToDetail(layaGate) } : {}),
+            ...(layaMerge ? { laya_merge: layaMergeToDetail(layaMerge) } : {}),
+          },
+          refs: p.refs,
+          actor: `agent:${agent.id}`,
+        });
+        seenKeys.add(key);
         // Fold the duplicate off Needs-you. Survivor stays suggested — Desk
         // is still the accept/reject gate. Subject is the loser so projection
-        // does not mark the existing item merged.
+        // does not mark the existing item merged. Skip tagging the loser.
         appendLayaMergeDecision(store, {
           loserId: candId,
           loserTitle: p.title,
@@ -235,6 +268,51 @@ export async function runExtract(
         );
         continue;
       }
+
+      let layaTags: LayaTagGate | undefined;
+      if (laya?.isEnabled() && layaAvailable && !laya.unavailable) {
+        layaTags = await laya.tagCandidate({
+          title: p.title,
+          body: p.body,
+          labels: tagLabels,
+        });
+        if (layaTags.failOpen) layaFailOpen = true;
+        else if (layaTags.theme || layaTags.project) {
+          layaTagged += 1;
+          for (const title of [layaTags.theme, layaTags.project]) {
+            if (title && !tagLabels.some((l) => l.title === title)) {
+              tagLabels.push({ title });
+            }
+          }
+          console.log(
+            `[extract] laya tagged ${p.title} theme=${layaTags.theme ?? "-"} project=${layaTags.project ?? "-"}`
+          );
+        }
+      }
+
+      const persisted = persistCandidateTags(p, layaTags);
+
+      store.append({
+        type: "candidate_proposed",
+        subject_id: candId,
+        summary: p.title,
+        detail: {
+          title: p.title,
+          body: p.body,
+          confidence: p.confidence,
+          cluster_key: key,
+          source_message_ids: p.source_message_ids,
+          agent_id: agent.id,
+          gated_by: useGate ? "heuristic-gate" : "none",
+          ...persisted,
+          ...(layaGate ? { laya_gate: layaGateToDetail(layaGate) } : {}),
+          ...(layaMerge ? { laya_merge: layaMergeToDetail(layaMerge) } : {}),
+          ...(layaTags ? { laya_tags: layaTagsToDetail(layaTags) } : {}),
+        },
+        refs: p.refs,
+        actor: `agent:${agent.id}`,
+      });
+      seenKeys.add(key);
 
       proposed += 1;
     }
@@ -256,6 +334,7 @@ export async function runExtract(
         noise_dropped: noiseDropped,
         laya_noise_dropped: layaNoiseDropped,
         laya_merged: layaMerged,
+        laya_tagged: layaTagged,
         laya_fail_open: layaFailOpen,
         message_count: all.length,
         seed_count: seeded.length,
