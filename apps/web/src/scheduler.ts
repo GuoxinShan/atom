@@ -75,8 +75,9 @@ async function runCronTick(
         const cli = typeof entry?.cli === "string" ? entry.cli : undefined;
         recent = await listRecentYzjPrivateChats({ cli });
         recentDms = String(recent.length);
-      } catch {
+      } catch (err) {
         recentDms = "fail";
+        console.warn(`[cron:${cfg.id}] recent DMs failed: ${(err as Error).message}`);
       }
     }
 

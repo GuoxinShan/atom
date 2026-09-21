@@ -146,14 +146,24 @@ Desk compose is **manual**. `restart: "no"` so Docker Desktop coming up at login
 docker compose up -d          # build + start Desk on :8787
 # open http://127.0.0.1:8787
 docker compose logs -f desk   # serve + [cron:poll-yzj-15m] ticks
-docker compose down           # stop (data/ and out/ stay on the host)
+docker compose down           # stop (data/, out/, and yzj/grok login volumes stay)
 ```
 
 `pnpm atom serve` / `pnpm web` on the host is unchanged (still binds `127.0.0.1` unless you set `ATOM_WEB_HOST`). Host CLI talks to Docker Desk the same way: `ATOM_API_BASE=http://127.0.0.1:8787 pnpm atom …`.
 
+Smoke (no Yunzhijia login required):
+
+```bash
+docker compose build
+docker compose run --rm desk yzj-cli --version   # Linux CLI from the image
+docker compose up -d
+curl -sfS http://127.0.0.1:8787/api/health
+docker compose down
+```
+
 ### Host Laya
 
-Compose sets `LAYA_URL=http://host.docker.internal:8790` (Mac Docker Desktop). Keep Laya running on the Mac at `:8790`. `extra_hosts: host.docker.internal:host-gateway` is for Linux Docker Engine; it does **not** put host CLIs on the container PATH.
+Compose sets `LAYA_URL=http://host.docker.internal:8790` (Mac Docker Desktop). Keep Laya running on the Mac at `:8790`. `extra_hosts: host.docker.internal:host-gateway` is for Linux Docker Engine; it does **not** put host CLIs on the container PATH. Laya stays on the host — this compose file does not bake it in.
 
 Override if Laya is elsewhere:
 
@@ -164,17 +174,49 @@ LAYA_URL=http://host.docker.internal:8790 docker compose up -d
 
 ### Yunzhijia from Docker
 
-`YzjSource` (`packages/adapters/src/yzj.ts`) does `spawn(yzj-cli, ["im", "message", "list", …])` (and `im group recent` for DMs). Ingest and `poll-yzj-15m` run **inside** the Desk process. Therefore:
+`YzjSource` (`packages/adapters/src/yzj.ts`) does `spawn(yzj-cli, ["im", "message", "list", …])` (and `im group recent` for DMs). Ingest and `poll-yzj-15m` run **inside** the Desk process. The image installs Linux `@yunzhijia/cli` (provides `yzj-cli` on PATH for linux/arm64 and linux/amd64). **Device-code login inside the container is the path.** There is **no host sidecar**. A Mac `yzj-cli` bind-mount will not exec (wrong OS ABI); Mac Keychain is not visible.
 
 | Approach | Works? |
 |---|---|
 | `LAYA_URL` + `host.docker.internal` | Yes — Laya is HTTP. |
-| `extra_hosts` / `network_mode: host` to reuse Mac `yzj-cli` | **No.** This image is Linux. A macOS `yzj-cli` binary will not exec. Mac Keychain / `yzj-cli auth login` is not in the VM. Host networking does not bind-mount host PATH. |
+| Linux `@yunzhijia/cli` **in this image** + `yzj-cli auth login --device` | **Yes — this is the dogfood path.** |
+| Named volumes for `~/.yzj-cli` + Linux encrypted keychain data | Yes — persist login across `compose down` (not `down -v`). Do **not** commit tokens. |
+| `extra_hosts` / `network_mode: host` to reuse Mac `yzj-cli` | **No.** Linux image cannot exec a macOS binary. Host networking does not bind-mount host PATH. |
 | Bind-mount Mac `yzj-cli` into `/usr/local/bin` | **No** (wrong OS ABI). |
-| Linux `yzj-cli` + its login **inside** the container (`ATOM_YZJ_CLI`, bind-mount credential dir if the CLI uses files) | Yes, if you have a Linux build and non-Keychain auth. |
-| Host sidecar that runs Mac `yzj-cli` and POSTs messages into Desk | **Not implemented.** Would be a separate Mac process (still not a login item). |
+| Host sidecar that runs Mac `yzj-cli` and POSTs messages into Desk | **No.** Not implemented; do not add one. |
 
-Until a Linux `yzj-cli` (or a host sidecar) exists, live 云之家 ingest from Docker Desk will log `[yzj] list failed` / empty pulls. Fixture source, Desk UI, SQLite (`./data`), digests (`./out`), and Laya fail-open still work. The same ABI/login limit applies to `grok` extract (`GrokCliExtractAgent`); heuristic extract does not need it.
+#### Dogfood: device-code login (one time)
+
+```bash
+docker compose up -d --build
+# open http://127.0.0.1:8787
+
+# One-time, interactive. Prints a URL + code; complete in a browser (phone/Mac is fine).
+docker compose exec desk yzj-cli auth login --device
+docker compose exec desk yzj-cli whoami
+
+docker compose logs -f desk   # [cron:poll-yzj-15m] should stop logging [yzj] list failed ENOENT
+```
+
+Login files stay in named volumes (`yzj-cli-config` → `/root/.yzj-cli`, `yzj-cli-data` → `/root/.local/share/yzj-cli`). Compose sets `YZJ_CLI_CONFIG_DIR` / `YZJ_CLI_DATA_DIR` to those paths (`yzj-cli` 0.1.6: config.json under the config dir; Linux encrypted `master.key` under the data dir). `docker compose down` keeps them. `docker compose down -v` wipes the session — you will need `--device` again. Never copy those dirs into git.
+
+Optional bind-mount instead of named volumes (still gitignored): `./.yzj-cli:/root/.yzj-cli`. Prefer the named volumes in compose.
+
+### Grok extract from Docker
+
+The image also installs Linux `@xai-official/grok` (`grok` on PATH; linux/x64 + linux/arm64). Agentic extract still needs a Grok login (or `XAI_API_KEY`). Device-code:
+
+```bash
+docker compose exec desk grok login --device-auth
+```
+
+Session lives in named volume `grok-home` → `/root/.grok`. If you have not logged Grok in yet, cron ingest still runs but extract will fail the grok spawn/auth — set **`ATOM_EXTRACT_AGENT=heuristic`** so extract skips grok (seed gate only, no candidate proposals):
+
+```bash
+ATOM_EXTRACT_AGENT=heuristic docker compose up -d
+```
+
+If `grok` is missing entirely, `GrokCliExtractAgent` logs `[extract] … ENOENT; skipping grok-cli` and returns no proposals instead of crashing the tick.
 
 Do **not** set `restart: always` or `unless-stopped` if you want to avoid boot-like autostart.
 
@@ -188,8 +230,8 @@ packages/adapters/ # fixture + yzj stub
 fixtures/          # demo messages.jsonl
 data/sources.json  # SourceRegistry config
 out/               # digests (gitignored)
-Dockerfile         # Desk image (`pnpm serve`)
-docker-compose.yml # Desk only (manual up; Laya stays on the host)
+Dockerfile         # Desk image (`pnpm serve` + Linux yzj-cli / grok)
+docker-compose.yml # Desk only (manual up; Laya stays on the host; yzj/grok volumes)
 docs/              # contracts (see 02-atom-contract, 06-extensibility, 11-single-api)
 ```
 

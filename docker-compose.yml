@@ -3,11 +3,12 @@
 #
 # Manual start — this file does not use restart: always / unless-stopped,
 # which would bring Desk back when Docker Desktop launches at login.
-# No LaunchAgent / login item.
+# No LaunchAgent / login item. No host sidecar for yzj-cli.
 #
 #   docker compose up -d          # start Desk on :8787
-#   docker compose down           # stop
+#   docker compose down           # stop (named volumes keep yzj/grok login)
 #   docker compose logs -f desk   # follow serve + poll-yzj-15m ticks
+#   docker compose exec desk yzj-cli auth login --device
 services:
   desk:
     build: .
@@ -20,15 +21,28 @@ services:
       LAYA_URL: "${LAYA_URL:-http://host.docker.internal:8790}"
       LAYA_ENABLED: "${LAYA_ENABLED:-}"
       TZ: Asia/Shanghai
+      # yzj-cli 0.1.6: config ~/.yzj-cli ; Linux encrypted keychain under data dir.
+      YZJ_CLI_CONFIG_DIR: /root/.yzj-cli
+      YZJ_CLI_DATA_DIR: /root/.local/share/yzj-cli
+      # Optional: skip grok spawn when not logged in. Default uses in-image grok.
+      ATOM_EXTRACT_AGENT: "${ATOM_EXTRACT_AGENT:-}"
+      XAI_API_KEY: "${XAI_API_KEY:-}"
     extra_hosts:
-      # Linux Docker Engine: same hostname as Desktop. Does not expose host
-      # binaries (yzj-cli / grok); those are spawn() CLIs, not HTTP.
+      # Linux Docker Engine: same hostname as Desktop. HTTP to Laya only —
+      # does not put host Mac binaries on PATH (and must not; wrong ABI).
       - "host.docker.internal:host-gateway"
     volumes:
       - ./data:/app/data
       - ./out:/app/out
+      # Persist device-code login across `compose down` / recreate. Tokens are
+      # not in the image or git. `compose down -v` wipes them.
+      - yzj-cli-config:/root/.yzj-cli
+      - yzj-cli-data:/root/.local/share/yzj-cli
+      - grok-home:/root/.grok
     restart: "no"
     init: true
-    # Optional Linux yzj-cli / grok bind-mounts — see README "Yunzhijia from Docker".
-    # A macOS yzj-cli binary will not exec in this Linux image; Mac Keychain
-    # is not visible. Do not set network_mode: host hoping to reuse host CLIs.
+
+volumes:
+  yzj-cli-config:
+  yzj-cli-data:
+  grok-home:

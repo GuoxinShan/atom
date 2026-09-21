@@ -21,7 +21,7 @@
 | `coding` | 按 handoff 在指定 cwd 改代码 |
 | `execute` | 通用执行（测、脚本、运维动作）——仍受人审/确认策略约束 |
 
-Heuristic **不是** extract provider，只是 seed gate。
+Heuristic **不是** extract provider，只是 seed gate。Docker 无 grok 登录时设 `ATOM_EXTRACT_AGENT=heuristic`：跳过 grok spawn，不产出候选（ingest / digest 仍跑）。
 
 ## Provider kinds
 

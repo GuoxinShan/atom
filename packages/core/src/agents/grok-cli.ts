@@ -84,6 +84,15 @@ export class GrokCliExtractAgent implements ExtractAgent {
         this.opts.timeoutMs ?? Number(process.env.ATOM_GROK_TIMEOUT_MS ?? 180_000),
         this.opts.maxTurns ?? Number(process.env.ATOM_GROK_MAX_TURNS ?? 3)
       );
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") {
+        console.warn(
+          `[extract] ${bin} not found on PATH (ENOENT); skipping grok-cli. Install @xai-official/grok in this image or set ATOM_EXTRACT_AGENT=heuristic.`
+        );
+        return [];
+      }
+      throw err;
     } finally {
       try {
         fs.rmSync(tmpDir, { recursive: true, force: true });

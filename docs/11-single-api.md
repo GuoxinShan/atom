@@ -30,7 +30,7 @@ pnpm atom serve          # alias of pnpm web
 
 `ATOM_WEB_PORT` changes the listen port. `ATOM_WEB_HOST` changes the bind address (default `127.0.0.1` for `pnpm serve`; Docker compose sets `0.0.0.0`). CLI defaults to `http://127.0.0.1:$ATOM_WEB_PORT` or override with `ATOM_API_BASE`.
 
-Docker alternative (no LaunchAgent): `docker compose up -d` — same daemon, published `8787:8787`. See README **Docker (Desk)**.
+Docker alternative (no LaunchAgent): `docker compose up -d` — same daemon, published `8787:8787`. Linux `yzj-cli` / `grok` are in the image; device-code login is `docker compose exec desk yzj-cli auth login --device`. See README **Docker (Desk)** / **Yunzhijia from Docker**.
 
 If the API is down, the CLI prints one line and exits — it does **not** import `@atom/core` and run in-process:
 

@@ -87,7 +87,18 @@ function runCli(bin: string, args: string[]): Promise<string> {
     let stderr = "";
     child.stdout.on("data", (d) => (stdout += d.toString()));
     child.stderr.on("data", (d) => (stderr += d.toString()));
-    child.on("error", reject);
+    child.on("error", (err) => {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === "ENOENT") {
+        reject(
+          new Error(
+            `${bin} not found on PATH (ENOENT). The Desk image installs Linux @yunzhijia/cli; a Mac yzj-cli bind-mount will not exec.`
+          )
+        );
+        return;
+      }
+      reject(err);
+    });
     child.on("close", (code) => {
       if (code !== 0) reject(new Error(stderr || `exit ${code}`));
       else resolve(stdout);
