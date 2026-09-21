@@ -23,6 +23,8 @@ import {
   runExtract,
   runMergeSweep,
   writeDigest,
+  evaluateOutboundGate,
+  layaOutboundToDetail,
   attachEvidence,
   findSpec,
   LeadAgent,
@@ -107,6 +109,34 @@ export async function handleApi(
     const body = await readJson(req);
     const result = await runMergeSweep(daemon.store, { apply: body.apply === true });
     json(res, { ok: true, ...result });
+    return true;
+  }
+
+  if (method === "POST" && p === "/api/outbound-check") {
+    const body = await readJson(req);
+    const title = str(body, "title");
+    const text = str(body, "body", "text");
+    const kind = str(body, "kind") || "outbound";
+    if (!title && !text) {
+      json(res, { error: "title or body required" }, 400);
+      return true;
+    }
+    const result = await evaluateOutboundGate(
+      { title, body: text, kind },
+      { store: daemon.store }
+    );
+    json(res, {
+      ok: true,
+      action: result.gate.action,
+      fail_open: result.gate.failOpen,
+      reason: result.gate.reason,
+      confidence: result.gate.confidence ?? null,
+      laya_available: result.layaAvailable,
+      delivered: false,
+      event_id: result.eventId ?? null,
+      kind: result.kind,
+      laya_outbound: layaOutboundToDetail(result.gate),
+    });
     return true;
   }
 

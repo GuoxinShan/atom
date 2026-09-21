@@ -90,7 +90,7 @@ Week 1 engineering: score title + acceptance only; strip generic tooling mention
 1. Optional 18:30 run
 2. “Accept & handoff” (still no auto `--run`)
 3. Dedup UI for same-ref duplicates
-4. Wire one outbound sink to a **draft** (not send) for nightly digest confirm
+4. Wire one outbound sink to a **draft** (not send) for nightly digest confirm — `pnpm atom outbound-check` / `POST /api/outbound-check` first; Desk remains the send authority.
 
 ## 7. Explicit non-goals (next month)
 
