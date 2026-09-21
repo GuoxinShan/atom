@@ -9,15 +9,31 @@
  * never blocks the pipeline. Noul is preferred over choice confidence —
  * high same_request / is_chat_noise does not fail-open just because the
  * companion choice head is poorly calibrated.
+ * A single per-call timeout fail-opens that candidate (`reason=timeout`)
+ * without marking the client unavailable — later candidates still get a
+ * predict. Connection refused, repeated 5xx, or /health down mark the
+ * client unavailable for the rest of the run (`reason=unavailable`).
  * Laya never auto-approves; Desk remains the human accept/reject gate.
  */
 
 import { LAYA_NOISE_REJECT_REASON } from "./noise.js";
 
 export const DEFAULT_LAYA_URL = "http://127.0.0.1:8790";
-export const DEFAULT_LAYA_TIMEOUT_MS = 1500;
+/**
+ * Per-call HTTP budget. 1.5s covers `/health` and small noise-gate prompts,
+ * but Mac CPU Laya + `/v1/predict` with an open-item list (merge gate,
+ * up to MERGE_OPEN_ITEMS_CAP snippets) routinely exceeds that. Live runs
+ * after the noul-first merge gate then fail-opened remaining siblings
+ * with `reason=unavailable` after the first AbortError. 10s is inside the
+ * 8–15s window for local CPU inference without stalling extract. Override
+ * with LAYA_TIMEOUT_MS.
+ */
+export const DEFAULT_LAYA_TIMEOUT_MS = 10_000;
+/** Consecutive HTTP 5xx responses before the client is marked unavailable. */
+export const LAYA_UNAVAILABLE_AFTER_5XX = 2;
 export const DEFAULT_LAYA_MIN_CONFIDENCE = 0.8;
 export const LAYA_NOISE_REASON = LAYA_NOISE_REJECT_REASON;
+export type LayaTransportFail = "timeout" | "unavailable";
 
 export type LayaFetch = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -146,6 +162,18 @@ export function mergeGateQuestions(openItems: OpenItemSnippet[]): Record<string,
       criteria,
     },
   };
+}
+
+function isAbortError(err: unknown): boolean {
+  if (err == null || typeof err !== "object") return false;
+  const name = (err as { name?: string }).name;
+  if (name === "AbortError" || name === "TimeoutError") return true;
+  const cause = (err as { cause?: unknown }).cause;
+  if (cause && typeof cause === "object") {
+    const causeName = (cause as { name?: string }).name;
+    if (causeName === "AbortError" || causeName === "TimeoutError") return true;
+  }
+  return false;
 }
 
 function parseEnabled(raw: string | undefined): boolean {
@@ -470,8 +498,14 @@ export class LayaClient {
   readonly timeoutMs: number;
   readonly minConfidence: number;
   private readonly fetchImpl: LayaFetch;
-  /** After timeout / 5xx / network error, skip further calls this run. */
+  /**
+   * Hard skip for the rest of this extract/run. Set on connection refused,
+   * repeated 5xx, or /health down — not on a single AbortError timeout.
+   */
   unavailable = false;
+  /** Last transport failure, so audit can tell timeout from true unavailability. */
+  lastFailReason: LayaTransportFail = "unavailable";
+  private consecutive5xx = 0;
 
   constructor(opts: LayaClientOptions = {}) {
     this.url = (opts.url ?? DEFAULT_LAYA_URL).replace(/\/$/, "");
@@ -499,13 +533,21 @@ export class LayaClient {
     return new URL(path, `${this.url}/`).toString();
   }
 
+  private markUnavailable(): void {
+    this.unavailable = true;
+    this.lastFailReason = "unavailable";
+  }
+
   private async request(path: string, init?: RequestInit): Promise<Response | null> {
-    if (!this.enabled || this.unavailable) return null;
+    if (!this.enabled || this.unavailable) {
+      this.lastFailReason = "unavailable";
+      return null;
+    }
     const ctrl = new AbortController();
     const outer = init?.signal;
     if (outer) {
       if (outer.aborted) {
-        this.unavailable = true;
+        this.lastFailReason = "timeout";
         return null;
       }
       outer.addEventListener("abort", () => ctrl.abort(), { once: true });
@@ -517,12 +559,21 @@ export class LayaClient {
         signal: ctrl.signal,
       });
       if (!res.ok) {
-        if (res.status >= 500) this.unavailable = true;
+        this.lastFailReason = "unavailable";
+        if (res.status >= 500) {
+          this.consecutive5xx += 1;
+          if (this.consecutive5xx >= LAYA_UNAVAILABLE_AFTER_5XX) this.markUnavailable();
+        }
         return null;
       }
+      this.consecutive5xx = 0;
       return res;
-    } catch {
-      this.unavailable = true;
+    } catch (err) {
+      if (isAbortError(err)) {
+        this.lastFailReason = "timeout";
+        return null;
+      }
+      this.markUnavailable();
       return null;
     } finally {
       clearTimeout(timer);
@@ -535,7 +586,7 @@ export class LayaClient {
     try {
       return await res.json();
     } catch {
-      this.unavailable = true;
+      this.lastFailReason = "unavailable";
       return null;
     }
   }
@@ -549,7 +600,7 @@ export class LayaClient {
     if (!this.enabled) return false;
     if (this.unavailable) return false;
     const ok = await this.health();
-    if (!ok) this.unavailable = true;
+    if (!ok) this.markUnavailable();
     return ok;
   }
 
@@ -566,35 +617,37 @@ export class LayaClient {
     return { answers: parsePredictAnswers(raw), raw };
   }
 
+  private transportFail(): LayaTransportFail {
+    return this.unavailable ? "unavailable" : this.lastFailReason;
+  }
+
   async routeModel(request: string): Promise<LayaModelRoute> {
-    const fail: LayaModelRoute = {
-      intensity: "unknown",
-      failOpen: true,
-      reason: "unavailable",
-    };
-    if (!this.enabled) return fail;
+    if (!this.enabled) {
+      return { intensity: "unknown", failOpen: true, reason: "unavailable" };
+    }
     const raw = await this.requestJson("/v1/route-model", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ request }),
     });
-    if (raw == null) return fail;
+    if (raw == null) {
+      return { intensity: "unknown", failOpen: true, reason: this.transportFail() };
+    }
     return interpretRouteModel(raw);
   }
 
   async gateCandidate(input: { title: string; body?: string }): Promise<LayaCandidateGate> {
-    const fail: LayaCandidateGate = {
-      action: "suggested",
-      failOpen: true,
-      reason: "unavailable",
-    };
-    if (!this.enabled) return fail;
+    if (!this.enabled) {
+      return { action: "suggested", failOpen: true, reason: "unavailable" };
+    }
     const predicted = await this.predict({
       title: input.title,
       body: input.body ?? "",
       text: [input.title, input.body].filter(Boolean).join("\n"),
     });
-    if (!predicted) return fail;
+    if (!predicted) {
+      return { action: "suggested", failOpen: true, reason: this.transportFail() };
+    }
     return interpretCandidateAnswers(predicted.answers, this.minConfidence);
   }
 
@@ -603,12 +656,9 @@ export class LayaClient {
     body?: string;
     openItems: OpenItemSnippet[];
   }): Promise<LayaMergeGate> {
-    const fail: LayaMergeGate = {
-      action: "new",
-      failOpen: true,
-      reason: "unavailable",
-    };
-    if (!this.enabled) return fail;
+    if (!this.enabled) {
+      return { action: "new", failOpen: true, reason: "unavailable" };
+    }
     if (!input.openItems.length) {
       return { action: "new", failOpen: false, reason: "no-open-items" };
     }
@@ -622,7 +672,9 @@ export class LayaClient {
       },
       mergeGateQuestions(input.openItems)
     );
-    if (!predicted) return fail;
+    if (!predicted) {
+      return { action: "new", failOpen: true, reason: this.transportFail() };
+    }
     return interpretMergeAnswers(predicted.answers, input.openItems, this.minConfidence);
   }
 }
