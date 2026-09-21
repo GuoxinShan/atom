@@ -33,6 +33,13 @@ import {
   LeadAgent,
   openPr,
   readRuntimeMeta,
+  loadPreferenceMemory,
+  savePreferenceMemory,
+  applyPreferenceMemoryPatch,
+  preferenceMemoryPath,
+  PREFERENCE_MEMORY_FILE,
+  readLastPreferenceRsi,
+  LayaClient,
 } from "@atom/core";
 import type { Daemon } from "./context.js";
 import { json, readJson } from "./http.js";
@@ -59,6 +66,61 @@ export async function handleApi(
 
   if (method === "GET" && p === "/api/meta") {
     json(res, { ok: true, ...readRuntimeMeta(daemon.store) });
+    return true;
+  }
+
+  if (method === "GET" && p === "/api/status") {
+    const meta = readRuntimeMeta(daemon.store);
+    const memory = loadPreferenceMemory(daemon.repoRoot, daemon.store);
+    json(res, {
+      ok: true,
+      desk: { ok: true, service: "atom-desk" },
+      lastRunAt: meta.lastRunAt,
+      lastExtractAt: meta.lastExtractAt,
+      preference: {
+        floors: { ...memory.thresholds },
+        updated_at: memory.updated_at,
+        source_of_truth: PREFERENCE_MEMORY_FILE,
+      },
+      laya: await probeLayaCheap(daemon.repoRoot),
+    });
+    return true;
+  }
+
+  if (method === "GET" && p === "/api/preference-memory") {
+    json(res, preferenceMemoryPayload(daemon));
+    return true;
+  }
+
+  if (method === "PATCH" && p === "/api/preference-memory") {
+    const body = await readJson(req);
+    const current = loadPreferenceMemory(daemon.repoRoot, daemon.store);
+    const thresholdsRaw = body.thresholds;
+    const thresholds =
+      thresholdsRaw && typeof thresholdsRaw === "object" && !Array.isArray(thresholdsRaw)
+        ? (thresholdsRaw as Record<string, unknown>)
+        : undefined;
+    const { memory, changed } = applyPreferenceMemoryPatch(current, {
+      thresholds: thresholds
+        ? {
+            noise: typeof thresholds.noise === "number" && Number.isFinite(thresholds.noise) ? thresholds.noise : undefined,
+            merge: typeof thresholds.merge === "number" && Number.isFinite(thresholds.merge) ? thresholds.merge : undefined,
+            outbound:
+              typeof thresholds.outbound === "number" && Number.isFinite(thresholds.outbound)
+                ? thresholds.outbound
+                : undefined,
+          }
+        : undefined,
+      blocklist: Array.isArray(body.blocklist) ? body.blocklist.map(String) : undefined,
+      blocklist_add: Array.isArray(body.blocklist_add) ? body.blocklist_add.map(String) : undefined,
+      blocklist_remove: Array.isArray(body.blocklist_remove)
+        ? body.blocklist_remove.map(String)
+        : undefined,
+    });
+    if (changed) {
+      savePreferenceMemory(daemon.repoRoot, memory, daemon.store);
+    }
+    json(res, { ...preferenceMemoryPayload(daemon, memory), changed });
     return true;
   }
 
@@ -420,6 +482,34 @@ export async function handleApi(
   }
 
   return false;
+}
+
+function preferenceMemoryPayload(
+  daemon: Daemon,
+  memory = loadPreferenceMemory(daemon.repoRoot, daemon.store)
+) {
+  const filePath = preferenceMemoryPath(daemon.repoRoot);
+  return {
+    ok: true,
+    source_of_truth: PREFERENCE_MEMORY_FILE,
+    path: filePath,
+    exists: fs.existsSync(filePath),
+    memory,
+    last_rsi: readLastPreferenceRsi(daemon.store),
+  };
+}
+
+/** Short probe for the Desk status strip. Must not stall on a 10s Laya timeout. */
+async function probeLayaCheap(
+  repoRoot: string
+): Promise<{ enabled: boolean; ok: boolean | null }> {
+  const client = LayaClient.fromEnv({ repoRoot, timeoutMs: 400 });
+  if (!client.enabled) return { enabled: false, ok: null };
+  try {
+    return { enabled: true, ok: await client.health() };
+  } catch {
+    return { enabled: true, ok: false };
+  }
 }
 
 function str(body: Record<string, unknown>, ...keys: string[]): string {

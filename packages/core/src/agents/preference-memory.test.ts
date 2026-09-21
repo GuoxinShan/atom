@@ -1,0 +1,46 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import {
+  RSI_MAX_THRESHOLD,
+  RSI_MIN_THRESHOLD,
+  applyPreferenceMemoryPatch,
+  defaultPreferenceMemory,
+} from "./preference-memory.js";
+
+describe("applyPreferenceMemoryPatch", () => {
+  it("clamps floors to [0.70, 0.95] and does not move cursor_at", () => {
+    const current = {
+      ...defaultPreferenceMemory(),
+      cursor_at: "2026-09-20T00:00:00.000Z",
+      updated_at: "2026-09-20T00:00:00.000Z",
+    };
+    const { memory, changed } = applyPreferenceMemoryPatch(
+      current,
+      { thresholds: { noise: 0.1, outbound: 2 } },
+      new Date("2026-09-21T05:00:00.000Z")
+    );
+    assert.equal(changed, true);
+    assert.equal(memory.thresholds.noise, RSI_MIN_THRESHOLD);
+    assert.equal(memory.thresholds.merge, 0.8);
+    assert.equal(memory.thresholds.outbound, RSI_MAX_THRESHOLD);
+    assert.equal(memory.cursor_at, current.cursor_at);
+    assert.equal(memory.updated_at, "2026-09-21T05:00:00.000Z");
+  });
+
+  it("drops blocklist stems shorter than 4 chars and can add/remove", () => {
+    const current = {
+      ...defaultPreferenceMemory(),
+      blocklist: ["午餐闲聊"],
+    };
+    const short = applyPreferenceMemoryPatch(current, { blocklist_add: ["ab"] });
+    assert.equal(short.changed, false);
+
+    const added = applyPreferenceMemoryPatch(current, { blocklist_add: ["收到确认"] });
+    assert.equal(added.changed, true);
+    assert.deepEqual(added.memory.blocklist, ["午餐闲聊", "收到确认"]);
+
+    const removed = applyPreferenceMemoryPatch(added.memory, { blocklist_remove: ["午餐闲聊"] });
+    assert.deepEqual(removed.memory.blocklist, ["收到确认"]);
+    assert.deepEqual(removed.memory.allowlist, []);
+  });
+});

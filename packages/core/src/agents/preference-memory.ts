@@ -160,6 +160,82 @@ export function savePreferenceMemory(
   return filePath;
 }
 
+/** Constrained Desk/API patch. Clamps floors; never touches cursor_at (RSI watermark). */
+export type PreferenceMemoryPatch = {
+  thresholds?: Partial<LayaGateThresholds>;
+  /** Replace the whole blocklist (still filtered to 4–24 char stems, max 16). */
+  blocklist?: string[];
+  blocklist_add?: string[];
+  blocklist_remove?: string[];
+};
+
+function listsEqual(a: string[], b: string[]): boolean {
+  return a.join("\0") === b.join("\0");
+}
+
+/**
+ * Light-edit helper for Desk. Uses the same clamp / pattern filters as RSI.
+ * Does not retrain Laya. Does not send Yunzhijia. Does not move `cursor_at`.
+ */
+export function applyPreferenceMemoryPatch(
+  current: PreferenceMemory,
+  patch: PreferenceMemoryPatch,
+  now = new Date()
+): { memory: PreferenceMemory; changed: boolean } {
+  const thresholds = {
+    noise:
+      typeof patch.thresholds?.noise === "number" && Number.isFinite(patch.thresholds.noise)
+        ? patch.thresholds.noise
+        : current.thresholds.noise,
+    merge:
+      typeof patch.thresholds?.merge === "number" && Number.isFinite(patch.thresholds.merge)
+        ? patch.thresholds.merge
+        : current.thresholds.merge,
+    outbound:
+      typeof patch.thresholds?.outbound === "number" && Number.isFinite(patch.thresholds.outbound)
+        ? patch.thresholds.outbound
+        : current.thresholds.outbound,
+  };
+
+  let blocklist = current.blocklist;
+  if (Array.isArray(patch.blocklist)) blocklist = patch.blocklist;
+  if (Array.isArray(patch.blocklist_add) && patch.blocklist_add.length) {
+    blocklist = mergePatternList(blocklist, patch.blocklist_add);
+  }
+  if (Array.isArray(patch.blocklist_remove) && patch.blocklist_remove.length) {
+    const drop = new Set(
+      patch.blocklist_remove.map((s) => String(s).trim().toLowerCase()).filter(Boolean)
+    );
+    blocklist = blocklist.filter((p) => !drop.has(p.toLowerCase()));
+  }
+
+  const parsed = parsePreferenceMemory({
+    version: 1,
+    updated_at: current.updated_at,
+    cursor_at: current.cursor_at,
+    thresholds,
+    allowlist: current.allowlist,
+    blocklist,
+  });
+
+  const changed =
+    parsed.thresholds.noise !== current.thresholds.noise ||
+    parsed.thresholds.merge !== current.thresholds.merge ||
+    parsed.thresholds.outbound !== current.thresholds.outbound ||
+    !listsEqual(parsed.blocklist, current.blocklist);
+
+  if (!changed) return { memory: current, changed: false };
+
+  return {
+    memory: {
+      ...parsed,
+      updated_at: now.toISOString(),
+      cursor_at: current.cursor_at,
+    },
+    changed: true,
+  };
+}
+
 function haystack(title: string, body = ""): string {
   return `${title}\n${body}`.replace(/\s+/g, " ").trim().toLowerCase();
 }

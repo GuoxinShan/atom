@@ -1,18 +1,26 @@
+const PAGES = ["needs-you", "processed", "preferences", "advanced"];
+
 const state = {
-  page: "desk",
+  page: "needs-you",
   candidates: [],
   specs: [],
   checklists: [],
   sources: [],
   machines: {},
   meta: {},
+  status: null,
+  digest: null,
+  preference: null,
+  rsiPreview: null,
+  prefNote: "",
+  prefNoteFail: false,
   selectedId: null,
   selectedKind: "candidate",
   handoffNote: "",
   ackNote: "",
 };
 
-const meta = document.getElementById("meta");
+const statusStrip = document.getElementById("status-strip");
 const queue = document.getElementById("needs-queue");
 const transcript = document.getElementById("lead-transcript");
 
@@ -217,14 +225,34 @@ function metaLine({ sources = [], status = "", when = "", extra = [] } = {}) {
   return `<div class="meta-line">${bits.join("")}</div>`;
 }
 
-function showPage(name) {
-  state.page = name;
+function migratePage(name) {
+  const raw = String(name ?? "").trim();
+  if (raw === "desk") return "needs-you";
+  if (raw === "atoms" || raw === "setup") return "advanced";
+  if (PAGES.includes(raw)) return raw;
+  return "needs-you";
+}
+
+function pageFromHash() {
+  return migratePage((location.hash || "").replace(/^#\/?/, ""));
+}
+
+function showPage(name, opts = {}) {
+  const page = migratePage(name);
+  state.page = page;
   document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
   document.querySelectorAll(".nav button").forEach((b) => b.classList.remove("active"));
-  document.getElementById(`page-${name}`)?.classList.add("active");
-  document.querySelector(`.nav button[data-page="${name}"]`)?.classList.add("active");
-  if (name === "desk") loadDesk();
-  if (name === "setup") loadSetup();
+  document.getElementById(`page-${page}`)?.classList.add("active");
+  document.querySelector(`.nav button[data-page="${page}"]`)?.classList.add("active");
+  if (!opts.skipHash) {
+    const next = `#${page}`;
+    if (location.hash !== next) history.replaceState(null, "", next);
+  }
+  if (page === "needs-you") loadDesk();
+  if (page === "processed") loadProcessed();
+  if (page === "preferences") loadPreferences();
+  if (page === "advanced") loadSetup();
+  loadStatus();
 }
 
 document.getElementById("nav").addEventListener("click", (e) => {
@@ -526,7 +554,6 @@ function renderQueue() {
   const suggested = state.candidates.filter((c) => c.status === "suggested");
   const acks = awaitingChecklists();
   const outbound = 0;
-  meta.textContent = `${suggested.length + acks.length} need you`;
   const counts = document.getElementById("gate-counts");
   if (counts) {
     const bits = [`${suggested.length} suggested`];
@@ -537,10 +564,10 @@ function renderQueue() {
   queue.innerHTML = "";
 
   if (!suggested.length && !acks.length && !outbound) {
-    const when = formatLastActivity(state.meta);
-    queue.innerHTML = `<p class="clear">今天没有要你拍板的</p>${
-      when ? `<p class="clear-meta">${escapeHtml(when)}</p>` : ""
-    }`;
+    queue.innerHTML = `
+      <p class="clear">今天没有要你拍板的</p>
+      <p class="clear-meta">队列空着是正常的。盯着的群里出现新话题时，卡片会到这里，主操作是 Approve / Reject。</p>
+    `;
     return;
   }
 
@@ -726,7 +753,7 @@ async function copyId(id, btn) {
   }
 }
 
-document.getElementById("page-desk").addEventListener("click", async (e) => {
+document.getElementById("page-needs-you").addEventListener("click", async (e) => {
   const copyBtn = e.target.closest("button[data-copy-id]");
   if (copyBtn) {
     e.stopPropagation();
@@ -884,9 +911,14 @@ async function loadDesk() {
 
 async function loadSetup() {
   const data = await fetchJson("/api/setup", { checks: [], ready: false });
-  meta.textContent = data.ready ? "cold-start READY" : "cold-start needs attention";
   const root = document.getElementById("setup-list");
   root.innerHTML = "";
+  if (!data.ready) {
+    const note = document.createElement("p");
+    note.className = "hint tiny";
+    note.textContent = "cold-start needs attention";
+    root.appendChild(note);
+  }
   for (const c of data.checks || []) {
     const el = document.createElement("div");
     el.className = "check";
@@ -901,7 +933,338 @@ async function loadSetup() {
   }
 }
 
-showPage("desk");
+function fmtFloor(n) {
+  return typeof n === "number" && Number.isFinite(n) ? n.toFixed(2) : "n/a";
+}
+
+function fmtPct(rate) {
+  if (typeof rate !== "number" || !Number.isFinite(rate)) return "n/a";
+  return `${Math.round(rate * 100)}%`;
+}
+
+function layaStatusLabel(laya) {
+  if (!laya) return "";
+  if (laya.enabled === false) return "Laya 关闭";
+  if (laya.ok === true) return "Laya 在线";
+  if (laya.ok === false) return "Laya 未连上";
+  return "";
+}
+
+function renderStatus() {
+  if (!statusStrip) return;
+  const s = state.status || {};
+  const bits = [];
+  const when = formatLastActivity({
+    lastRunAt: s.lastRunAt || state.meta.lastRunAt,
+    lastExtractAt: s.lastExtractAt || state.meta.lastExtractAt,
+  });
+  bits.push(when || "尚无 atom run");
+  const floors = s.preference?.floors;
+  if (floors) {
+    bits.push(
+      `门槛 noise ${fmtFloor(floors.noise)} / merge ${fmtFloor(floors.merge)} / outbound ${fmtFloor(floors.outbound)}`
+    );
+  }
+  if (s.desk?.ok) bits.push("Desk 正常");
+  const laya = layaStatusLabel(s.laya);
+  if (laya) bits.push(laya);
+  statusStrip.textContent = bits.join(" · ");
+}
+
+async function loadStatus() {
+  const data = await fetchJson("/api/status", null);
+  if (data && data.ok) {
+    state.status = data;
+    if (data.lastRunAt || data.lastExtractAt) {
+      state.meta = {
+        lastRunAt: data.lastRunAt || state.meta.lastRunAt || null,
+        lastExtractAt: data.lastExtractAt || state.meta.lastExtractAt || null,
+      };
+    }
+  } else {
+    state.status = { desk: { ok: false } };
+  }
+  renderStatus();
+}
+
+function renderProcessed() {
+  const root = document.getElementById("processed-root");
+  const d = state.digest;
+  if (!d) {
+    root.innerHTML = '<p class="processed-note">读不到 gate-digest。确认 Desk API 在跑，然后刷新。</p>';
+    return;
+  }
+  const extract = d.extract || {};
+  const merge = d.merge || {};
+  const outbound = d.outbound || {};
+  const proxies = d.proxies || {};
+  const desk = d.desk || {};
+  const windowLabel = d.window_hours != null ? `${d.window_hours}h` : "24h";
+  root.innerHTML = `
+    <p class="processed-note">窗口 ${escapeHtml(windowLabel)} · 只读 · 未发云之家、未改门槛、未训练 Laya。</p>
+    <div class="stat-grid">
+      <div class="stat-card">
+        <span class="num">${escapeHtml(String(extract.noise_dropped ?? 0))}</span>
+        <span class="lbl">噪音已丢弃</span>
+        ${
+          extract.laya_noise_dropped
+            ? `<span class="sub">其中 Laya ${escapeHtml(String(extract.laya_noise_dropped))}</span>`
+            : ""
+        }
+      </div>
+      <div class="stat-card">
+        <span class="num">${escapeHtml(String(merge.merged ?? 0))}</span>
+        <span class="lbl">已合并重复</span>
+        <span class="sub">Needs you 仍开 ${escapeHtml(String(merge.open ?? 0))}</span>
+      </div>
+      <div class="stat-card">
+        <span class="num">${escapeHtml(
+          `${outbound.allow ?? 0} / ${outbound.drop ?? 0} / ${outbound.hold ?? 0}`
+        )}</span>
+        <span class="lbl">出站 allow / drop / hold</span>
+        <span class="sub">检查 ${escapeHtml(String(outbound.checks ?? 0))} 次</span>
+      </div>
+      <div class="stat-card">
+        <span class="num">${escapeHtml(fmtPct(proxies.auto_rate))}</span>
+        <span class="lbl">自动处理率 auto_rate</span>
+        <span class="sub">${escapeHtml(proxies.auto_rate_note || "")}</span>
+      </div>
+    </div>
+    <p class="processed-note">Desk 拍板：通过 ${escapeHtml(String(desk.accepted ?? 0))} · 拒绝 ${escapeHtml(
+      String(desk.rejected ?? 0)
+    )} · 待拍板 ${escapeHtml(String(desk.suggested ?? 0))}</p>
+    ${
+      d.markdown
+        ? `<details><summary>原始 markdown</summary><pre class="rsi-preview">${escapeHtml(
+            d.markdown
+          )}</pre></details>`
+        : ""
+    }
+  `;
+}
+
+async function loadProcessed() {
+  const data = await fetchJson("/api/gate-digest?since=24h", null);
+  state.digest = data && data.ok !== false ? data : null;
+  renderProcessed();
+}
+
+function chipRow(items, kind) {
+  if (!items.length) return `<p class="pref-meta">（空）</p>`;
+  return `<div class="chips">${items
+    .map(
+      (p) =>
+        `<span class="chip">${escapeHtml(p)}${
+          kind === "block"
+            ? `<button type="button" data-block-remove="${escapeHtml(p)}" aria-label="移除">×</button>`
+            : ""
+        }</span>`
+    )
+    .join("")}</div>`;
+}
+
+function rsiSummary(rsi) {
+  if (!rsi) return "尚无 preference-rsi 记录。试算后可写入（现有 POST /api/preference-rsi）。";
+  const d = rsi.deltas || {};
+  return `${relativeTime(rsi.at) || rsi.at} · reason=${rsi.reason} changed=${rsi.changed}
+noise ${fmtFloor(rsi.before?.noise)}→${fmtFloor(rsi.after?.noise)}（Δ ${fmtFloor(d.noise)}）
+merge ${fmtFloor(rsi.before?.merge)}→${fmtFloor(rsi.after?.merge)}（Δ ${fmtFloor(d.merge)}）
+outbound ${fmtFloor(rsi.before?.outbound)}→${fmtFloor(rsi.after?.outbound)}（Δ ${fmtFloor(d.outbound)}）`;
+}
+
+function renderPreferences() {
+  const root = document.getElementById("preferences-root");
+  const pack = state.preference;
+  if (!pack) {
+    root.innerHTML = '<p class="processed-note">读不到 preference memory。</p>';
+    return;
+  }
+  const mem = pack.memory || {};
+  const th = mem.thresholds || { noise: 0.8, merge: 0.8, outbound: 0.8 };
+  const flash = state.prefNote
+    ? `<p class="pref-flash${state.prefNoteFail ? " fail" : ""}">${escapeHtml(state.prefNote)}</p>`
+    : "";
+  const preview = state.rsiPreview
+    ? `<pre class="rsi-preview">${escapeHtml(
+        `试算 reason=${state.rsiPreview.reason} changed=${state.rsiPreview.changed}
+noise ${fmtFloor(state.rsiPreview.before?.noise)}→${fmtFloor(state.rsiPreview.after?.noise)}
+merge ${fmtFloor(state.rsiPreview.before?.merge)}→${fmtFloor(state.rsiPreview.after?.merge)}
+outbound ${fmtFloor(state.rsiPreview.before?.outbound)}→${fmtFloor(state.rsiPreview.after?.outbound)}
+allow +${(state.rsiPreview.added_allowlist || []).join(" | ") || "无"}
+block +${(state.rsiPreview.added_blocklist || []).join(" | ") || "无"}`
+      )}</pre>`
+    : "";
+  root.innerHTML = `
+    <div class="pref-block">
+      <h3>来源</h3>
+      <p class="pref-meta">
+        真实来源：<code>${escapeHtml(pack.source_of_truth || "data/preference-memory.json")}</code>
+        ${pack.exists ? "（文件在）" : "（文件尚未写出，下面是默认门槛 0.80）"}<br />
+        更新时间：${escapeHtml(mem.updated_at ? relativeTime(mem.updated_at) : "从未写入")}
+      </p>
+    </div>
+    <div class="pref-block">
+      <h3>门槛（0.70–0.95，保存时夹紧）</h3>
+      <div class="pref-grid">
+        <div class="pref-field">
+          <label for="pref-noise">noise</label>
+          <input id="pref-noise" type="number" min="0.7" max="0.95" step="0.02" value="${escapeHtml(
+            String(th.noise)
+          )}" />
+        </div>
+        <div class="pref-field">
+          <label for="pref-merge">merge</label>
+          <input id="pref-merge" type="number" min="0.7" max="0.95" step="0.02" value="${escapeHtml(
+            String(th.merge)
+          )}" />
+        </div>
+        <div class="pref-field">
+          <label for="pref-outbound">outbound</label>
+          <input id="pref-outbound" type="number" min="0.7" max="0.95" step="0.02" value="${escapeHtml(
+            String(th.outbound)
+          )}" />
+        </div>
+      </div>
+      <div class="pref-actions">
+        <button type="button" class="primary" id="pref-save-floors">保存门槛</button>
+      </div>
+    </div>
+    <div class="pref-block">
+      <h3>屏蔽词 blocklist</h3>
+      <p class="pref-meta">命中标题/正文的候选当噪音丢掉。至少 4 个字符。允许列表只读（由 RSI 维护）。</p>
+      ${chipRow(mem.blocklist || [], "block")}
+      <form class="chip-add" id="pref-block-form">
+        <input id="pref-block-input" maxlength="24" placeholder="加一条屏蔽词" />
+        <button type="submit" class="primary">添加</button>
+      </form>
+      <h3 class="subhead">允许列表 allowlist</h3>
+      ${chipRow(mem.allowlist || [], "allow")}
+    </div>
+    <div class="pref-block">
+      <h3>上次 RSI</h3>
+      <p class="pref-meta">${escapeHtml(rsiSummary(pack.last_rsi))}</p>
+      <div class="rsi-actions">
+        <button type="button" id="pref-rsi-dry">试算 RSI</button>
+        <button type="button" class="primary" id="pref-rsi-apply">写入 RSI</button>
+      </div>
+      ${preview}
+      ${flash}
+    </div>
+  `;
+}
+
+async function loadPreferences() {
+  const data = await fetchJson("/api/preference-memory", null);
+  state.preference = data && (data.memory || data.ok !== false) ? data : null;
+  renderPreferences();
+}
+
+async function patchPreference(body) {
+  try {
+    const res = await fetch("/api/preference-memory", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      state.prefNote = data.error || JSON.stringify(data);
+      state.prefNoteFail = true;
+    } else {
+      state.preference = data;
+      state.prefNote = data.changed ? "已写入 preference-memory.json（已夹紧，未训练 Laya）" : "没有变化";
+      state.prefNoteFail = false;
+    }
+  } catch (err) {
+    state.prefNote = String(err);
+    state.prefNoteFail = true;
+  }
+  renderPreferences();
+  loadStatus();
+}
+
+async function runRsi(apply) {
+  try {
+    const res = await fetch("/api/preference-rsi", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ apply: apply === true }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      state.prefNote = data.error || JSON.stringify(data);
+      state.prefNoteFail = true;
+    } else {
+      state.rsiPreview = data;
+      state.prefNote = apply
+        ? data.changed
+          ? "已写入 RSI（preference-rsi --apply）"
+          : `RSI ${data.reason}，未改文件`
+        : `试算完成 reason=${data.reason}（未写文件）`;
+      state.prefNoteFail = false;
+      if (apply) await loadPreferences();
+    }
+  } catch (err) {
+    state.prefNote = String(err);
+    state.prefNoteFail = true;
+  }
+  renderPreferences();
+  loadStatus();
+}
+
+document.getElementById("page-preferences").addEventListener("click", async (e) => {
+  const save = e.target.closest("#pref-save-floors");
+  if (save) {
+    save.disabled = true;
+    await patchPreference({
+      thresholds: {
+        noise: Number(document.getElementById("pref-noise")?.value),
+        merge: Number(document.getElementById("pref-merge")?.value),
+        outbound: Number(document.getElementById("pref-outbound")?.value),
+      },
+    });
+    return;
+  }
+  const remove = e.target.closest("[data-block-remove]");
+  if (remove) {
+    remove.disabled = true;
+    await patchPreference({ blocklist_remove: [remove.dataset.blockRemove] });
+    return;
+  }
+  const dry = e.target.closest("#pref-rsi-dry");
+  if (dry) {
+    dry.disabled = true;
+    await runRsi(false);
+    return;
+  }
+  const applyBtn = e.target.closest("#pref-rsi-apply");
+  if (applyBtn) {
+    applyBtn.disabled = true;
+    await runRsi(true);
+  }
+});
+
+document.getElementById("page-preferences").addEventListener("submit", async (e) => {
+  const form = e.target.closest("#pref-block-form");
+  if (!form) return;
+  e.preventDefault();
+  const input = document.getElementById("pref-block-input");
+  const value = input?.value.trim() || "";
+  if (value.length < 4) {
+    state.prefNote = "屏蔽词至少 4 个字符（与 RSI 规则相同）";
+    state.prefNoteFail = true;
+    renderPreferences();
+    return;
+  }
+  await patchPreference({ blocklist_add: [value] });
+});
+
+window.addEventListener("hashchange", () => {
+  const page = pageFromHash();
+  if (page !== state.page) showPage(page, { skipHash: true });
+});
+
+showPage(pageFromHash());
 
 document.querySelectorAll(".drawers details").forEach((d) => {
   d.addEventListener("toggle", () => {

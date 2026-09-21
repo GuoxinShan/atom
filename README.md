@@ -67,7 +67,7 @@ pnpm atom run --agent grok-cli
 
 ### Dispatch Desk
 
-Same daemon, same SQLite. Approve/reject append decision atoms. Lead NL configures sources.
+Same daemon, same SQLite. Home is **需要你拍板** (Approve/Reject). **系统已处理** is a read-only 24h gate-digest. **我的偏好** shows `data/preference-memory.json`. **高级** hides the Atoms log placeholder. Lead NL configures sources.
 
 ```bash
 pnpm atom serve

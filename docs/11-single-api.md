@@ -79,6 +79,9 @@ Use **`POST /api/run`** from the CLI. Keep **`POST /hooks/run`** for inbound web
 | `outbound-check [--title …] [--body … \| --path]` | `POST /api/outbound-check` `{title?, body?, kind?}` (never sends) |
 | `preference-rsi [--dry-run \| --apply]` | `POST /api/preference-rsi` `{apply?}` (default dry-run; never sends) |
 | `gate-digest [--since …] [--json]` | `GET` or `POST /api/gate-digest` `{since?}` (read-only; default last 24h; never sends) |
+| *(Desk 我的偏好)* | `GET /api/preference-memory` (file + last RSI; never sends) |
+| *(Desk 我的偏好 light-edit)* | `PATCH /api/preference-memory` `{thresholds?, blocklist?, blocklist_add?, blocklist_remove?}` (clamped; never sends; does not move RSI `cursor_at`) |
+| *(Desk status strip)* | `GET /api/status` `{desk, lastRunAt, lastExtractAt, preference.floors, laya}` (Laya probe ≤400ms) |
 | `specs` | `GET /api/specs` |
 | `handoff <id>` | `POST /api/handoff` `{id, run?, target?}` |
 | `lead "…"` | `POST /api/lead` `{utterance}` |
@@ -102,7 +105,7 @@ Use **`POST /api/run`** from the CLI. Keep **`POST /hooks/run`** for inbound web
 
 Health: `GET /api/health` → `{ ok: true, service: "atom-desk" }`.
 
-Runtime clocks (real only): `GET /api/meta` → `{ ok, lastExtractAt, lastRunAt }` — either ISO string or `null`. Desk empty state uses this; it does not invent a last-run time.
+Runtime clocks (real only): `GET /api/meta` → `{ ok, lastExtractAt, lastRunAt }` — either ISO string or `null`. Desk empty state does not invent a last-run time. The status strip uses `GET /api/status` (same clocks plus floors + cheap Laya/Desk health).
 
 ## Layout
 
