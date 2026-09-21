@@ -6,6 +6,7 @@ import { after, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { LayaClient, type LayaFetch } from "../agents/laya.js";
 import { runExtract } from "./extract.js";
+import { groupNeedsYouCandidates } from "../store/needs-groups.js";
 import { exportHandoff } from "./handoff.js";
 import {
   evaluateOutboundGate,
@@ -148,7 +149,7 @@ describe("extract → Laya candidate gate", () => {
     );
     assert.equal(
       calls.filter((c) => c.url.endsWith("/v1/predict")).length,
-      2
+      3
     );
   });
 
@@ -632,6 +633,170 @@ describe("extract → Laya duplicate merge gate", () => {
     assert.equal(detail.laya_merge?.reason, "topic-mismatch");
     assert.equal(detail.laya_merge?.fail_open, false);
     assert.equal(detail.laya_merge?.same_request, 0.97);
+  });
+});
+
+function isTagPredict(body: unknown): boolean {
+  const q = (body as { questions?: Record<string, unknown> })?.questions;
+  return Boolean(q && typeof q === "object" && "theme" in q && "project" in q);
+}
+
+function tagAnswers(theme: string, project?: string) {
+  return {
+    answers: {
+      theme: { choice: theme, confidence: 0.93 },
+      project: { choice: project ?? theme, confidence: 0.91 },
+    },
+  };
+}
+
+const tagProposal: CandidateProposal = {
+  title: "Schedule Mcp 授权失败",
+  body: "AI推进里的日程 MCP 拉不下来",
+  confidence: 0.86,
+  cluster_key: "schedule-mcp-auth",
+  refs: [{ token: "yzj:im:g:tag", kind: "im" as const, digest: "tag" }],
+  source_message_ids: ["m-tag"],
+};
+
+describe("extract → Laya theme/project tags", () => {
+  it("persists Chinese theme/project on suggested candidates", async () => {
+    const store = await tempStore();
+    const { fetch, calls } = recordingFetch(async (url, init) => {
+      if (url.endsWith("/health")) return jsonResponse({ ok: true });
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      if (isTagPredict(body)) return jsonResponse(tagAnswers("AI推进"));
+      if (isMergePredict(body)) {
+        return jsonResponse({
+          answers: {
+            action: { choice: "new", confidence: 0.91 },
+            same_request: { noul: 0.07 },
+            target: { choice: "none", confidence: 0.9 },
+          },
+        });
+      }
+      return jsonResponse(demandAnswers());
+    });
+    const laya = new LayaClient({ fetch, enabled: true, timeoutMs: 200 });
+    const result = await runExtract(store, stubAgent([tagProposal]), {
+      heuristicGate: false,
+      laya,
+      repoRoot,
+    });
+
+    assert.equal(result.proposed, 1);
+    const cands = projectCandidates(store);
+    assert.equal(cands.length, 1);
+    assert.equal(cands[0]?.theme, "AI推进");
+    assert.equal(cands[0]?.project, "AI推进");
+    assert.equal(cands[0]?.tags?.theme, "AI推进");
+    const proposedEv = store.list({ type: "candidate_proposed" }).at(-1);
+    const detail = JSON.parse(proposedEv!.detail_json) as {
+      theme?: string;
+      laya_tags?: { theme?: string; fail_open?: boolean; reason?: string };
+    };
+    assert.equal(detail.theme, "AI推进");
+    assert.equal(detail.laya_tags?.fail_open, false);
+    assert.equal(detail.laya_tags?.reason, "tagged");
+    assert.equal(
+      calls.filter((c) => c.url.endsWith("/v1/predict") && isTagPredict(c.body)).length,
+      1
+    );
+    const questions = (
+      calls.find((c) => isTagPredict(c.body))?.body as {
+        questions?: { theme?: { criteria?: Record<string, string> } };
+      }
+    ).questions;
+    assert.equal("AI推进" in (questions?.theme?.criteria ?? {}), true);
+
+    const groups = groupNeedsYouCandidates(cands, []);
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0]?.kind, "theme");
+    assert.equal(groups[0]?.title, "AI推进");
+  });
+
+  it("fail-opens tagging on timeout and keeps the untagged candidate", async () => {
+    const store = await tempStore();
+    const { fetch } = recordingFetch(async (url, init) => {
+      if (url.endsWith("/health")) return jsonResponse({ ok: true });
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      if (isTagPredict(body)) return hangFetch()(url, init);
+      return jsonResponse(demandAnswers());
+    });
+    const laya = new LayaClient({ fetch, enabled: true, timeoutMs: 40 });
+    const result = await runExtract(store, stubAgent([tagProposal]), {
+      heuristicGate: false,
+      laya,
+    });
+
+    assert.equal(result.proposed, 1);
+    assert.equal(laya.unavailable, false);
+    const cand = projectCandidates(store)[0];
+    assert.equal(cand?.status, "suggested");
+    assert.equal(cand?.theme, undefined);
+    assert.equal(cand?.project, undefined);
+    const proposedEv = store.list({ type: "candidate_proposed" }).at(-1);
+    const detail = JSON.parse(proposedEv!.detail_json) as {
+      laya_tags?: { fail_open?: boolean; reason?: string };
+    };
+    assert.equal(detail.laya_tags?.fail_open, true);
+    assert.equal(detail.laya_tags?.reason, "timeout");
+  });
+
+  it("keeps extract-provided tags when Laya parse-fails", async () => {
+    const store = await tempStore();
+    const tagged: CandidateProposal = {
+      ...tagProposal,
+      theme: "OAuth",
+      tags: { theme: "OAuth" },
+    };
+    const { fetch } = recordingFetch(async (url) => {
+      if (url.endsWith("/health")) return jsonResponse({ ok: true });
+      return jsonResponse(demandAnswers());
+    });
+    const laya = new LayaClient({ fetch, enabled: true, timeoutMs: 200 });
+    const result = await runExtract(store, stubAgent([tagged]), {
+      heuristicGate: false,
+      laya,
+    });
+    assert.equal(result.proposed, 1);
+    const cand = projectCandidates(store)[0];
+    assert.equal(cand?.theme, "OAuth");
+    const groups = groupNeedsYouCandidates(projectCandidates(store), []);
+    assert.equal(groups[0]?.kind, "theme");
+    assert.equal(groups[0]?.title, "OAuth");
+  });
+
+  it("does not tag a candidate that was auto-merged", async () => {
+    const store = await tempStore();
+    const existingId = seedSuggested(store, demandProposal.title, demandProposal.body);
+    let tagCalls = 0;
+    const { fetch } = recordingFetch(async (url, init) => {
+      if (url.endsWith("/health")) return jsonResponse({ ok: true });
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      if (isTagPredict(body)) {
+        tagCalls += 1;
+        return jsonResponse(tagAnswers("ATOM"));
+      }
+      if (isMergePredict(body)) {
+        return jsonResponse({
+          answers: {
+            action: { choice: "merge", confidence: 0.94 },
+            same_request: { noul: 0.92 },
+            target: { choice: existingId, confidence: 0.93 },
+          },
+        });
+      }
+      return jsonResponse(demandAnswers());
+    });
+    const laya = new LayaClient({ fetch, enabled: true, timeoutMs: 200 });
+    const result = await runExtract(store, stubAgent([duplicateProposal]), {
+      heuristicGate: false,
+      laya,
+    });
+    assert.equal(result.merged, 1);
+    assert.equal(result.proposed, 0);
+    assert.equal(tagCalls, 0);
   });
 });
 

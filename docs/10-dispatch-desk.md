@@ -28,7 +28,7 @@ Projects optimizes *shipping code over months*. ATOM optimizes *not losing cited
 
 **Home = Needs you.** Only surfaces that need a human gate:
 
-1. Suggested candidates (approve / reject / merge) — **display-grouped** by stored `theme` / `project` tags, else a workspace + title-stem / `cluster_key` heuristic. Same-request merge is unchanged; groups nest distinct cards, they do not fold them.
+1. Suggested candidates (approve / reject / merge) — **display-grouped** by stored `theme` / `project` tags (Laya writes these after extract when it is up; fail-open leaves cards untagged), else a workspace + title-stem / `cluster_key` heuristic. Same-request merge is unchanged; groups nest distinct cards, they do not fold them.
 2. Checklist human_gate_ack
 3. Outbound digest / chat post confirm (when enabled)
 
