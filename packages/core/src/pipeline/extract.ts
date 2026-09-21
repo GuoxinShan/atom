@@ -151,6 +151,8 @@ export async function runExtract(
       if (laya?.isEnabled() && layaAvailable && !laya.unavailable) {
         layaGate = await laya.gateCandidate({ title: p.title, body: p.body });
         if (layaGate.failOpen) layaFailOpen = true;
+        // interpretCandidateAnswers is noul-first: high is_chat_noise noul
+        // already yields action=noise even when kind choice confidence is low.
         if (layaGate.action === "noise") {
           layaNoiseDropped += 1;
           noiseDropped += 1;
@@ -174,6 +176,9 @@ export async function runExtract(
       }
 
       const candId = newId("cand");
+      // interpretMergeAnswers is noul-first: high same_request + a real
+      // open-item target is already action=merge / failOpen=false, even when
+      // action choice confidence is low. Do not re-check choice confidence here.
       const mergeNow =
         layaMerge?.action === "merge" && Boolean(layaMerge.targetId) && !layaMerge.failOpen;
 

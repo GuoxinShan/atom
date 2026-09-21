@@ -83,6 +83,38 @@ describe("interpretCandidateAnswers", () => {
     assert.equal(gate.action, "suggested");
     assert.equal(gate.failOpen, true);
   });
+
+  it("drops noise when is_chat_noise noul is high even if kind confidence is low", () => {
+    const gate = interpretCandidateAnswers({
+      kind: { choice: "noise", confidence: 0.22 },
+      is_chat_noise: { noul: 0.93 },
+      is_work_demand: { noul: 0.12 },
+    });
+    assert.equal(gate.action, "noise");
+    assert.equal(gate.failOpen, false);
+    assert.equal(gate.confidence, 0.93);
+  });
+
+  it("prefers high is_chat_noise noul over a low-confidence kind=demand", () => {
+    const gate = interpretCandidateAnswers({
+      kind: { choice: "demand", confidence: 0.3 },
+      is_chat_noise: { noul: 0.92 },
+      is_work_demand: { noul: 0.14 },
+    });
+    assert.equal(gate.action, "noise");
+    assert.equal(gate.failOpen, false);
+  });
+
+  it("keeps demand when is_work_demand noul is high even if kind confidence is low", () => {
+    const gate = interpretCandidateAnswers({
+      kind: { choice: "demand", confidence: 0.18 },
+      is_work_demand: { noul: 0.9 },
+      is_chat_noise: { noul: 0.08 },
+    });
+    assert.equal(gate.action, "suggested");
+    assert.equal(gate.failOpen, false);
+    assert.equal(gate.reason, "demand");
+  });
 });
 
 const openItems: OpenItemSnippet[] = [
@@ -146,6 +178,76 @@ describe("interpretMergeAnswers", () => {
         action: { choice: "merge", confidence: 0.95 },
         same_request: { noul: 0.2 },
         target: { choice: "cand_oauth" },
+      },
+      openItems
+    );
+    assert.equal(gate.action, "new");
+    assert.equal(gate.failOpen, true);
+  });
+
+  it("merges when same_request noul is high even if action confidence is low", () => {
+    const gate = interpretMergeAnswers(
+      {
+        action: { choice: "merge", confidence: 0.21 },
+        same_request: { noul: 0.98 },
+        target: { choice: "cand_oauth", confidence: 0.19 },
+      },
+      openItems
+    );
+    assert.equal(gate.action, "merge");
+    assert.equal(gate.failOpen, false);
+    assert.equal(gate.targetId, "cand_oauth");
+    assert.equal(gate.reason, "duplicate");
+    assert.equal(gate.confidence, 0.98);
+  });
+
+  it("lets high same_request dominate a low-confidence action=new when target is valid", () => {
+    const gate = interpretMergeAnswers(
+      {
+        action: { choice: "new", confidence: 0.24 },
+        same_request: { noul: 0.96 },
+        target: { choice: "cand_oauth" },
+      },
+      openItems
+    );
+    assert.equal(gate.action, "merge");
+    assert.equal(gate.failOpen, false);
+    assert.equal(gate.targetId, "cand_oauth");
+  });
+
+  it("fail-opens when same_request is high but high-confidence action=new conflicts", () => {
+    const gate = interpretMergeAnswers(
+      {
+        action: { choice: "new", confidence: 0.91 },
+        same_request: { noul: 0.97 },
+        target: { choice: "none", confidence: 0.88 },
+      },
+      openItems
+    );
+    assert.equal(gate.action, "new");
+    assert.equal(gate.failOpen, true);
+    assert.equal(gate.reason, "ambiguous");
+  });
+
+  it("merges into the first open item when same_request is high and target is omitted", () => {
+    const gate = interpretMergeAnswers(
+      {
+        action: { choice: "merge", confidence: 0.2 },
+        same_request: { noul: 0.94 },
+      },
+      openItems
+    );
+    assert.equal(gate.action, "merge");
+    assert.equal(gate.failOpen, false);
+    assert.equal(gate.targetId, "cand_oauth");
+  });
+
+  it("fail-opens when same_request is high but target is not a real open item id", () => {
+    const gate = interpretMergeAnswers(
+      {
+        action: { choice: "merge", confidence: 0.2 },
+        same_request: { noul: 0.95 },
+        target: { choice: "cand_not_open" },
       },
       openItems
     );
