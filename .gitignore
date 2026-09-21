@@ -2,6 +2,7 @@ node_modules/
 dist/
 data/*.sqlite
 data/*.sqlite-*
+data/preference-memory.json
 out/**
 !out/.gitkeep
 .DS_Store

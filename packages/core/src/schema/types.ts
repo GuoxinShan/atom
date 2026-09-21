@@ -23,6 +23,7 @@ export const AtomTypeSchema = z.enum([
   "agent_started",
   "agent_completed",
   "agent_failed",
+  "preference_rsi",
 ]);
 export type AtomType = z.infer<typeof AtomTypeSchema>;
 

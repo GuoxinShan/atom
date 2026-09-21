@@ -5,6 +5,12 @@ import { newId } from "../schema/ids.js";
 import { HeuristicCandidateGate } from "../agents/heuristic.js";
 import { isNoiseProposal } from "../agents/noise.js";
 import {
+  loadPreferenceMemory,
+  matchesAllowlist,
+  matchesBlocklist,
+  type PreferenceMemory,
+} from "../agents/preference-memory.js";
+import {
   LayaClient,
   MERGE_OPEN_ITEMS_CAP,
   layaGateToDetail,
@@ -61,6 +67,9 @@ export async function runExtract(
     groupAllowlist?: string[];
     /** inject Laya client; `false` skips the optional gate (tests / LAYA_ENABLED=0) */
     laya?: LayaClient | false;
+    /** Repo root so LayaClient.fromEnv loads preference memory. */
+    repoRoot?: string;
+    preference?: PreferenceMemory;
   }
 ): Promise<{
   proposed: number;
@@ -116,7 +125,9 @@ export async function runExtract(
       })
     );
 
-    const laya = opts?.laya === false ? null : opts?.laya ?? LayaClient.fromEnv();
+    const memory = opts?.preference ?? loadPreferenceMemory(opts?.repoRoot);
+    const laya =
+      opts?.laya === false ? null : opts?.laya ?? LayaClient.fromEnv({ repoRoot: opts?.repoRoot });
     let layaAvailable = false;
     if (laya?.isEnabled()) {
       layaAvailable = await laya.ensureUp();
@@ -142,14 +153,15 @@ export async function runExtract(
         skipped += 1;
         continue;
       }
-      if (isNoiseProposal(p.title, p.body)) {
+      const allowlisted = matchesAllowlist(p.title, p.body, memory);
+      if (!allowlisted && (matchesBlocklist(p.title, p.body, memory) || isNoiseProposal(p.title, p.body))) {
         noiseDropped += 1;
         skipped += 1;
         continue;
       }
 
       let layaGate: LayaCandidateGate | undefined;
-      if (laya?.isEnabled() && layaAvailable && !laya.unavailable) {
+      if (!allowlisted && laya?.isEnabled() && layaAvailable && !laya.unavailable) {
         layaGate = await laya.gateCandidate({ title: p.title, body: p.body });
         if (layaGate.failOpen) layaFailOpen = true;
         // interpretCandidateAnswers is noul-first: high is_chat_noise noul

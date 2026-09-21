@@ -18,6 +18,7 @@ ATOM is a **cited demand inbox + human triage desk**, not a coding factory and n
 | Boot / login | launchd | `pnpm atom serve` stays up on Rock-Shan (Desk API) |
 | 09:30 workdays | launchd / cron | `POST /api/run` (yzj-ai-advance / 【AI推进】 only) → local digest |
 | Anytime | You | Open Desk → **Needs you** only (approve / reject / checklist ack) |
+| After triage | You | `pnpm atom preference-rsi` (dry-run) then `--apply` if the deltas look right |
 | 18:30 optional | cron | second `run` if you want evening catch-up (default **off** week 1) |
 
 Rules:
@@ -91,6 +92,7 @@ Week 1 engineering: score title + acceptance only; strip generic tooling mention
 2. “Accept & handoff” (still no auto `--run`)
 3. Dedup UI for same-ref duplicates
 4. Wire one outbound sink to a **draft** (not send) for nightly digest confirm — `pnpm atom outbound-check` / `POST /api/outbound-check` first; Desk remains the send authority.
+5. Optional daily `pnpm atom preference-rsi --apply` after Desk is cleared (clamped floors; never retrains Laya; never sends 云之家).
 
 ## 7. Explicit non-goals (next month)
 

@@ -106,13 +106,15 @@ export async function runMergeSweep(
     apply?: boolean;
     /** inject Laya client; `false` skips (tests / LAYA_ENABLED=0) */
     laya?: LayaClient | false;
+    repoRoot?: string;
   }
 ): Promise<MergeSweepResult> {
   const apply = opts?.apply === true;
   const open = listOpenSuggested(store);
   const considered = open.length;
 
-  const laya = opts?.laya === false ? null : opts?.laya ?? LayaClient.fromEnv();
+  const laya =
+    opts?.laya === false ? null : opts?.laya ?? LayaClient.fromEnv({ repoRoot: opts?.repoRoot });
   if (!laya?.isEnabled()) {
     return emptyResult(apply, considered, {
       failOpen: true,

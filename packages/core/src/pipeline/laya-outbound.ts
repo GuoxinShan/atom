@@ -98,10 +98,14 @@ export async function evaluateOutboundGate(
     laya?: LayaClient | false;
     store?: EventStore;
     delivered?: boolean;
+    repoRoot?: string;
   }
 ): Promise<OutboundCheckResult> {
   const { title, body, kind } = normalizeOutboundInput(input);
-  const laya = opts?.laya === false ? null : opts?.laya ?? LayaClient.fromEnv();
+  const laya =
+    opts?.laya === false
+      ? null
+      : opts?.laya ?? LayaClient.fromEnv({ repoRoot: opts?.repoRoot });
 
   let gate: LayaOutboundGate;
   let layaAvailable = false;
@@ -130,6 +134,7 @@ export async function evaluateOutboundGate(
 export type PublishOutboundOpts = {
   laya?: LayaClient | false;
   store?: EventStore;
+  repoRoot?: string;
   /** Override fan-out (tests). Default: `dispatchSubscriptions(repoRoot, payload)`. */
   deliver?: (payload: SubscriptionPayload) => Promise<void>;
 };
@@ -149,7 +154,7 @@ export async function publishOutbound(
       body: payload.text,
       kind: payload.kind,
     },
-    { laya: opts?.laya }
+    { laya: opts?.laya, repoRoot: opts?.repoRoot ?? repoRoot }
   );
 
   const deliverNow = shouldDeliverOutbound(preview.gate);

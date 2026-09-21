@@ -18,6 +18,10 @@
  */
 
 import { LAYA_NOISE_REJECT_REASON } from "./noise.js";
+import {
+  tryLoadPreferenceMemory,
+  type LayaGateThresholds,
+} from "./preference-memory.js";
 
 export const DEFAULT_LAYA_URL = "http://127.0.0.1:8790";
 /**
@@ -113,6 +117,10 @@ export type LayaClientOptions = {
   enabled?: boolean;
   timeoutMs?: number;
   minConfidence?: number;
+  /** Per-gate floors from preference memory; default to minConfidence. */
+  thresholds?: Partial<LayaGateThresholds>;
+  /** Repo root for `data/preference-memory.json` (fromEnv). */
+  repoRoot?: string;
   fetch?: LayaFetch;
 };
 
@@ -632,6 +640,7 @@ export class LayaClient {
   readonly enabled: boolean;
   readonly timeoutMs: number;
   readonly minConfidence: number;
+  readonly thresholds: LayaGateThresholds;
   private readonly fetchImpl: LayaFetch;
   /**
    * Hard skip for the rest of this extract/run. Set on connection refused,
@@ -647,15 +656,24 @@ export class LayaClient {
     this.enabled = opts.enabled !== false;
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_LAYA_TIMEOUT_MS;
     this.minConfidence = opts.minConfidence ?? DEFAULT_LAYA_MIN_CONFIDENCE;
+    this.thresholds = {
+      noise: opts.thresholds?.noise ?? this.minConfidence,
+      merge: opts.thresholds?.merge ?? this.minConfidence,
+      outbound: opts.thresholds?.outbound ?? this.minConfidence,
+    };
     this.fetchImpl = opts.fetch ?? ((input, init) => fetch(input, init));
   }
 
   static fromEnv(overrides: LayaClientOptions = {}): LayaClient {
+    const repoRoot = overrides.repoRoot ?? process.env.ATOM_REPO_ROOT ?? process.cwd();
+    const memory = tryLoadPreferenceMemory(repoRoot);
+    const envMin = parseNumber(process.env.LAYA_MIN_CONFIDENCE, DEFAULT_LAYA_MIN_CONFIDENCE);
     return new LayaClient({
       url: process.env.LAYA_URL ?? DEFAULT_LAYA_URL,
       enabled: parseEnabled(process.env.LAYA_ENABLED),
       timeoutMs: parseNumber(process.env.LAYA_TIMEOUT_MS, DEFAULT_LAYA_TIMEOUT_MS),
-      minConfidence: parseNumber(process.env.LAYA_MIN_CONFIDENCE, DEFAULT_LAYA_MIN_CONFIDENCE),
+      minConfidence: envMin,
+      thresholds: memory?.thresholds,
       ...overrides,
     });
   }
@@ -783,7 +801,7 @@ export class LayaClient {
     if (!predicted) {
       return { action: "suggested", failOpen: true, reason: this.transportFail() };
     }
-    return interpretCandidateAnswers(predicted.answers, this.minConfidence);
+    return interpretCandidateAnswers(predicted.answers, this.thresholds.noise);
   }
 
   async gateOutbound(input: {
@@ -807,7 +825,7 @@ export class LayaClient {
     if (!predicted) {
       return { action: "allow", failOpen: true, reason: this.transportFail() };
     }
-    return interpretOutboundAnswers(predicted.answers, this.minConfidence);
+    return interpretOutboundAnswers(predicted.answers, this.thresholds.outbound);
   }
 
   async gateMerge(input: {
@@ -834,6 +852,6 @@ export class LayaClient {
     if (!predicted) {
       return { action: "new", failOpen: true, reason: this.transportFail() };
     }
-    return interpretMergeAnswers(predicted.answers, input.openItems, this.minConfidence);
+    return interpretMergeAnswers(predicted.answers, input.openItems, this.thresholds.merge);
   }
 }

@@ -25,6 +25,7 @@ export async function runPipeline(opts: {
     heuristicGate: opts.heuristicGate !== false,
     groupAllowlist: opts.groupAllowlist,
     laya: opts.laya,
+    repoRoot: opts.repoRoot,
   });
   const digestPath = writeDigest(opts.store, opts.repoRoot);
   recordRunFinished(opts.store);
