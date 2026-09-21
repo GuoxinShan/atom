@@ -25,6 +25,8 @@ import {
   type LayaTagGate,
 } from "../agents/laya.js";
 import {
+  divertProjectFromText,
+  divertThemeFromText,
   loadThemeVocabulary,
   stripLabelDecor,
   tagLabelsForExtract,
@@ -32,7 +34,7 @@ import {
   type ThemeVocabulary,
 } from "../agents/theme-vocabulary.js";
 
-export type TagBackfillVia = "laya" | "allowlist";
+export type TagBackfillVia = "laya" | "allowlist" | "divert";
 
 export type TagBackfillItem = {
   id: string;
@@ -92,16 +94,21 @@ export function isCanonicalAllowlistTitle(
 /**
  * Suggested cards that already carry a canonical non-其他 theme need no work.
  * Kebab/alias titles that uniquely map are local allowlist remaps.
- * Untagged / 「其他」 / unmapped leftover titles need a Laya tag call.
+ * Title/body that uniquely (or first-mention) maps onto the closed vocabulary
+ * is a local divert — no new labels.
+ * Untagged / leftover 「其他」 need a Laya tag call.
  */
 export function classifyTagBackfill(
   cand: CandidateView,
   vocab: ThemeVocabulary
-): "skip" | "allowlist" | "laya" {
+): "skip" | "allowlist" | "divert" | "laya" {
   if (cand.status !== "suggested") return "skip";
   const theme = storedTheme(cand);
   if (isCanonicalAllowlistTitle(theme, vocab.themes, vocab.other)) return "skip";
   if (uniqueAllowlistTitle(theme, vocab.themes, vocab.other)) return "allowlist";
+  if (divertThemeFromText(cand.title, cand.body, vocab) || divertProjectFromText(cand.title, cand.body, vocab)) {
+    return "divert";
+  }
   return "laya";
 }
 
@@ -136,6 +143,22 @@ function allowlistPersisted(
 ): { theme?: string; project?: string; tags?: CandidateTags } {
   const theme = uniqueAllowlistTitle(storedTheme(cand), vocab.themes, vocab.other);
   const project = uniqueAllowlistTitle(storedProject(cand), vocab.projects, vocab.other);
+  return persistCandidateTags({
+    ...(theme ? { theme } : {}),
+    ...(project ? { project } : {}),
+  });
+}
+
+function divertPersisted(
+  cand: CandidateView,
+  vocab: ThemeVocabulary
+): { theme?: string; project?: string; tags?: CandidateTags } {
+  const theme =
+    divertThemeFromText(cand.title, cand.body, vocab) ??
+    uniqueAllowlistTitle(storedTheme(cand), vocab.themes, vocab.other);
+  const project =
+    divertProjectFromText(cand.title, cand.body, vocab) ??
+    uniqueAllowlistTitle(storedProject(cand), vocab.projects, vocab.other);
   return persistCandidateTags({
     ...(theme ? { theme } : {}),
     ...(project ? { project } : {}),
@@ -182,12 +205,14 @@ export async function runTagBackfill(
   const labels = tagLabelsForExtract(opts?.repoRoot);
 
   const allowlist: CandidateView[] = [];
+  const divert: CandidateView[] = [];
   const needsLaya: CandidateView[] = [];
   let skipped = 0;
   for (const cand of open) {
     const kind = classifyTagBackfill(cand, vocab);
     if (kind === "skip") skipped += 1;
     else if (kind === "allowlist") allowlist.push(cand);
+    else if (kind === "divert") divert.push(cand);
     else needsLaya.push(cand);
   }
 
@@ -229,6 +254,9 @@ export async function runTagBackfill(
 
   for (const cand of allowlist) {
     writeItem(cand, allowlistPersisted(cand, vocab), "allowlist", "allowlist-map");
+  }
+  for (const cand of divert) {
+    writeItem(cand, divertPersisted(cand, vocab), "divert", "text-divert");
   }
 
   const laya =

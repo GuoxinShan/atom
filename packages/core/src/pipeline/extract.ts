@@ -16,13 +16,14 @@ import {
   layaGateToDetail,
   layaMergeToDetail,
   layaTagsToDetail,
+  rankOpenItemsForMerge,
   snippetText,
   type LayaCandidateGate,
   type LayaMergeGate,
   type LayaTagGate,
   type OpenItemSnippet,
 } from "../agents/laya.js";
-import { tagLabelsForExtract } from "../agents/theme-vocabulary.js";
+import { loadThemeVocabulary, tagLabelsForExtract } from "../agents/theme-vocabulary.js";
 import { appendLayaMergeDecision, isLayaMergeNow } from "./laya-merge.js";
 import { recordExtractFinished } from "./runtime-meta.js";
 
@@ -77,15 +78,17 @@ function messagesFromStore(store: EventStore, groupAllow?: Set<string>): RawMess
 /** Recent open Needs-you / suggested items for the Laya duplicate-merge gate. */
 export function openSuggestedItems(
   store: EventStore,
-  cap = MERGE_OPEN_ITEMS_CAP
+  cap = MERGE_OPEN_ITEMS_CAP,
+  candidate?: { title?: string; body?: string; refs?: string[] }
 ): OpenItemSnippet[] {
-  return candidatesByStatus(store, "suggested")
-    .slice(0, cap)
-    .map((c) => ({
-      id: c.id,
-      title: c.title,
-      snippet: snippetText(c.body || c.title),
-    }));
+  const all = candidatesByStatus(store, "suggested").map((c) => ({
+    id: c.id,
+    title: c.title,
+    snippet: snippetText(c.body || c.title),
+    refs: c.refs.map((r) => r.token),
+  }));
+  if (!candidate?.title && !candidate?.body) return all.slice(0, cap);
+  return rankOpenItemsForMerge(candidate, all, cap);
 }
 
 export async function runExtract(
@@ -211,11 +214,16 @@ export async function runExtract(
       }
 
       let layaMerge: LayaMergeGate | undefined;
-      const openItems = openSuggestedItems(store);
+      const openItems = openSuggestedItems(store, MERGE_OPEN_ITEMS_CAP, {
+        title: p.title,
+        body: p.body,
+        refs: p.refs.map((r) => r.token),
+      });
       if (laya?.isEnabled() && layaAvailable && !laya.unavailable && openItems.length > 0) {
         layaMerge = await laya.gateMerge({
           title: p.title,
           body: p.body,
+          refs: p.refs.map((r) => r.token),
           openItems,
         });
         if (layaMerge.failOpen) layaFailOpen = true;
@@ -256,6 +264,8 @@ export async function runExtract(
           loserRefs: p.refs,
           targetId: layaMerge.targetId,
           gate: layaMerge,
+          loser: p,
+          vocab: loadThemeVocabulary(opts?.repoRoot),
         });
         merged += 1;
         layaMerged += 1;

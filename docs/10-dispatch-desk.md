@@ -28,7 +28,7 @@ Projects optimizes *shipping code over months*. ATOM optimizes *not losing cited
 
 **Home = Needs you.** Only surfaces that need a human gate:
 
-1. Suggested candidates (approve / reject / merge) — **display-grouped** by stored `theme` / `project` tags mapped onto the closed Chinese vocabulary in `data/theme-vocabulary.json` (Laya writes these after extract when it is up; timeout/5xx leave cards untagged), else a workspace + title-stem / `cluster_key` heuristic. Same-request merge is unchanged; groups nest distinct cards, they do not fold them.
+1. Suggested candidates (approve / reject / merge) — **display-grouped** by stored `theme` / `project` tags mapped onto the closed Chinese vocabulary in `data/theme-vocabulary.json` (Laya writes these after extract when it is up; timeout/5xx leave cards untagged). Untagged / 「其他」 / weak titles **divert** onto that same list from title/body; leftover heuristic buckets whose workspace title is a canonical theme (e.g. AI推进) collapse into the theme group. Else a workspace + title-stem / `cluster_key` heuristic. Same-request merge folds near-duplicate cards; groups nest distinct cards.
 2. Checklist human_gate_ack
 3. Outbound digest / chat post confirm (when enabled)
 

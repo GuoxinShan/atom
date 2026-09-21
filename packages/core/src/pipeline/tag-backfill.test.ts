@@ -119,8 +119,8 @@ describe("tag-backfill", () => {
     const store = await tempStore();
     const untagged = seedCandidate(
       store,
-      "速记迁入灵基并重做鉴权",
-      { body: "评估速记迁入灵基" },
+      "leftover freeform ticket xyz",
+      { body: "free-form leftover" },
       "2026-09-20T10:00:00.000Z"
     );
     const kebab = seedCandidate(
@@ -140,7 +140,7 @@ describe("tag-backfill", () => {
       const body = init?.body ? JSON.parse(String(init.body)) : {};
       assert.equal(isTagPredict(body), true);
       const title = String((body as { state?: { title?: string } }).state?.title ?? "");
-      if (title.includes("速记")) return jsonResponse(tagAnswers("速记", "AI推进"));
+      if (title.includes("leftover")) return jsonResponse(tagAnswers("速记", "AI推进"));
       return jsonResponse(tagAnswers("Schedule Mcp", "none"));
     });
     const laya = new LayaClient({ fetch, enabled: true, timeoutMs: 200 });
@@ -194,14 +194,14 @@ describe("tag-backfill", () => {
     const store = await tempStore();
     const timedOut = seedCandidate(
       store,
-      "需要给 ATOM Desk 加上 OAuth 登录",
-      { body: "必须支持本机登录后才能批候选" },
+      "leftover freeform ticket xyz",
+      { body: "must login before triage" },
       "2026-09-20T10:00:00.000Z"
     );
     const later = seedCandidate(
       store,
-      "速记迁入灵基",
-      { body: "评估速记迁入" },
+      "Need a login refresh token leftover",
+      { body: "free-form leftover sibling" },
       "2026-09-20T11:00:00.000Z"
     );
     let tagAttempts = 0;
@@ -273,7 +273,7 @@ describe("tag-backfill", () => {
     });
     const open = seedCandidate(
       store,
-      "开放速记卡片",
+      "开放卡片 leftover",
       {},
       "2026-09-20T13:00:00.000Z"
     );
@@ -330,7 +330,8 @@ describe("tag-backfill", () => {
   it("fail-opens Laya-down cards and still remaps kebab without calling predict", async () => {
     const store = await tempStore();
     const kebab = seedCandidate(store, "release notes", { theme: "product-bug" });
-    const untagged = seedCandidate(store, "速记迁入灵基");
+    const divert = seedCandidate(store, "速记迁入灵基");
+    const leftover = seedCandidate(store, "leftover freeform ticket xyz");
     const laya = new LayaClient({
       fetch: async () => {
         throw Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
@@ -342,10 +343,58 @@ describe("tag-backfill", () => {
     assert.equal(result.failOpen, true);
     assert.equal(result.layaAvailable, false);
     assert.equal(result.reason, "laya-unavailable");
-    assert.equal(result.tagged, 1);
+    assert.equal(result.tagged, 2);
     const byId = Object.fromEntries(projectCandidates(store).map((c) => [c.id, c]));
     assert.equal(byId[kebab]?.theme, "产品缺陷");
-    assert.equal(byId[untagged]?.theme, undefined);
+    assert.equal(byId[divert]?.theme, "速记");
+    assert.equal(byId[leftover]?.theme, undefined);
     assert.equal(store.list({ type: "agent_started" }).length, 0);
+  });
+
+  it("diverts 「其他」 / untagged cards onto the closed vocabulary without new labels", async () => {
+    const store = await tempStore();
+    const other = seedCandidate(
+      store,
+      "速记迁入灵基鉴权",
+      { theme: "其他", tags: { theme: "其他" } },
+      "2026-09-20T10:00:00.000Z"
+    );
+    const untagged = seedCandidate(
+      store,
+      "修复日程 MCP 云之家授权失败",
+      {},
+      "2026-09-20T11:00:00.000Z"
+    );
+    const canonical = seedCandidate(
+      store,
+      "already tagged",
+      { theme: "产品缺陷" },
+      "2026-09-20T12:00:00.000Z"
+    );
+    let predictCalls = 0;
+    const { fetch } = recordingFetch(async (url) => {
+      if (url.endsWith("/health")) return jsonResponse({ ok: true });
+      predictCalls += 1;
+      return jsonResponse(tagAnswers("其他"));
+    });
+    const laya = new LayaClient({ fetch, enabled: true, timeoutMs: 200 });
+    const result = await runTagBackfill(store, { apply: true, laya });
+    assert.equal(result.tagged, 2);
+    assert.equal(predictCalls, 0, "text divert must not call Laya or add vocabulary");
+    const byId = Object.fromEntries(projectCandidates(store).map((c) => [c.id, c]));
+    assert.equal(byId[other]?.theme, "速记");
+    assert.equal(byId[untagged]?.theme, "日程/会议");
+    assert.equal(byId[canonical]?.theme, "产品缺陷");
+    assert.equal(
+      result.items.every((i) => i.via === "divert"),
+      true
+    );
+    const groups = groupNeedsYouCandidates(projectCandidates(store), []);
+    assert.ok(groups.some((g) => g.title === "速记"));
+    assert.ok(groups.some((g) => g.title === "日程/会议"));
+    assert.equal(groups.some((g) => g.title === "其他"), false);
+    const vocabTitles = DEFAULT_THEME_VOCABULARY.themes.map((l) => l.title);
+    assert.equal(vocabTitles.includes("OAuth"), false);
+    assert.equal(vocabTitles.includes("Task Ui"), false);
   });
 });

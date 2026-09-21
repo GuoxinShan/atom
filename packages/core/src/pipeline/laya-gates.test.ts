@@ -778,8 +778,13 @@ describe("extract → Laya theme/project tags", () => {
 
   it("maps empty tag answers to 其他 without dropping the candidate", async () => {
     const store = await tempStore();
-    const tagged: CandidateProposal = {
-      ...tagProposal,
+    const leftover: CandidateProposal = {
+      title: "leftover freeform ticket xyz",
+      body: "need a login button",
+      confidence: 0.8,
+      cluster_key: "oauth-leftover",
+      refs: [{ token: "yzj:im:g:tag", kind: "im" as const, digest: "tag" }],
+      source_message_ids: ["m-tag"],
       theme: "OAuth",
       tags: { theme: "OAuth" },
     };
@@ -788,7 +793,7 @@ describe("extract → Laya theme/project tags", () => {
       return jsonResponse(demandAnswers());
     });
     const laya = new LayaClient({ fetch, enabled: true, timeoutMs: 200 });
-    const result = await runExtract(store, stubAgent([tagged]), {
+    const result = await runExtract(store, stubAgent([leftover]), {
       heuristicGate: false,
       laya,
     });

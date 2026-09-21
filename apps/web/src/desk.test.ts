@@ -206,8 +206,12 @@ describe("Desk operator APIs", () => {
     const bugs = groups.find((g) => g.kind === "theme" && g.title === "产品缺陷");
     assert.ok(bugs);
     assert.deepEqual([...bugs.candidate_ids].sort(), [bugA, bugB].sort());
-    assert.ok(groups.some((g) => g.key.startsWith("heuristic:ws:atom")));
-    assert.ok(groups.some((g) => g.key.startsWith("heuristic:ws:yzj")));
+    const atom = groups.find((g) => g.title === "事元");
+    const cal = groups.find((g) => g.title === "日程/会议" || g.title === "云之家");
+    assert.ok(atom, `missing 事元 group: ${JSON.stringify(groups)}`);
+    assert.ok(cal, `missing calendar/云之家 group: ${JSON.stringify(groups)}`);
+    assert.equal(atom?.kind, "project");
+    assert.equal(cal?.kind, "theme");
     assert.ok(groups.length >= 3);
     assert.equal(
       groups.some((g) => /[A-Za-z]/.test(g.title) && !/[\u3400-\u9fff]/.test(g.title) && g.kind === "theme"),
@@ -275,20 +279,22 @@ describe("Desk operator APIs", () => {
     const applied = await api(daemon, "POST", "/api/tag-backfill", { apply: true });
     assert.equal(applied.status, 200);
     assert.equal(applied.json.apply, true);
-    assert.equal(applied.json.tagged, 1);
+    assert.equal(applied.json.tagged, 2);
     const items = applied.json.items as Array<{ id: string; theme?: string; via?: string }>;
-    assert.equal(items.length, 1);
-    assert.equal(items[0]?.id, kebab);
-    assert.equal(items[0]?.theme, "发布与发布流程");
-    assert.equal(items[0]?.via, "allowlist");
+    assert.equal(items.length, 2);
+    const byId = Object.fromEntries(items.map((i) => [i.id, i]));
+    assert.equal(byId[kebab]?.theme, "发布与发布流程");
+    assert.equal(byId[kebab]?.via, "allowlist");
+    assert.equal(byId[untagged]?.theme, "速记");
+    assert.equal(byId[untagged]?.via, "divert");
 
     const cands = await api(daemon, "GET", "/api/candidates");
     const list = cands.json.candidates as Array<{ id: string; theme?: string; status: string }>;
     assert.equal(list.find((c) => c.id === kebab)?.theme, "发布与发布流程");
     assert.equal(list.find((c) => c.id === accepted)?.theme, "product-bug");
     assert.equal(list.find((c) => c.id === accepted)?.status, "accepted");
-    assert.equal(list.find((c) => c.id === untagged)?.theme, undefined);
-    assert.equal(storeHasTagged(daemon), 1);
+    assert.equal(list.find((c) => c.id === untagged)?.theme, "速记");
+    assert.equal(storeHasTagged(daemon), 2);
   });
 });
 

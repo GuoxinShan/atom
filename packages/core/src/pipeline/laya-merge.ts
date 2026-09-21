@@ -1,6 +1,12 @@
-import type { Ref } from "../schema/types.js";
+import type { CandidateView, Ref } from "../schema/types.js";
 import type { EventStore } from "../store/events.js";
+import { projectCandidates } from "../store/candidates.js";
 import { layaMergeToDetail, type LayaMergeGate } from "../agents/laya.js";
+import {
+  canonicalNonOtherTheme,
+  DEFAULT_THEME_VOCABULARY,
+  type ThemeVocabulary,
+} from "../agents/theme-vocabulary.js";
 
 /** High-confidence Laya fold — same predicate extract uses before writing. */
 export function isLayaMergeNow(
@@ -22,6 +28,8 @@ export function appendLayaMergeDecision(
     loserRefs: Ref[];
     targetId: string;
     gate: LayaMergeGate;
+    loser?: Pick<CandidateView, "title" | "body" | "theme" | "project" | "tags">;
+    vocab?: ThemeVocabulary;
   }
 ): void {
   store.append({
@@ -35,5 +43,33 @@ export function appendLayaMergeDecision(
     },
     refs: input.loserRefs,
     actor: "system:laya-merge",
+  });
+  promoteSurvivorTheme(store, input.targetId, input.loser, input.vocab);
+}
+
+/** If the survivor is 其他/untagged, copy a canonical theme from the loser or titles. */
+export function promoteSurvivorTheme(
+  store: EventStore,
+  survivorId: string,
+  loser?: Pick<CandidateView, "title" | "body" | "theme" | "project" | "tags">,
+  vocab: ThemeVocabulary = DEFAULT_THEME_VOCABULARY
+): void {
+  const survivor = projectCandidates(store).find((c) => c.id === survivorId);
+  if (!survivor || survivor.status !== "suggested") return;
+  if (canonicalNonOtherTheme(survivor, vocab)) return;
+  const theme =
+    (loser ? canonicalNonOtherTheme(loser, vocab) : undefined) ??
+    canonicalNonOtherTheme(survivor, vocab);
+  if (!theme) return;
+  store.append({
+    type: "candidate_tagged",
+    subject_id: survivorId,
+    summary: `tagged merge-promote: ${survivor.title}`,
+    detail: {
+      theme,
+      tags: { theme },
+      via: "allowlist",
+    },
+    actor: "system:laya-tags",
   });
 }
