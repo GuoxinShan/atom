@@ -24,6 +24,23 @@ function optionalText(v: unknown): string | undefined {
   return s || undefined;
 }
 
+function overlayTags(
+  cur: CandidateView,
+  detail: Record<string, unknown>,
+  updatedAt: string
+): void {
+  const tags = parseTags(detail.tags);
+  const theme = optionalText(detail.theme) ?? tags?.theme;
+  const project = optionalText(detail.project) ?? tags?.project;
+  if (theme) cur.theme = theme;
+  else delete cur.theme;
+  if (project) cur.project = project;
+  else delete cur.project;
+  if (tags) cur.tags = tags;
+  else delete cur.tags;
+  cur.updated_at = updatedAt;
+}
+
 function parseTags(raw: unknown): CandidateTags | undefined {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
   const o = raw as Record<string, unknown>;
@@ -78,6 +95,8 @@ export function projectCandidates(store: EventStore): CandidateView[] {
     } else if (ev.type === "decision_rejected") {
       cur.status = "rejected";
       cur.updated_at = ev.created_at;
+    } else if (ev.type === "candidate_tagged") {
+      overlayTags(cur, detail, ev.created_at);
     } else if (ev.type === "decision_merged") {
       cur.status = "merged";
       cur.updated_at = ev.created_at;

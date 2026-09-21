@@ -81,6 +81,7 @@ Duplicate policy:
 - Same `cluster_key` / same primary ref token → skip on extract (`skipped`)
 - Laya merge gate on extract folds new twins into an existing Needs-you item
 - One-shot backfill of twins created *before* that gate: `pnpm atom merge-sweep` then `--apply` (Laya up; dry-run default)
+- One-shot theme/project tag backfill of untagged / pre-allowlist suggested cards: `pnpm atom tag-backfill` then `--apply` (Laya up for untagged; kebab aliases remap locally; dry-run default)
 - Desk: if two suggested share the same ref token, show one and offer “拒重复”
 
 ## 5. Lead routing (fix the known bias)

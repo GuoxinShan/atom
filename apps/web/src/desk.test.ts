@@ -241,4 +241,57 @@ describe("Desk operator APIs", () => {
     });
     assert.equal(noop.json.changed, false);
   });
+
+  it("POST /api/tag-backfill remaps kebab on suggested and skips accepted", async () => {
+    const daemon = await tempDaemon();
+    const ref = { token: "yzj:im:g:tag-bf", kind: "im" as const, digest: "t" };
+    const seed = (title: string, extra: Record<string, unknown> = {}) => {
+      const id = newId("cand");
+      daemon.store.append({
+        type: "candidate_proposed",
+        subject_id: id,
+        summary: title,
+        detail: { title, body: title, confidence: 0.8, ...extra },
+        refs: [ref],
+        actor: "test",
+      });
+      return id;
+    };
+    const kebab = seed("release notes", { theme: "release-process" });
+    const accepted = seed("already decided", { theme: "product-bug" });
+    daemon.store.append({
+      type: "decision_accepted",
+      subject_id: accepted,
+      summary: "accepted",
+      actor: "test",
+    });
+    const untagged = seed("速记迁入灵基");
+
+    const dry = await api(daemon, "POST", "/api/tag-backfill", {});
+    assert.equal(dry.status, 200);
+    assert.equal(dry.json.apply, false);
+    assert.equal(storeHasTagged(daemon), 0);
+
+    const applied = await api(daemon, "POST", "/api/tag-backfill", { apply: true });
+    assert.equal(applied.status, 200);
+    assert.equal(applied.json.apply, true);
+    assert.equal(applied.json.tagged, 1);
+    const items = applied.json.items as Array<{ id: string; theme?: string; via?: string }>;
+    assert.equal(items.length, 1);
+    assert.equal(items[0]?.id, kebab);
+    assert.equal(items[0]?.theme, "发布与发布流程");
+    assert.equal(items[0]?.via, "allowlist");
+
+    const cands = await api(daemon, "GET", "/api/candidates");
+    const list = cands.json.candidates as Array<{ id: string; theme?: string; status: string }>;
+    assert.equal(list.find((c) => c.id === kebab)?.theme, "发布与发布流程");
+    assert.equal(list.find((c) => c.id === accepted)?.theme, "product-bug");
+    assert.equal(list.find((c) => c.id === accepted)?.status, "accepted");
+    assert.equal(list.find((c) => c.id === untagged)?.theme, undefined);
+    assert.equal(storeHasTagged(daemon), 1);
+  });
 });
+
+function storeHasTagged(daemon: Daemon): number {
+  return daemon.store.list({ type: "candidate_tagged" }).length;
+}
