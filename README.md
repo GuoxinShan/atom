@@ -52,13 +52,14 @@ It does not fall back to in-process `@atom/core`. Optional `ATOM_API_AUTO_START=
 | `pnpm atom merge-sweep [--apply]` | one-shot Laya fold of existing open Needs-you twins (dry-run default; `--apply` writes) |
 | `pnpm atom outbound-check [--title …] [--body … \| --path <file>] [--kind digest]` | Laya pre-post gate (allow/drop/hold); never sends |
 | `pnpm atom preference-rsi [--dry-run \| --apply]` | daily Desk-feedback loop: tune Laya floors / allowlists (dry-run default; `--apply` writes `data/preference-memory.json`) |
+| `pnpm atom gate-digest [--since 24h\|7d\|YYYY-MM-DD\|ISO] [--json]` | read-only Laya gate acceptance digest for the morning report (default last 24h; markdown stdout, JSON for Desk) |
 | `pnpm atom checklist <id>` | start Stage-2 PR checklist (append-only; not auto-merge) |
 | `pnpm atom checklist-done <id> <itemKey> [--ack]` | mark a checklist item; `--ack` required for `human_gate_ack` |
 | `pnpm atom pr-open <id> --url <prUrl>` | append `pr_opened` only after `pr_checklist_passed` (`--force` warns) |
 
 Default extract agent is **heuristic** (offline). Primary LLM path is **GrokCliExtractAgent** (`grok -p --always-approve --json-schema …`).
 
-Optional **Laya** System-1 HTTP (`LAYA_URL`, default `http://127.0.0.1:8790`) is four gates: extract demand-vs-noise, extract duplicate-merge into an existing Needs-you item, outbound / pre-post (digest subscription emit + `pnpm atom outbound-check`), and lead ornith/bonsai intensity on handoff. If Laya is down or low-confidence, ATOM fail-opens to today’s behavior. Per-call timeout defaults to `LAYA_TIMEOUT_MS=10000` (10s) so Mac CPU Laya can finish open-list `/v1/predict`; a single timeout fail-opens that candidate (`reason=timeout`) without disabling later gates. Connection refused / repeated 5xx / `/health` down still mark Laya unavailable (`reason=unavailable`). Set `LAYA_ENABLED=0` to skip. Desk remains the authority for irreversible sends (Yunzhijia / Agentic Working); the outbound gate only allow/drop/hold — it never auto-posts. Daily **preference RSI** (`pnpm atom preference-rsi`) tunes those gates’ confidence floors and allow/block patterns from Desk accept/reject/merge — it does **not** retrain Laya weights. See [`docs/08-lead-agent.md`](docs/08-lead-agent.md).
+Optional **Laya** System-1 HTTP (`LAYA_URL`, default `http://127.0.0.1:8790`) is four gates: extract demand-vs-noise, extract duplicate-merge into an existing Needs-you item, outbound / pre-post (digest subscription emit + `pnpm atom outbound-check`), and lead ornith/bonsai intensity on handoff. If Laya is down or low-confidence, ATOM fail-opens to today’s behavior. Per-call timeout defaults to `LAYA_TIMEOUT_MS=10000` (10s) so Mac CPU Laya can finish open-list `/v1/predict`; a single timeout fail-opens that candidate (`reason=timeout`) without disabling later gates. Connection refused / repeated 5xx / `/health` down still mark Laya unavailable (`reason=unavailable`). Set `LAYA_ENABLED=0` to skip. Desk remains the authority for irreversible sends (Yunzhijia / Agentic Working); the outbound gate only allow/drop/hold — it never auto-posts. Daily **preference RSI** (`pnpm atom preference-rsi`) tunes those gates’ confidence floors and allow/block patterns from Desk accept/reject/merge — it does **not** retrain Laya weights. Morning **gate digest** (`pnpm atom gate-digest`) reads those audits and prints whether the gates earned their keep — it does **not** send, write floors, or retrain. See [`docs/08-lead-agent.md`](docs/08-lead-agent.md).
 
 ```bash
 pnpm atom run --agent grok-cli
@@ -122,6 +123,16 @@ pnpm atom preference-rsi --apply   # write data/preference-memory.json + prefere
 ```
 
 Next `pnpm atom run` / extract / outbound-check / merge-sweep loads those floors.
+
+Morning measurement of whether those gates earned their keep (read-only; **does not send Yunzhijia**, does not write floors):
+
+```bash
+pnpm atom gate-digest              # last 24h markdown (paste into 云之家 / this group)
+pnpm atom gate-digest --since 7d
+pnpm atom gate-digest --json       # same payload Desk gets
+# GET /api/gate-digest?since=24h
+# POST /api/gate-digest  { "since": "2026-09-20" }
+```
 
 ## Layout
 
