@@ -49,6 +49,7 @@ It does not fall back to in-process `@atom/core`. Optional `ATOM_API_AUTO_START=
 | `pnpm atom approve <id>` | append `decision_accepted` |
 | `pnpm atom reject <id>` | append `decision_rejected` |
 | `pnpm atom reject-noise` | reject suggested junk (`bot digest` / `收到✅` / log dumps) as `decision_rejected` reason `noise-heuristic` |
+| `pnpm atom merge-sweep [--apply]` | one-shot Laya fold of existing open Needs-you twins (dry-run default; `--apply` writes) |
 | `pnpm atom checklist <id>` | start Stage-2 PR checklist (append-only; not auto-merge) |
 | `pnpm atom checklist-done <id> <itemKey> [--ack]` | mark a checklist item; `--ack` required for `human_gate_ack` |
 | `pnpm atom pr-open <id> --url <prUrl>` | append `pr_opened` only after `pr_checklist_passed` (`--force` warns) |
@@ -93,6 +94,14 @@ ATOM_YZJ_GROUP_IDS=group1,group2 pnpm atom run --source yzj
 Wraps `yzj-cli im message list` (ok if untested without groups).
 
 Sweep leftover bot-digest / `收到✅` / log-dump suggestions: `pnpm atom reject-noise`.
+
+After deploy, fold **existing** open Needs-you twins that predate the live extract merge gate (one shot; Laya must be up — same `LAYA_URL` / timeout / min confidence as extract):
+
+```bash
+pnpm atom serve                 # daemon must be up
+pnpm atom merge-sweep           # dry-run: print pairs, write nothing
+pnpm atom merge-sweep --apply   # write decision_merged on losers
+```
 
 ## Layout
 

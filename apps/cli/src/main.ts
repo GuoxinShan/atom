@@ -25,6 +25,7 @@ Usage:
   pnpm atom checklist-ack <handoffOrCandidateId>
   pnpm atom pr-open <handoffOrCandidateId> --url <prUrl> [--branch ...] [--force]
   pnpm atom reject-noise
+  pnpm atom merge-sweep [--apply]
   pnpm atom route <specOrCandidateId>
   pnpm atom doctor
   pnpm atom setup
@@ -154,6 +155,31 @@ async function main() {
     for (let i = 0; i < (data.ids ?? []).length; i++) {
       console.log(`- ${data.ids[i]}  ${data.titles[i]}`);
     }
+    return;
+  }
+
+  if (cmd === "merge-sweep") {
+    const apply = Boolean(flags.apply);
+    const data = await apiOk<{
+      apply: boolean;
+      considered: number;
+      compared: number;
+      merged: number;
+      skipped: number;
+      failOpen: boolean;
+      layaAvailable: boolean;
+      reason?: string;
+      pairs: Array<{
+        loserId: string;
+        loserTitle: string;
+        survivorId: string;
+        survivorTitle: string;
+        sameRequest?: number;
+        confidence?: number;
+        reason: string;
+      }>;
+    }>("POST", "/api/merge-sweep", { apply });
+    printMergeSweep(data);
     return;
   }
 
@@ -412,6 +438,58 @@ type Candidate = {
   confidence?: number;
   refs?: Array<{ token: string; digest?: string }>;
 };
+
+function printMergeSweep(data: {
+  apply: boolean;
+  considered: number;
+  compared?: number;
+  merged: number;
+  skipped?: number;
+  failOpen?: boolean;
+  layaAvailable?: boolean;
+  reason?: string;
+  pairs: Array<{
+    loserId: string;
+    loserTitle: string;
+    survivorId: string;
+    survivorTitle: string;
+    sameRequest?: number;
+    confidence?: number;
+    reason: string;
+  }>;
+}) {
+  const mode = data.apply ? "apply" : "dry-run";
+  if (data.reason === "laya-disabled") {
+    console.log(`merge-sweep (${mode}): Laya disabled (LAYA_ENABLED=0) — nothing to do`);
+    return;
+  }
+  if (data.reason === "laya-unavailable" || data.layaAvailable === false) {
+    console.log(
+      `merge-sweep (${mode}): Laya unavailable — fail-open (no merges). Start Laya or check LAYA_URL.`
+    );
+    console.log(`open Needs-you items: ${data.considered}`);
+    return;
+  }
+  if (!data.merged) {
+    console.log(
+      `OK merge-sweep (${mode}): open=${data.considered} compared=${data.compared ?? 0} nothing to merge`
+    );
+    return;
+  }
+  console.log(
+    `OK merge-sweep (${mode}): open=${data.considered} would_merge=${data.merged}${
+      data.apply ? " wrote=yes" : " wrote=no"
+    }`
+  );
+  for (const p of data.pairs ?? []) {
+    const noul = p.sameRequest != null ? ` same_request=${p.sameRequest}` : "";
+    console.log(`- ${p.loserId}  ${p.loserTitle}`);
+    console.log(`    → ${p.survivorId}  ${p.survivorTitle}${noul}`);
+  }
+  if (!data.apply) {
+    console.log("(no writes — pass --apply to merge)");
+  }
+}
 
 function printCandidates(list: Candidate[]) {
   if (!list.length) {

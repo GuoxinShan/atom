@@ -14,6 +14,7 @@ import {
   type LayaMergeGate,
   type OpenItemSnippet,
 } from "../agents/laya.js";
+import { appendLayaMergeDecision, isLayaMergeNow } from "./laya-merge.js";
 import { recordExtractFinished } from "./runtime-meta.js";
 
 function messagesFromStore(store: EventStore, groupAllow?: Set<string>): RawMessage[] {
@@ -179,8 +180,6 @@ export async function runExtract(
       // interpretMergeAnswers is noul-first: high same_request + a real
       // open-item target is already action=merge / failOpen=false, even when
       // action choice confidence is low. Do not re-check choice confidence here.
-      const mergeNow =
-        layaMerge?.action === "merge" && Boolean(layaMerge.targetId) && !layaMerge.failOpen;
 
       store.append({
         type: "candidate_proposed",
@@ -202,21 +201,16 @@ export async function runExtract(
       });
       seenKeys.add(key);
 
-      if (mergeNow && layaMerge?.targetId) {
+      if (isLayaMergeNow(layaMerge)) {
         // Fold the duplicate off Needs-you. Survivor stays suggested — Desk
         // is still the accept/reject gate. Subject is the loser so projection
         // does not mark the existing item merged.
-        store.append({
-          type: "decision_merged",
-          subject_id: candId,
-          summary: `laya merge into ${layaMerge.targetId}: ${p.title}`,
-          detail: {
-            merged_into: layaMerge.targetId,
-            merged_ids: [candId],
-            laya_merge: layaMergeToDetail(layaMerge),
-          },
-          refs: p.refs,
-          actor: "system:laya-merge",
+        appendLayaMergeDecision(store, {
+          loserId: candId,
+          loserTitle: p.title,
+          loserRefs: p.refs,
+          targetId: layaMerge.targetId,
+          gate: layaMerge,
         });
         merged += 1;
         layaMerged += 1;

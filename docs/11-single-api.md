@@ -75,6 +75,7 @@ Use **`POST /api/run`** from the CLI. Keep **`POST /hooks/run`** for inbound web
 | `approve <id>` | `POST /api/approve` `{id, note?}` |
 | `reject <id>` | `POST /api/reject` `{id, reason?}` |
 | `reject-noise` | `POST /api/reject-noise` |
+| `merge-sweep [--apply]` | `POST /api/merge-sweep` `{apply?}` (default dry-run) |
 | `specs` | `GET /api/specs` |
 | `handoff <id>` | `POST /api/handoff` `{id, run?, target?}` |
 | `lead "…"` | `POST /api/lead` `{utterance}` |

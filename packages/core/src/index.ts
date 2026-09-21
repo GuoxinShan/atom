@@ -11,6 +11,8 @@ export * from "./stubs/trigger.js";
 export * from "./stubs/sink.js";
 export * from "./pipeline/ingest.js";
 export * from "./pipeline/extract.js";
+export * from "./pipeline/laya-merge.js";
+export * from "./pipeline/merge-sweep.js";
 export * from "./pipeline/decisions.js";
 export * from "./pipeline/digest.js";
 export * from "./pipeline/run.js";

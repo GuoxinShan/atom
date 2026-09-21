@@ -21,6 +21,7 @@ import {
   resolveCodingAgent,
   ingestFromSource,
   runExtract,
+  runMergeSweep,
   writeDigest,
   attachEvidence,
   findSpec,
@@ -98,6 +99,13 @@ export async function handleApi(
 
   if (method === "POST" && p === "/api/reject-noise") {
     const result = rejectNoiseCandidates(daemon.store);
+    json(res, { ok: true, ...result });
+    return true;
+  }
+
+  if (method === "POST" && p === "/api/merge-sweep") {
+    const body = await readJson(req);
+    const result = await runMergeSweep(daemon.store, { apply: body.apply === true });
     json(res, { ok: true, ...result });
     return true;
   }
