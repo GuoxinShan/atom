@@ -218,7 +218,6 @@ body {
   overflow: auto;
   min-height: 0;
   align-content: start;
-  max-width: 680px;
 }
 .empty-desk {
   margin: 12px 0 8px;
@@ -227,7 +226,6 @@ body {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-paper);
-  max-width: 28rem;
 }
 .empty-desk .clear {
   color: var(--text);
