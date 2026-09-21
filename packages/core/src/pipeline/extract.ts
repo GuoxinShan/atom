@@ -314,6 +314,8 @@ export async function runExtract(
           body: p.body,
           refs: p.refs.map((r) => r.token),
           status: "rejected",
+          ...(p.theme ? { theme: p.theme } : {}),
+          ...(p.tags ? { tags: p.tags } : {}),
         });
         seenKeys.add(key);
         alreadyDone += 1;
