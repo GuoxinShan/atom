@@ -159,6 +159,48 @@ describe("extract → Laya candidate gate", () => {
     const statuses = projectCandidates(store).map((c) => c.status);
     assert.deepEqual(statuses, ["suggested", "suggested"]);
   });
+
+  it("drops chat when is_chat_noise noul is high even if kind confidence is low", async () => {
+    const store = await tempStore();
+    const { fetch } = recordingFetch(async (url, init) => {
+      if (url.endsWith("/health")) return jsonResponse({ ok: true });
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      const title = String(body.state?.title ?? "");
+      if (title.includes("吃饭")) {
+        return jsonResponse({
+          answers: {
+            kind: { choice: "noise", confidence: 0.19 },
+            is_chat_noise: { noul: 0.94 },
+            is_work_demand: { noul: 0.11 },
+          },
+        });
+      }
+      return jsonResponse({
+        answers: {
+          kind: { choice: "demand", confidence: 0.21 },
+          is_work_demand: { noul: 0.89 },
+          is_chat_noise: { noul: 0.06 },
+        },
+      });
+    });
+    const laya = new LayaClient({ fetch, enabled: true, timeoutMs: 200 });
+    const result = await runExtract(store, stubAgent([chatProposal, demandProposal]), {
+      heuristicGate: false,
+      laya,
+    });
+    assert.equal(result.proposed, 1);
+    assert.equal(result.noiseDropped, 1);
+    const cands = projectCandidates(store);
+    assert.equal(cands.length, 1);
+    assert.equal(cands[0]?.title, demandProposal.title);
+    const proposedEv = store.list({ type: "candidate_proposed" }).at(-1);
+    const detail = JSON.parse(proposedEv!.detail_json) as {
+      laya_gate?: { action?: string; fail_open?: boolean; demand_noul?: number };
+    };
+    assert.equal(detail.laya_gate?.action, "suggested");
+    assert.equal(detail.laya_gate?.fail_open, false);
+    assert.equal(detail.laya_gate?.demand_noul, 0.89);
+  });
 });
 
 describe("lead dispatch → Laya route-model", () => {
@@ -436,5 +478,54 @@ describe("extract → Laya duplicate merge gate", () => {
     };
     assert.equal(detail.laya_merge?.action, "new");
     assert.equal(detail.laya_merge?.fail_open, true);
+  });
+
+  it("merges when same_request noul is high even if action confidence is low", async () => {
+    const store = await tempStore();
+    const existingId = seedSuggested(
+      store,
+      demandProposal.title,
+      demandProposal.body
+    );
+    const { fetch } = recordingFetch(async (url, init) => {
+      if (url.endsWith("/health")) return jsonResponse({ ok: true });
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      if (isMergePredict(body)) {
+        return jsonResponse({
+          answers: {
+            action: { choice: "merge", confidence: 0.18 },
+            same_request: { noul: 0.98 },
+            target: { choice: existingId, confidence: 0.2 },
+          },
+        });
+      }
+      return jsonResponse(demandAnswers());
+    });
+    const laya = new LayaClient({ fetch, enabled: true, timeoutMs: 200 });
+    const result = await runExtract(store, stubAgent([duplicateProposal]), {
+      heuristicGate: false,
+      laya,
+    });
+
+    assert.equal(result.proposed, 0);
+    assert.equal(result.merged, 1);
+    const suggested = projectCandidates(store).filter((c) => c.status === "suggested");
+    assert.equal(suggested.length, 1);
+    assert.equal(suggested[0]?.id, existingId);
+    const proposedEv = store.list({ type: "candidate_proposed" }).at(-1);
+    const detail = JSON.parse(proposedEv!.detail_json) as {
+      laya_merge?: {
+        action?: string;
+        target_id?: string;
+        fail_open?: boolean;
+        same_request?: number;
+        confidence?: number;
+      };
+    };
+    assert.equal(detail.laya_merge?.action, "merge");
+    assert.equal(detail.laya_merge?.target_id, existingId);
+    assert.equal(detail.laya_merge?.fail_open, false);
+    assert.equal(detail.laya_merge?.same_request, 0.98);
+    assert.equal(detail.laya_merge?.confidence, 0.98);
   });
 });

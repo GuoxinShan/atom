@@ -5,7 +5,10 @@
  * - POST /v1/predict  — extract → candidate noise gate, then duplicate-merge gate
  * - POST /v1/route-model — lead handoff → ornith (heavy) vs bonsai (light)
  *
- * Fail-open: timeout, 5xx, or low confidence never blocks the pipeline.
+ * Fail-open: timeout, 5xx, or truly ambiguous (both noul and choice weak)
+ * never blocks the pipeline. Noul is preferred over choice confidence —
+ * high same_request / is_chat_noise does not fail-open just because the
+ * companion choice head is poorly calibrated.
  * Laya never auto-approves; Desk remains the human accept/reject gate.
  */
 
@@ -206,6 +209,10 @@ export function parsePredictAnswers(raw: unknown): Record<string, LayaAnswer> {
   return out;
 }
 
+function noulClears(noul: number | undefined, min: number): boolean {
+  return typeof noul === "number" && noul >= min;
+}
+
 export function interpretCandidateAnswers(
   answers: Record<string, LayaAnswer>,
   minConfidence = DEFAULT_LAYA_MIN_CONFIDENCE
@@ -216,39 +223,44 @@ export function interpretCandidateAnswers(
   const demandNoul = answers.is_work_demand?.noul;
   const noiseNoul = answers.is_chat_noise?.noul;
 
-  const highNoise =
-    (choice === "noise" && conf >= minConfidence) ||
-    (typeof noiseNoul === "number" &&
-      noiseNoul >= minConfidence &&
-      (demandNoul ?? 0) < 0.5);
-  const highDemand =
-    (choice === "demand" && conf >= minConfidence) ||
-    (typeof demandNoul === "number" &&
-      demandNoul >= minConfidence &&
-      (noiseNoul ?? 0) < 0.5);
+  // Prefer is_chat_noise / is_work_demand noul over kind-choice confidence.
+  // Live choice calibration is weak; noul is the reliable signal. Choice
+  // only breaks ties (both noul high, or both absent/weak). Do not require
+  // high kind.confidence if a noul already clears LAYA_MIN_CONFIDENCE.
+  const noiseNoulHigh = noulClears(noiseNoul, minConfidence);
+  const demandNoulHigh = noulClears(demandNoul, minConfidence);
+  const choiceHigh = conf >= minConfidence;
 
-  if (highNoise && !highDemand) {
-    return {
-      action: "noise",
-      failOpen: false,
-      reason: LAYA_NOISE_REASON,
-      kind: choice ?? "noise",
-      confidence: conf || noiseNoul,
-      demandNoul,
-      noiseNoul,
-    };
+  const noiseGate = (driving: number | undefined): LayaCandidateGate => ({
+    action: "noise",
+    failOpen: false,
+    reason: LAYA_NOISE_REASON,
+    kind: choice ?? "noise",
+    confidence: driving ?? conf,
+    demandNoul,
+    noiseNoul,
+  });
+  const demandGate = (driving: number | undefined): LayaCandidateGate => ({
+    action: "suggested",
+    failOpen: false,
+    reason: "demand",
+    kind: choice ?? "demand",
+    confidence: driving ?? conf,
+    demandNoul,
+    noiseNoul,
+  });
+
+  if (noiseNoulHigh && !demandNoulHigh) return noiseGate(noiseNoul);
+  if (demandNoulHigh && !noiseNoulHigh) return demandGate(demandNoul);
+
+  if (noiseNoulHigh && demandNoulHigh) {
+    if (choice === "noise") return noiseGate(noiseNoul);
+    if (choice === "demand") return demandGate(demandNoul);
+  } else {
+    if (choice === "noise" && choiceHigh) return noiseGate(conf);
+    if (choice === "demand" && choiceHigh) return demandGate(conf);
   }
-  if (highDemand && !highNoise) {
-    return {
-      action: "suggested",
-      failOpen: false,
-      reason: "demand",
-      kind: choice ?? "demand",
-      confidence: conf || demandNoul,
-      demandNoul,
-      noiseNoul,
-    };
-  }
+
   return {
     action: "suggested",
     failOpen: true,
@@ -276,22 +288,61 @@ export function interpretMergeAnswers(
       ? openItems.find((item) => item.id === targetRaw)?.id
       : undefined;
 
-  const sameOk = typeof sameRequest !== "number" || sameRequest >= minConfidence;
-  const highMerge = choice === "merge" && conf >= minConfidence && sameOk && !targetIsNone;
-  const targetId = validTarget ?? openItems[0]?.id;
+  // Confidence policy (noul-first):
+  // `action` choice calibration is weak in live Laya; `same_request` noul is
+  // the reliable duplicate signal. Do not require high action.confidence when
+  // noul already clears LAYA_MIN_CONFIDENCE.
+  //
+  // Merge (auto, no Desk) when:
+  //   same_request >= minConfidence
+  //   AND a real open-item target id (named, or first item if target omitted —
+  //       same_request is defined against the best/first open item)
+  //   AND action is merge, missing, or low-confidence (same_request dominates)
+  //
+  // Conservative fail-open when:
+  //   same_request high BUT action is high-confidence "new" (conflict)
+  //   same_request high BUT target is "none" or a hallucinated id
+  //   both signals weak / timeout / Laya down
+  //
+  // Distinct new (not fail-open) when:
+  //   action is high-confidence "new" AND same_request is not high
+  const sameHigh = noulClears(sameRequest, minConfidence);
+  const actionHigh = conf >= minConfidence;
+  const actionMerge = choice === "merge";
+  const actionNew = choice === "new";
+  const highConfNewConflict = sameHigh && actionNew && actionHigh;
 
-  if (highMerge && targetId) {
+  const targetId =
+    validTarget ??
+    (!targetRaw && (sameHigh || actionMerge) ? openItems[0]?.id : undefined);
+
+  if (highConfNewConflict) {
+    return {
+      action: "new",
+      failOpen: true,
+      reason: "ambiguous",
+      confidence: conf || sameRequest,
+      sameRequest,
+      targetId: validTarget,
+    };
+  }
+
+  const noulMerge = sameHigh && Boolean(targetId) && !targetIsNone;
+  const sameOk = typeof sameRequest !== "number" || sameHigh;
+  const choiceMerge = actionMerge && actionHigh && sameOk && Boolean(targetId) && !targetIsNone;
+
+  if ((noulMerge || choiceMerge) && targetId) {
     return {
       action: "merge",
       failOpen: false,
       reason: "duplicate",
-      confidence: conf || sameRequest,
+      confidence: sameRequest ?? conf,
       sameRequest,
       targetId,
     };
   }
 
-  if (choice === "new" && conf >= minConfidence) {
+  if (actionNew && actionHigh) {
     return {
       action: "new",
       failOpen: false,
@@ -387,6 +438,8 @@ export function layaGateToDetail(gate: LayaCandidateGate): Record<string, unknow
     confidence: gate.confidence ?? null,
     fail_open: gate.failOpen,
     reason: gate.reason,
+    demand_noul: gate.demandNoul ?? null,
+    noise_noul: gate.noiseNoul ?? null,
   };
 }
 
