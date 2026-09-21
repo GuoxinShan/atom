@@ -189,9 +189,10 @@ export async function runExtract(
       }
 
       const candId = newId("cand");
-      // interpretMergeAnswers is noul-first: high same_request + a real
+      // interpretMergeAnswers is noul-first: same_request >= 0.90 + a real
       // open-item target is already action=merge / failOpen=false, even when
-      // action choice confidence is low. Do not re-check choice confidence here.
+      // action choice confidence is low — unless titles/topics are far apart.
+      // Do not re-check choice confidence here.
 
       store.append({
         type: "candidate_proposed",

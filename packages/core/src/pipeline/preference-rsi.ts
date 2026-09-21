@@ -13,6 +13,7 @@ import {
   RSI_MIN_SAMPLES,
   RSI_PATTERN_MIN_HITS,
   RSI_STEP,
+  clampMergeThreshold,
   clampThreshold,
   loadPreferenceMemory,
   mergePatternList,
@@ -168,9 +169,8 @@ function isNoiseReject(row: FeedbackRow): boolean {
   return isNoiseProposal(row.title, row.body);
 }
 
-function stepToward(current: number, delta: number): number {
-  if (delta === 0) return current;
-  return clampThreshold(current + delta);
+function stepToward(current: number, delta: number, clamp = clampThreshold): number {
+  return clamp(current + delta);
 }
 
 function deltaFromCounts(down: number, up: number): number {
@@ -263,7 +263,7 @@ export function computePreferenceRsi(
 
   const afterThresholds: LayaGateThresholds = {
     noise: stepToward(current.thresholds.noise, noiseDelta),
-    merge: stepToward(current.thresholds.merge, mergeDelta),
+    merge: stepToward(current.thresholds.merge, mergeDelta, clampMergeThreshold),
     outbound: stepToward(current.thresholds.outbound, outboundDelta),
   };
 

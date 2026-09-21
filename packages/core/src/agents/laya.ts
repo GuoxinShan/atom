@@ -37,6 +37,10 @@ export const DEFAULT_LAYA_TIMEOUT_MS = 10_000;
 /** Consecutive HTTP 5xx responses before the client is marked unavailable. */
 export const LAYA_UNAVAILABLE_AFTER_5XX = 2;
 export const DEFAULT_LAYA_MIN_CONFIDENCE = 0.8;
+/** Auto-merge floor for `same_request`. Preference memory may raise this; never lower. */
+export const DEFAULT_LAYA_MERGE_MIN_CONFIDENCE = 0.9;
+/** Jaccard floor: below this, titles are a different topic even if same_request is high. */
+export const DEFAULT_LAYA_MERGE_TOPIC_MIN = 0.18;
 export const LAYA_NOISE_REASON = LAYA_NOISE_REJECT_REASON;
 export type LayaTransportFail = "timeout" | "unavailable";
 
@@ -84,6 +88,7 @@ export type LayaMergeGate = {
   reason: string;
   confidence?: number;
   sameRequest?: number;
+  topicOverlap?: number;
   targetId?: string;
 };
 
@@ -295,6 +300,77 @@ function noulClears(noul: number | undefined, min: number): boolean {
   return typeof noul === "number" && noul >= min;
 }
 
+/** Process words that should not glue unrelated work items together. */
+const TITLE_TOPIC_STOP = new Set([
+  "需要",
+  "给",
+  "加上",
+  "修复",
+  "评估",
+  "并",
+  "重做",
+  "新增",
+  "落地",
+  "版本",
+  "一个",
+  "这个",
+  "进行",
+  "实现",
+  "支持",
+  "必须",
+  "才能",
+  "一下",
+]);
+
+export function effectiveMergeFloor(raw?: number): number {
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return Math.max(DEFAULT_LAYA_MERGE_MIN_CONFIDENCE, raw);
+  }
+  return DEFAULT_LAYA_MERGE_MIN_CONFIDENCE;
+}
+
+export function titleTopicTokens(text: string): string[] {
+  const t = (text ?? "").toLowerCase();
+  const tokens = new Set<string>();
+  for (const m of t.matchAll(/[a-z0-9][a-z0-9._-]{1,}/g)) {
+    tokens.add(m[0]);
+  }
+  const runs = t.match(/[\u3400-\u9fff]+/g) ?? [];
+  for (const run of runs) {
+    if (run.length === 1) {
+      if (!TITLE_TOPIC_STOP.has(run)) tokens.add(run);
+      continue;
+    }
+    if (run.length <= 4 && !TITLE_TOPIC_STOP.has(run)) tokens.add(run);
+    for (let i = 0; i < run.length - 1; i++) {
+      const bg = run.slice(i, i + 2);
+      if (!TITLE_TOPIC_STOP.has(bg)) tokens.add(bg);
+    }
+  }
+  return [...tokens];
+}
+
+/** Jaccard overlap of title/topic tokens. 1 when either side is empty (do not veto). */
+export function titleTopicOverlap(a: string, b: string): number {
+  const A = new Set(titleTopicTokens(a));
+  const B = new Set(titleTopicTokens(b));
+  if (A.size === 0 || B.size === 0) return 1;
+  let inter = 0;
+  for (const tok of A) {
+    if (B.has(tok)) inter += 1;
+  }
+  const union = A.size + B.size - inter;
+  return union === 0 ? 1 : inter / union;
+}
+
+export function titlesAreSameTopic(
+  a: string,
+  b: string,
+  minOverlap = DEFAULT_LAYA_MERGE_TOPIC_MIN
+): boolean {
+  return titleTopicOverlap(a, b) >= minOverlap;
+}
+
 export function interpretCandidateAnswers(
   answers: Record<string, LayaAnswer>,
   minConfidence = DEFAULT_LAYA_MIN_CONFIDENCE
@@ -431,11 +507,18 @@ export function interpretOutboundAnswers(
   };
 }
 
+export type MergeCandidateText = {
+  title?: string;
+  body?: string;
+};
+
 export function interpretMergeAnswers(
   answers: Record<string, LayaAnswer>,
   openItems: OpenItemSnippet[],
-  minConfidence = DEFAULT_LAYA_MIN_CONFIDENCE
+  minConfidence = DEFAULT_LAYA_MERGE_MIN_CONFIDENCE,
+  candidate?: MergeCandidateText
 ): LayaMergeGate {
+  const mergeFloor = effectiveMergeFloor(minConfidence);
   const action = answers.action;
   const choice = action?.choice?.toLowerCase();
   const conf = action?.confidence ?? answers.target?.confidence ?? 0;
@@ -450,13 +533,14 @@ export function interpretMergeAnswers(
   // Confidence policy (noul-first):
   // `action` choice calibration is weak in live Laya; `same_request` noul is
   // the reliable duplicate signal. Do not require high action.confidence when
-  // noul already clears LAYA_MIN_CONFIDENCE.
+  // noul already clears the merge floor (default / minimum 0.90).
   //
   // Merge (auto, no Desk) when:
-  //   same_request >= minConfidence
+  //   same_request >= mergeFloor
   //   AND a real open-item target id (named, or first item if target omitted —
   //       same_request is defined against the best/first open item)
   //   AND action is merge, missing, or low-confidence (same_request dominates)
+  //   AND candidate title/topic is not far from the target card title
   //
   // Conservative fail-open when:
   //   same_request high BUT action is high-confidence "new" (conflict)
@@ -465,8 +549,9 @@ export function interpretMergeAnswers(
   //
   // Distinct new (not fail-open) when:
   //   action is high-confidence "new" AND same_request is not high
-  const sameHigh = noulClears(sameRequest, minConfidence);
-  const actionHigh = conf >= minConfidence;
+  //   OR titles/topics are far apart (even if same_request is high)
+  const sameHigh = noulClears(sameRequest, mergeFloor);
+  const actionHigh = conf >= mergeFloor;
   const actionMerge = choice === "merge";
   const actionNew = choice === "new";
   const highConfNewConflict = sameHigh && actionNew && actionHigh;
@@ -474,6 +559,13 @@ export function interpretMergeAnswers(
   const targetId =
     validTarget ??
     (!targetRaw && (sameHigh || actionMerge) ? openItems[0]?.id : undefined);
+  const targetItem = targetId ? openItems.find((item) => item.id === targetId) : undefined;
+  const topicOverlap =
+    candidate?.title && targetItem?.title
+      ? titleTopicOverlap(candidate.title, targetItem.title)
+      : undefined;
+  const topicFar =
+    typeof topicOverlap === "number" && topicOverlap < DEFAULT_LAYA_MERGE_TOPIC_MIN;
 
   if (highConfNewConflict) {
     return {
@@ -482,6 +574,7 @@ export function interpretMergeAnswers(
       reason: "ambiguous",
       confidence: conf || sameRequest,
       sameRequest,
+      topicOverlap,
       targetId: validTarget,
     };
   }
@@ -491,12 +584,24 @@ export function interpretMergeAnswers(
   const choiceMerge = actionMerge && actionHigh && sameOk && Boolean(targetId) && !targetIsNone;
 
   if ((noulMerge || choiceMerge) && targetId) {
+    if (topicFar) {
+      return {
+        action: "new",
+        failOpen: false,
+        reason: "topic-mismatch",
+        confidence: sameRequest ?? conf,
+        sameRequest,
+        topicOverlap,
+        targetId,
+      };
+    }
     return {
       action: "merge",
       failOpen: false,
       reason: "duplicate",
       confidence: sameRequest ?? conf,
       sameRequest,
+      topicOverlap,
       targetId,
     };
   }
@@ -508,6 +613,7 @@ export function interpretMergeAnswers(
       reason: "distinct",
       confidence: conf || sameRequest,
       sameRequest,
+      topicOverlap,
       targetId: validTarget,
     };
   }
@@ -518,6 +624,7 @@ export function interpretMergeAnswers(
     reason: openItems.length === 0 ? "no-open-items" : "ambiguous",
     confidence: conf || sameRequest,
     sameRequest,
+    topicOverlap,
     targetId: validTarget,
   };
 }
@@ -621,6 +728,7 @@ export function layaMergeToDetail(gate: LayaMergeGate): Record<string, unknown> 
     reason: gate.reason,
     confidence: gate.confidence ?? null,
     same_request: gate.sameRequest ?? null,
+    topic_overlap: gate.topicOverlap ?? null,
     target_id: gate.targetId ?? null,
   };
 }
@@ -658,7 +766,7 @@ export class LayaClient {
     this.minConfidence = opts.minConfidence ?? DEFAULT_LAYA_MIN_CONFIDENCE;
     this.thresholds = {
       noise: opts.thresholds?.noise ?? this.minConfidence,
-      merge: opts.thresholds?.merge ?? this.minConfidence,
+      merge: effectiveMergeFloor(opts.thresholds?.merge),
       outbound: opts.thresholds?.outbound ?? this.minConfidence,
     };
     this.fetchImpl = opts.fetch ?? ((input, init) => fetch(input, init));
@@ -852,6 +960,9 @@ export class LayaClient {
     if (!predicted) {
       return { action: "new", failOpen: true, reason: this.transportFail() };
     }
-    return interpretMergeAnswers(predicted.answers, input.openItems, this.thresholds.merge);
+    return interpretMergeAnswers(predicted.answers, input.openItems, this.thresholds.merge, {
+      title: input.title,
+      body: input.body,
+    });
   }
 }

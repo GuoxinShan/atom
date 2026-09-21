@@ -11,7 +11,10 @@ import path from "node:path";
 import type { EventStore } from "../store/events.js";
 
 export const RSI_DEFAULT_THRESHOLD = 0.8;
+/** Auto-merge floor. Dogfood over-merged at 0.80; 0.90 is the new default / minimum. */
+export const RSI_DEFAULT_MERGE_THRESHOLD = 0.9;
 export const RSI_MIN_THRESHOLD = 0.7;
+export const RSI_MIN_MERGE_THRESHOLD = 0.9;
 export const RSI_MAX_THRESHOLD = 0.95;
 export const RSI_STEP = 0.02;
 export const RSI_MIN_SAMPLES = 5;
@@ -47,7 +50,7 @@ export function defaultPreferenceMemory(): PreferenceMemory {
     cursor_at: null,
     thresholds: {
       noise: RSI_DEFAULT_THRESHOLD,
-      merge: RSI_DEFAULT_THRESHOLD,
+      merge: RSI_DEFAULT_MERGE_THRESHOLD,
       outbound: RSI_DEFAULT_THRESHOLD,
     },
     allowlist: [],
@@ -55,10 +58,18 @@ export function defaultPreferenceMemory(): PreferenceMemory {
   };
 }
 
-export function clampThreshold(n: number): number {
-  if (!Number.isFinite(n)) return RSI_DEFAULT_THRESHOLD;
+export function clampThreshold(
+  n: number,
+  min = RSI_MIN_THRESHOLD,
+  fallback = RSI_DEFAULT_THRESHOLD
+): number {
+  if (!Number.isFinite(n)) return fallback;
   const stepped = Math.round(n * 100) / 100;
-  return Math.min(RSI_MAX_THRESHOLD, Math.max(RSI_MIN_THRESHOLD, stepped));
+  return Math.min(RSI_MAX_THRESHOLD, Math.max(min, stepped));
+}
+
+export function clampMergeThreshold(n: number): number {
+  return clampThreshold(n, RSI_MIN_MERGE_THRESHOLD, RSI_DEFAULT_MERGE_THRESHOLD);
 }
 
 export function preferenceMemoryPath(repoRoot: string): string {
@@ -84,8 +95,8 @@ function asStringArray(v: unknown): string[] {
   return out;
 }
 
-function asThreshold(v: unknown, fallback: number): number {
-  return typeof v === "number" && Number.isFinite(v) ? clampThreshold(v) : fallback;
+function asThreshold(v: unknown, fallback: number, min = RSI_MIN_THRESHOLD): number {
+  return typeof v === "number" && Number.isFinite(v) ? clampThreshold(v, min, fallback) : fallback;
 }
 
 export function parsePreferenceMemory(raw: unknown): PreferenceMemory {
@@ -101,7 +112,7 @@ export function parsePreferenceMemory(raw: unknown): PreferenceMemory {
     cursor_at: typeof r.cursor_at === "string" && r.cursor_at.trim() ? r.cursor_at : null,
     thresholds: {
       noise: asThreshold(th.noise, base.thresholds.noise),
-      merge: asThreshold(th.merge, base.thresholds.merge),
+      merge: asThreshold(th.merge, base.thresholds.merge, RSI_MIN_MERGE_THRESHOLD),
       outbound: asThreshold(th.outbound, base.thresholds.outbound),
     },
     allowlist: asStringArray(r.allowlist),
@@ -141,7 +152,8 @@ export function tryLoadPreferenceMemory(
 
 /**
  * File first (`data/preference-memory.json`), then sqlite meta, then defaults.
- * Missing / corrupt files fail-open to stock Laya floors (0.8).
+ * Missing / corrupt files fail-open to stock Laya floors (noise/outbound 0.8,
+ * merge 0.9). Stored merge floors below 0.9 are raised to the auto-merge min.
  */
 export function loadPreferenceMemory(repoRoot?: string, store?: EventStore): PreferenceMemory {
   return tryLoadPreferenceMemory(repoRoot, store) ?? defaultPreferenceMemory();
