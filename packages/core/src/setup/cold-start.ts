@@ -136,6 +136,21 @@ export function ensureColdStartFiles(repoRoot: string): string[] {
       {
         triggers: [
           { id: "manual-run", kind: "manual", enabled: true, pipeline: "run" },
+          {
+            id: "poll-yzj-15m",
+            kind: "cron",
+            enabled: true,
+            pipeline: "run",
+            config: {
+              everyMinutes: 15,
+              source: "yzj-ai-advance",
+              weekdaysOnly: true,
+              hoursLocal: [8, 20],
+              tz: "Asia/Shanghai",
+              includeRecentDms: true,
+              recentDmLimit: 8,
+            },
+          },
         ],
       },
       null,

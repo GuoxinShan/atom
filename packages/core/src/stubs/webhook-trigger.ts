@@ -1,7 +1,6 @@
 /**
- * Inbound webhook Trigger seam (Stage stub).
- * Later: HTTP server maps POST /hooks/:id → pipeline run.
- * Config lives in data/triggers.json.
+ * Trigger seam. Config lives in data/triggers.json.
+ * `kind: "cron"` is started in-process with Desk serve (see pipeline/cron-schedule.ts).
  */
 export type TriggerKind = "manual" | "cron" | "webhook" | "hook" | "im_event" | "fs_watch" | "atom_event";
 

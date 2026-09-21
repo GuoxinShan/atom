@@ -555,7 +555,7 @@ export function groupAllowlistFor(
   return entry?.groupIds ?? [];
 }
 
-async function executeRun(daemon: Daemon, body: Record<string, unknown>) {
+export async function executeRun(daemon: Daemon, body: Record<string, unknown>) {
   const sourceId = str(body, "source", "sourceId") || undefined;
   const source = daemon.registry.resolve(sourceId);
   const agent = resolveExtractAgent(daemon.repoRoot);

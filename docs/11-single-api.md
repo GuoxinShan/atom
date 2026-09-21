@@ -3,7 +3,7 @@
 Desk and CLI are two clients of **one local HTTP daemon**. `@atom/core` is not a second entry point.
 
 ```
-  Desk (browser)          CLI (`pnpm atom …`)          curl / cron
+  Desk (browser)          CLI (`pnpm atom …`)          curl (one-shot)
          │                        │                         │
          └──────────── fetch ─────┴──────────── fetch ──────┘
                                       │
@@ -14,6 +14,7 @@ Desk and CLI are two clients of **one local HTTP daemon**. `@atom/core` is not a
                          ┌────────────┴────────────┐
                          │  /api/*  JSON in/out    │
                          │  /hooks/*  inbound webhooks
+                         │  in-process cron poll
                          └────────────┬────────────┘
                                       ▼
                               @atom/core + SQLite
@@ -43,17 +44,20 @@ Optional: `ATOM_API_AUTO_START=1` may spawn `serve` once and retry. If spawn/hea
 |---|---|
 | Human, daily | Desk at `http://127.0.0.1:8787` |
 | Human, terminal | `pnpm atom <cmd>` → same `/api/*` |
-| Cron / CI / other tools | `curl` the API (or `pnpm atom run`) |
+| Timed ingest | in-process cron on serve (`data/triggers.json` `poll-yzj-15m`) |
+| One-shot / CI | `curl` the API (or `pnpm atom run`) |
 
 Human gates stay human. `/api/checklist-ack` requires `{ "ack": true }` and will not auto-approve.
 
-## Cron example
+## Cron (in-process)
+
+`pnpm serve` / `com.guoxinshan.atom.serve` starts the 15-minute poll. Do not load `com.guoxinshan.atom.morning-run`.
 
 ```bash
-# launchd / crontab — daemon must already be up
+# one-shot still works — daemon must already be up
 curl -sS -X POST http://127.0.0.1:8787/api/run \
   -H 'content-type: application/json' \
-  -d '{"source":"yzj"}'
+  -d '{"source":"yzj-ai-advance","groupIds":["…"]}'
 ```
 
 Webhook alias (same pipeline as `/api/run`):

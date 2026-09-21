@@ -20,6 +20,7 @@ export * from "./agents/preference-memory.js";
 export * from "./pipeline/decisions.js";
 export * from "./pipeline/digest.js";
 export * from "./pipeline/run.js";
+export * from "./pipeline/cron-schedule.js";
 export * from "./pipeline/runtime-meta.js";
 export * from "./pipeline/handoff.js";
 export * from "./pipeline/checklist.js";

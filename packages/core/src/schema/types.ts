@@ -75,7 +75,10 @@ export interface CandidateView {
 
 export interface SourceAdapter {
   id: string;
-  pullSince(cursor: string | null): Promise<{ messages: RawMessage[]; nextCursor: string }>;
+  pullSince(
+    cursor: string | null,
+    opts?: { groupIds?: string[] }
+  ): Promise<{ messages: RawMessage[]; nextCursor: string }>;
 }
 
 export interface ExtractAgent {

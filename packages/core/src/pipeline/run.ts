@@ -20,7 +20,9 @@ export async function runPipeline(opts: {
   laya?: LayaClient | false;
 }): Promise<{ ingested: number; proposed: number; digestPath: string; seeded: number }> {
   await opts.trigger?.fire("run");
-  const { ingested } = await ingestFromSource(opts.store, opts.source);
+  const { ingested } = await ingestFromSource(opts.store, opts.source, {
+    groupIds: opts.groupAllowlist,
+  });
   const { proposed, seeded } = await runExtract(opts.store, opts.agent, {
     heuristicGate: opts.heuristicGate !== false,
     groupAllowlist: opts.groupAllowlist,

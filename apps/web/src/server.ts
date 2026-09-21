@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { defaultDbPath } from "@atom/core";
 import { createDaemon } from "./context.js";
 import { handleApi } from "./routes.js";
+import { startCronScheduler } from "./scheduler.js";
 import { file, json } from "./http.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -27,6 +28,7 @@ async function main() {
   server.listen(port, "127.0.0.1", () => {
     console.log(`ATOM desk http://127.0.0.1:${port}`);
     console.log(`db: ${process.env.ATOM_DB ?? defaultDbPath(daemon.repoRoot)}`);
+    startCronScheduler(daemon);
   });
 }
 

@@ -15,17 +15,26 @@ ATOM is a **cited demand inbox + human triage desk**, not a coding factory and n
 
 | When (Asia/Shanghai) | Who | What |
 |---|---|---|
-| Boot / login | launchd | `pnpm atom serve` stays up on Rock-Shan (Desk API) |
-| 09:30 workdays | launchd / cron | `POST /api/run` (yzj-ai-advance / 【AI推进】 only) → local digest |
-| After the morning run | 干饭人 / you | `pnpm atom gate-digest` — paste the markdown if you want a gate-acceptance line in the group; JSON is `GET /api/gate-digest` |
+| Boot / login | launchd `com.guoxinshan.atom.serve` | `pnpm serve` stays up on Rock-Shan (Desk API + in-process poll) |
+| Weekdays 08:00–20:00, every 15m | Desk daemon | Same pipeline as `POST /api/run` for `yzj-ai-advance` (configured groups ∪ ~8 recent private chats). Skip nights/weekends/overlap. |
+| After a morning tick | 干饭人 / you | `pnpm atom gate-digest` — paste the markdown if you want a gate-acceptance line in the group; JSON is `GET /api/gate-digest` |
 | Anytime | You | Open Desk → **Needs you** only (approve / reject / checklist ack) |
 | After triage | You | `pnpm atom preference-rsi` (dry-run) then `--apply` if the deltas look right |
-| 18:30 optional | cron | second `run` if you want evening catch-up (default **off** week 1) |
+
+Toggle the poll in `data/triggers.json` (`id: poll-yzj-15m`). Restart serve after edits. `ATOM_CRON=0` disables the timer.
+
+**Dogfood (Mac):** pull, restart **only** `com.guoxinshan.atom.serve`, then disable/remove the old morning-run agent:
+
+```bash
+launchctl kickstart -k gui/$(id -u)/com.guoxinshan.atom.serve
+launchctl bootout gui/$(id -u)/com.guoxinshan.atom.morning-run
+rm -f ~/Library/LaunchAgents/com.guoxinshan.atom.morning-run.plist
+```
 
 Rules:
 - Autonomous job may **only** ingest + extract + write digest projection.
 - Never auto-approve, never auto-handoff `--run`, never send 云之家 without confirm.
-- If serve is down, timed job fails loud (log + optional Mac notification); it does not spawn a second DB writer path.
+- If serve is down, there is no timed pull (the timer lives in the daemon). Keep `com.guoxinshan.atom.serve` loaded; do not add a second DB writer path.
 
 ## 3. After Accept (交付边界)
 
@@ -83,13 +92,13 @@ Week 1 engineering: score title + acceptance only; strip generic tooling mention
 ## 6. Two-week execution
 
 ### Week 1 — make dogfood boring
-1. launchd plist: keep `atom serve` alive + 09:30 `curl -X POST localhost:8787/api/run`
+1. launchd plist: keep `atom serve` alive. In-process 15m poll (`data/triggers.json` `poll-yzj-15m`). Remove `com.guoxinshan.atom.morning-run`.
 2. Routing haystack fix (上文 §5)
 3. Desk empty state copy: “今天没有要你拍板的” + last run time
 4. Doc link from README → this plan
 
 ### Week 2 — only if Week 1 feels sticky
-1. Optional 18:30 run
+1. Optional tighter hours / extra source in `data/triggers.json` (no second LaunchAgent)
 2. “Accept & handoff” (still no auto `--run`)
 3. Dedup UI for same-ref duplicates
 4. Wire one outbound sink to a **draft** (not send) for nightly digest confirm — `pnpm atom outbound-check` / `POST /api/outbound-check` first; Desk remains the send authority.
@@ -110,4 +119,4 @@ After 5 workdays:
 - You open Desk ≤ 1×/day and clear Needs you in &lt; 10 minutes
 - At least 3 accepted items have handoffs you actually used or consciously deferred
 - Zero surprise 云之家 sends
-- Timed run succeeded ≥ 4/5 mornings without you babysitting serve
+- Timed run succeeded ≥ 4/5 workdays without you babysitting serve (watch `[cron:poll-yzj-15m] ok` in serve logs)
