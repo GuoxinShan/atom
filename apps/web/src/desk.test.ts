@@ -142,7 +142,7 @@ describe("Desk operator APIs", () => {
   it("PATCH preference-memory clamps floors and writes the json file", async () => {
     const daemon = await tempDaemon();
     const patched = await api(daemon, "PATCH", "/api/preference-memory", {
-      thresholds: { noise: 0.1, outbound: 1.4 },
+      thresholds: { noise: 0.1, merge: 0.8, outbound: 1.4 },
       blocklist_add: ["午餐闲聊", "x"],
     });
     assert.equal(patched.status, 200);
@@ -154,7 +154,7 @@ describe("Desk operator APIs", () => {
       cursor_at: string | null;
     };
     assert.equal(mem.thresholds.noise, 0.7);
-    assert.equal(mem.thresholds.merge, 0.8);
+    assert.equal(mem.thresholds.merge, 0.9);
     assert.equal(mem.thresholds.outbound, 0.95);
     assert.deepEqual(mem.blocklist, ["午餐闲聊"]);
     assert.equal(mem.cursor_at, null);

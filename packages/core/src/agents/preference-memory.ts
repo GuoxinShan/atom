@@ -172,7 +172,7 @@ export function savePreferenceMemory(
   return filePath;
 }
 
-/** Constrained Desk/API patch. Clamps floors; never touches cursor_at (RSI watermark). */
+/** Constrained Desk/API patch. Clamps noise/outbound to [0.70, 0.95] and merge to [0.90, 0.95]; never touches cursor_at (RSI watermark). */
 export type PreferenceMemoryPatch = {
   thresholds?: Partial<LayaGateThresholds>;
   /** Replace the whole blocklist (still filtered to 4–24 char stems, max 16). */
