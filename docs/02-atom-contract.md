@@ -57,6 +57,7 @@ type Ref = {
 | `agent_started` | run id | optional | agent id, pipeline |
 | `agent_completed` | run id | optional | agent id, pipeline, stats |
 | `agent_failed` | run id | optional | agent id, error |
+| `preference_rsi` | rsi run id | no | before/after Laya floors, sample counts, allow/block diffs |
 
 Unknown types are **rejected** by the writer. Adding a type is a contract change (bump `atom-contract` version).
 
@@ -81,4 +82,4 @@ Rebuildable anytime by replaying atoms for `subject_id`.
 
 ## Version
 
-`atom-contract@0.2`
+`atom-contract@0.3`

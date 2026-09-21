@@ -28,6 +28,7 @@ Usage:
   pnpm atom reject-noise
   pnpm atom merge-sweep [--apply]
   pnpm atom outbound-check [--title ...] [--body ... | --path <file>] [--kind digest]
+  pnpm atom preference-rsi [--dry-run | --apply]
   pnpm atom route <specOrCandidateId>
   pnpm atom doctor
   pnpm atom setup
@@ -222,6 +223,34 @@ async function main() {
       };
     }>("POST", "/api/outbound-check", { title, body: bodyText, kind });
     printOutboundCheck(data);
+    return;
+  }
+
+  if (cmd === "preference-rsi" || cmd === "rsi") {
+    const dryRun = Boolean(flags["dry-run"] || flags.dryRun);
+    const apply = Boolean(flags.apply) && !dryRun;
+    const data = await apiOk<{
+      apply: boolean;
+      changed: boolean;
+      reason: string;
+      path: string | null;
+      eventId: string | null;
+      samples: {
+        accepted: number;
+        rejected: number;
+        merged: number;
+        suggested: number;
+        noise_rejects: number;
+        fail_open_accepted: number;
+        merge_fail_open_merged: number;
+      };
+      before: { noise: number; merge: number; outbound: number };
+      after: { noise: number; merge: number; outbound: number };
+      deltas: { noise: number; merge: number; outbound: number };
+      added_allowlist: string[];
+      added_blocklist: string[];
+    }>("POST", "/api/preference-rsi", { apply, dryRun });
+    printPreferenceRsi(data);
     return;
   }
 
@@ -565,6 +594,55 @@ function printOutboundCheck(data: {
     console.log("hold: Desk should confirm before send");
   } else {
     console.log("allow: Laya would not block; Desk still confirms irreversible Yunzhijia sends");
+  }
+}
+
+function printPreferenceRsi(data: {
+  apply: boolean;
+  changed: boolean;
+  reason: string;
+  path?: string | null;
+  eventId?: string | null;
+  samples: {
+    accepted: number;
+    rejected: number;
+    merged: number;
+    suggested: number;
+    noise_rejects: number;
+    fail_open_accepted: number;
+    merge_fail_open_merged: number;
+  };
+  before: { noise: number; merge: number; outbound: number };
+  after: { noise: number; merge: number; outbound: number };
+  deltas: { noise: number; merge: number; outbound: number };
+  added_allowlist?: string[];
+  added_blocklist?: string[];
+}) {
+  const mode = data.apply ? "apply" : "dry-run";
+  console.log(
+    `OK preference-rsi (${mode}) reason=${data.reason} changed=${data.changed}`
+  );
+  const s = data.samples;
+  console.log(
+    `samples: accepted=${s.accepted} rejected=${s.rejected} merged=${s.merged} suggested=${s.suggested} noise_rejects=${s.noise_rejects} fail_open_accepted=${s.fail_open_accepted} merge_fail_open=${s.merge_fail_open_merged}`
+  );
+  console.log(
+    `thresholds: noise ${data.before.noise}→${data.after.noise}  merge ${data.before.merge}→${data.after.merge}  outbound ${data.before.outbound}→${data.after.outbound}`
+  );
+  if (data.added_allowlist?.length) {
+    console.log(`allowlist +: ${data.added_allowlist.join(" | ")}`);
+  }
+  if (data.added_blocklist?.length) {
+    console.log(`blocklist +: ${data.added_blocklist.join(" | ")}`);
+  }
+  if (data.apply && data.eventId) {
+    console.log(`audit: preference_rsi ${data.eventId}`);
+  }
+  if (data.apply && data.path) {
+    console.log(`wrote: ${data.path}`);
+  }
+  if (!data.apply) {
+    console.log("(no writes — pass --apply to persist preference memory)");
   }
 }
 

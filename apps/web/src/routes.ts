@@ -22,6 +22,7 @@ import {
   ingestFromSource,
   runExtract,
   runMergeSweep,
+  runPreferenceRsi,
   writeDigest,
   evaluateOutboundGate,
   layaOutboundToDetail,
@@ -107,7 +108,10 @@ export async function handleApi(
 
   if (method === "POST" && p === "/api/merge-sweep") {
     const body = await readJson(req);
-    const result = await runMergeSweep(daemon.store, { apply: body.apply === true });
+    const result = await runMergeSweep(daemon.store, {
+      apply: body.apply === true,
+      repoRoot: daemon.repoRoot,
+    });
     json(res, { ok: true, ...result });
     return true;
   }
@@ -123,7 +127,7 @@ export async function handleApi(
     }
     const result = await evaluateOutboundGate(
       { title, body: text, kind },
-      { store: daemon.store }
+      { store: daemon.store, repoRoot: daemon.repoRoot }
     );
     json(res, {
       ok: true,
@@ -137,6 +141,18 @@ export async function handleApi(
       kind: result.kind,
       laya_outbound: layaOutboundToDetail(result.gate),
     });
+    return true;
+  }
+
+  if (method === "POST" && p === "/api/preference-rsi") {
+    const body = await readJson(req);
+    const dryRun = body.dryRun === true || body["dry-run"] === true;
+    const apply = body.apply === true && !dryRun;
+    const result = runPreferenceRsi(daemon.store, {
+      apply,
+      repoRoot: daemon.repoRoot,
+    });
+    json(res, { ok: true, ...result });
     return true;
   }
 
@@ -463,6 +479,7 @@ async function executeExtract(daemon: Daemon, body: Record<string, unknown>) {
   const stats = await runExtract(daemon.store, agent, {
     heuristicGate: true,
     groupAllowlist: allow,
+    repoRoot: daemon.repoRoot,
   });
   return { agent: agent.id, groups: allow, ...stats };
 }
