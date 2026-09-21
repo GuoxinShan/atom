@@ -123,6 +123,120 @@ describe("done matcher", () => {
     }
   });
 
+  it("hits same-theme Desk history (速记 paraphrase)", () => {
+    const ctx: DoneMatchContext = {
+      snapshot: null,
+      history: [
+        {
+          id: "cand_steno_old",
+          title: "评估速记迁入灵基并重做lingee壳鉴权",
+          body: "速记迁入灵基，重做 lingee 壳鉴权",
+          refs: ["yzj:im:g:steno"],
+          status: "accepted",
+          theme: "速记",
+        },
+      ],
+      workspaces,
+    };
+    const hit = matchCandidateToDone(
+      {
+        id: "cand_steno_new",
+        title: "速记迁入灵基鉴权",
+        body: "评估速记迁入灵基并重做鉴权",
+        refs: ["yzj:im:g:steno-2"],
+        theme: "速记",
+      },
+      ctx
+    );
+    assert.equal(hit.hit, true);
+    if (hit.hit) {
+      assert.equal(hit.via, "history");
+      assert.equal(hit.evidence.candidate_id, "cand_steno_old");
+    }
+  });
+
+  it("does not close 速记 against 日程 accepted history (shared refs / MCP near-dup)", () => {
+    const ctx: DoneMatchContext = {
+      snapshot: null,
+      history: [
+        {
+          id: "cand_cal",
+          title: "修复日程 MCP 云之家鉴权失败",
+          body: "云之家授权失败导致日程 MCP 拉不下来",
+          refs: ["yzj:im:g:mcp"],
+          status: "accepted",
+          theme: "日程/会议",
+        },
+      ],
+      workspaces,
+    };
+    const miss = matchCandidateToDone(
+      {
+        id: "cand_steno",
+        title: "修复速记 MCP 云之家鉴权失败",
+        body: "云之家授权失败导致速记 MCP 拉不下来",
+        refs: ["yzj:im:g:mcp"],
+        theme: "速记",
+      },
+      ctx
+    );
+    assert.equal(miss.hit, false);
+  });
+
+  it("does not close untagged 速记 title against untagged 日程 history (divert)", () => {
+    const ctx: DoneMatchContext = {
+      snapshot: null,
+      history: [
+        {
+          id: "cand_cal",
+          title: "修复日程 MCP 云之家授权失败",
+          body: "云之家授权失败导致日程 MCP 拉不下来",
+          refs: ["yzj:im:g:cal"],
+          status: "accepted",
+        },
+      ],
+      workspaces,
+    };
+    const miss = matchCandidateToDone(
+      {
+        id: "cand_steno",
+        title: "评估速记迁入灵基并重做lingee壳鉴权",
+        body: "速记迁入灵基，重做 lingee 壳鉴权",
+        refs: ["yzj:im:g:cal"],
+      },
+      ctx
+    );
+    assert.equal(miss.hit, false);
+  });
+
+  it("does not close 产品缺陷 against 发布与发布流程 history", () => {
+    const ctx: DoneMatchContext = {
+      snapshot: null,
+      history: [
+        {
+          id: "cand_release",
+          title: "发布按钮点了没反应",
+          body: "发布与发布流程里点发布没有反馈",
+          refs: ["yzj:im:g:ship"],
+          status: "rejected",
+          theme: "发布与发布流程",
+        },
+      ],
+      workspaces,
+    };
+    const miss = matchCandidateToDone(
+      {
+        id: "cand_bug",
+        title: "发布按钮点了没反应",
+        body: "产品缺陷：点发布没有反馈",
+        refs: ["yzj:im:g:ship"],
+        theme: "产品缺陷",
+      },
+      ctx
+    );
+    assert.equal(miss.hit, false);
+  });
+
   it("hits a shared PR / issue URL", () => {
     const url = "https://github.com/GuoxinShan/atom/pull/28";
     const ctx: DoneMatchContext = {

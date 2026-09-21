@@ -70,6 +70,8 @@ export function historyFromStore(store: EventStore): DoneHistoryItem[] {
       body: c.body,
       refs: c.refs.map((r) => r.token),
       status: c.status,
+      ...(c.theme ? { theme: c.theme } : {}),
+      ...(c.tags ? { tags: c.tags } : {}),
     });
   }
   return out;
@@ -138,11 +140,18 @@ function proposalRefs(p: Pick<CandidateProposal, "refs">): string[] {
 }
 
 export function matchProposalToDone(
-  p: Pick<CandidateProposal, "title" | "body" | "refs"> & { id?: string },
+  p: Pick<CandidateProposal, "title" | "body" | "refs" | "theme" | "tags"> & { id?: string },
   ctx: DoneMatchContext
 ): DoneHit | null {
   const verdict = matchCandidateToDone(
-    { id: p.id, title: p.title, body: p.body, refs: proposalRefs(p) },
+    {
+      id: p.id,
+      title: p.title,
+      body: p.body,
+      refs: proposalRefs(p),
+      theme: p.theme,
+      tags: p.tags,
+    },
     ctx
   );
   return verdict.hit ? verdict : null;
@@ -166,7 +175,14 @@ export function applyDoneGateToSuggested(
       continue;
     }
     const hit = matchCandidateToDone(
-      { id: c.id, title: c.title, body: c.body, refs: c.refs.map((r) => r.token) },
+      {
+        id: c.id,
+        title: c.title,
+        body: c.body,
+        refs: c.refs.map((r) => r.token),
+        theme: c.theme,
+        tags: c.tags,
+      },
       ctx
     );
     if (!hit.hit) {
@@ -189,6 +205,8 @@ export function applyDoneGateToSuggested(
         body: c.body,
         refs: c.refs.map((r) => r.token),
         status: "rejected",
+        ...(c.theme ? { theme: c.theme } : {}),
+        ...(c.tags ? { tags: c.tags } : {}),
       });
       console.log(`[done-gate] already_done ${c.id}: ${c.title} — ${hit.reason}`);
     }

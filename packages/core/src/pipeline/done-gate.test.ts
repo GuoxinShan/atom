@@ -76,14 +76,19 @@ async function tempCtx(): Promise<{ store: EventStore; repoRoot: string }> {
 
 const ref: Ref = { token: "yzj:im:g:done", kind: "im", digest: "d" };
 
-function seedSuggested(store: EventStore, title: string, extra: Record<string, unknown> = {}): string {
+function seedSuggested(
+  store: EventStore,
+  title: string,
+  extra: Record<string, unknown> = {},
+  refs: Ref[] = [ref]
+): string {
   const id = extra.id ? String(extra.id) : newId("cand");
   store.append({
     type: "candidate_proposed",
     subject_id: id,
     summary: title,
     detail: { title, body: String(extra.body ?? title), confidence: 0.8, ...extra },
-    refs: [ref],
+    refs,
     actor: "test",
   });
   return id;
@@ -227,6 +232,67 @@ describe("done gate", () => {
     assert.equal(result.closed, 1);
     assert.equal(result.items[0]?.id, fresh);
     assert.equal(projectCandidates(store).find((c) => c.id === fresh)?.disposition, "already_done");
+  });
+
+  it("closes same-theme 速记 history as already_done", async () => {
+    const { store, repoRoot } = await tempCtx();
+    const stenoOld = seedSuggested(store, "评估速记迁入灵基并重做lingee壳鉴权", {
+      body: "速记迁入灵基，重做 lingee 壳鉴权",
+      theme: "速记",
+      tags: { theme: "速记" },
+    }, [{ token: "yzj:im:g:steno", kind: "im", digest: "s1" }]);
+    store.append({
+      type: "decision_accepted",
+      subject_id: stenoOld,
+      summary: "accepted",
+      actor: "user:local",
+    });
+    const stenoFresh = seedSuggested(store, "速记迁入灵基鉴权", {
+      body: "评估速记迁入灵基并重做鉴权",
+      theme: "速记",
+      tags: { theme: "速记" },
+    }, [{ token: "yzj:im:g:steno-2", kind: "im", digest: "s2" }]);
+    const result = applyDoneGateToSuggested(store, { apply: true, repoRoot });
+    assert.equal(result.closed, 1);
+    assert.equal(result.items[0]?.id, stenoFresh);
+    assert.equal(projectCandidates(store).find((c) => c.id === stenoFresh)?.disposition, "already_done");
+  });
+
+  it("does not close 速记 candidate against accepted 日程 history", async () => {
+    const { store, repoRoot } = await tempCtx();
+    const shared: Ref = { token: "yzj:im:g:mcp", kind: "im", digest: "m" };
+    const cal = seedSuggested(
+      store,
+      "修复日程 MCP 云之家鉴权失败",
+      {
+        body: "云之家授权失败导致日程 MCP 拉不下来",
+        theme: "日程/会议",
+        tags: { theme: "日程/会议" },
+      },
+      [shared]
+    );
+    store.append({
+      type: "decision_accepted",
+      subject_id: cal,
+      summary: "accepted",
+      actor: "user:local",
+    });
+    const stenoVsCal = seedSuggested(
+      store,
+      "修复速记 MCP 云之家鉴权失败",
+      {
+        body: "云之家授权失败导致速记 MCP 拉不下来",
+        theme: "速记",
+        tags: { theme: "速记" },
+      },
+      [shared]
+    );
+    const result = applyDoneGateToSuggested(store, { apply: true, repoRoot });
+    assert.equal(result.closed, 0);
+    assert.equal(result.items.some((i) => i.id === stenoVsCal), false);
+    const live = projectCandidates(store).find((c) => c.id === stenoVsCal);
+    assert.equal(live?.status, "suggested");
+    assert.equal(live?.disposition, undefined);
   });
 
   it("extract live gate closes a near-dup PR and leaves unrelated suggested", async () => {

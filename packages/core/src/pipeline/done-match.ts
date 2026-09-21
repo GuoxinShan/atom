@@ -3,6 +3,11 @@
  *
  * Hit → already shipped / already triaged (Done gate closes it).
  * Uncertain → stay suggested. Repo scan fail does not produce a hit.
+ *
+ * Desk history is stricter than repo snapshot matching: same/compatible theme
+ * (or both untagged), else workspace keyword overlap / a higher title floor.
+ * Cross-theme near-dups (速记 vs 日程/会议, 产品缺陷 vs 发布与发布流程) do not
+ * `already_done` from history alone.
  */
 
 import {
@@ -10,9 +15,12 @@ import {
   sharedRefTokens,
   titleTopicOverlap,
   titleTopicTokens,
+  NEAR_DUP_OVERRIDE_TITLE_MIN,
   NEAR_DUP_TITLE_MIN,
   type MergeText,
+  type NearDuplicateScore,
 } from "../agents/near-duplicate.js";
+import { canonicalNonOtherTheme } from "../agents/theme-vocabulary.js";
 import type { WorkspaceEntry } from "../agents/lead.js";
 import type { ProgressItem, ProgressSnapshot } from "./progress-snapshot.js";
 
@@ -22,6 +30,11 @@ export const DONE_TITLE_MIN = 0.36;
 export const DONE_TITLE_HINT_MIN = NEAR_DUP_TITLE_MIN;
 /** Shared CJK / long tokens that mean the same shipped work (bilingual titles). */
 export const DONE_STEM_STRONG_MIN = 3;
+/**
+ * Mixed tagged/untagged history pairs need a stronger title floor than
+ * same-theme paraphrases (repo snapshot matching is unchanged).
+ */
+export const DONE_HISTORY_MIXED_TITLE_MIN = NEAR_DUP_OVERRIDE_TITLE_MIN;
 
 export type DoneEvidenceKind = "pr" | "issue" | "commit" | "history";
 
@@ -49,7 +62,12 @@ export type DoneMiss = {
 
 export type DoneVerdict = DoneHit | DoneMiss;
 
-export type DoneHistoryItem = {
+export type DoneThemeFields = {
+  theme?: string;
+  tags?: { theme?: string };
+};
+
+export type DoneHistoryItem = DoneThemeFields & {
   id: string;
   title: string;
   body: string;
@@ -57,7 +75,7 @@ export type DoneHistoryItem = {
   status: "accepted" | "rejected" | "merged";
 };
 
-export type DoneCandidate = {
+export type DoneCandidate = DoneThemeFields & {
   id?: string;
   title: string;
   body?: string;
@@ -128,6 +146,49 @@ export function workspaceKeywordHits(
     }
   }
   return hits;
+}
+
+/** Workspace `match`/`tags` needles that appear on both sides. */
+export function sharedWorkspaceKeywords(
+  a: { title?: string; body?: string; refs?: string[] },
+  b: { title?: string; body?: string; refs?: string[] },
+  workspaces: WorkspaceEntry[]
+): string[] {
+  const left = workspaceKeywordHits(blobOf(a), workspaces);
+  if (!left.length) return [];
+  const right = new Set(
+    workspaceKeywordHits(blobOf(b), workspaces).map((n) => n.trim().toLowerCase())
+  );
+  return left.filter((n) => right.has(n.trim().toLowerCase()));
+}
+
+/** Stored or diverted non-其他 theme. Does not persist tags. */
+export function resolveDoneTheme(item: DoneThemeFields & { title?: string; body?: string }): string | undefined {
+  return canonicalNonOtherTheme({
+    title: item.title,
+    body: item.body,
+    theme: item.theme,
+    tags: item.tags,
+  });
+}
+
+/**
+ * Desk-history guard. Cross-theme near-dups never close from history alone.
+ * Same theme, or both untagged, keep the existing topic score. Mixed
+ * tagged/untagged needs workspace keyword overlap or a higher title floor.
+ */
+export function historyPairCompatible(
+  cand: DoneCandidate,
+  hist: DoneHistoryItem,
+  score: Pick<NearDuplicateScore, "titleOverlap">,
+  workspaces: WorkspaceEntry[]
+): boolean {
+  const themeA = resolveDoneTheme(cand);
+  const themeB = resolveDoneTheme(hist);
+  if (themeA && themeB) return themeA === themeB;
+  if (!themeA && !themeB) return true;
+  if (score.titleOverlap >= DONE_HISTORY_MIXED_TITLE_MIN) return true;
+  return sharedWorkspaceKeywords(cand, hist, workspaces).length > 0;
 }
 
 function evidenceFromItem(item: ProgressItem): DoneEvidence {
@@ -252,7 +313,11 @@ function bestRepoHit(
   };
 }
 
-function bestHistoryHit(cand: DoneCandidate, history: DoneHistoryItem[]): DoneHit | null {
+function bestHistoryHit(
+  cand: DoneCandidate,
+  history: DoneHistoryItem[],
+  workspaces: WorkspaceEntry[]
+): DoneHit | null {
   const text: MergeText = {
     title: cand.title,
     body: cand.body ?? "",
@@ -268,6 +333,7 @@ function bestHistoryHit(cand: DoneCandidate, history: DoneHistoryItem[]): DoneHi
       shared.length > 0 ||
       titleTopicOverlap(cand.title, h.title) >= DONE_TITLE_MIN;
     if (!same) continue;
+    if (!historyPairCompatible(cand, h, score, workspaces)) continue;
     if (!best || score.titleOverlap > best.overlap) best = { h, overlap: score.titleOverlap };
   }
   if (!best) return null;
@@ -292,7 +358,7 @@ function bestHistoryHit(cand: DoneCandidate, history: DoneHistoryItem[]): DoneHi
  * Desk history can still hit.
  */
 export function matchCandidateToDone(cand: DoneCandidate, ctx: DoneMatchContext): DoneVerdict {
-  const historyHit = bestHistoryHit(cand, ctx.history);
+  const historyHit = bestHistoryHit(cand, ctx.history, ctx.workspaces);
   if (historyHit) return historyHit;
 
   const repoHit = bestRepoHit(cand, ctx.snapshot, ctx.workspaces);
