@@ -4,11 +4,15 @@ import { refTokenForMessage } from "../schema/ids.js";
 
 export async function ingestFromSource(
   store: EventStore,
-  source: SourceAdapter
+  source: SourceAdapter,
+  opts?: { groupIds?: string[] }
 ): Promise<{ ingested: number; nextCursor: string }> {
   const cursorKey = `cursor:${source.id}`;
   const cursor = store.getMeta(cursorKey);
-  const { messages, nextCursor } = await source.pullSince(cursor);
+  const { messages, nextCursor } = await source.pullSince(
+    cursor,
+    opts?.groupIds?.length ? { groupIds: opts.groupIds } : undefined
+  );
 
   let ingested = 0;
   for (const msg of messages) {

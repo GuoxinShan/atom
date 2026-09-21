@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { RawMessage, SourceAdapter } from "@atom/core";
+import { parseRecentPrivateGroupIds, RawMessage, SourceAdapter } from "@atom/core";
 
 /**
  * SourceAdapter wrapping `yzj-cli im message list`.
@@ -28,8 +28,11 @@ export class YzjSource implements SourceAdapter {
     return fromEnv.length ? fromEnv : this.opts.groupIds ?? [];
   }
 
-  async pullSince(cursor: string | null): Promise<{ messages: RawMessage[]; nextCursor: string }> {
-    const groups = this.groupIds();
+  async pullSince(
+    cursor: string | null,
+    opts?: { groupIds?: string[] }
+  ): Promise<{ messages: RawMessage[]; nextCursor: string }> {
+    const groups = opts?.groupIds?.length ? opts.groupIds : this.groupIds();
     if (groups.length === 0) {
       console.warn(
         "[yzj] no group ids configured (set ATOM_YZJ_GROUP_IDS or sources.json groupIds); returning empty"
@@ -137,4 +140,19 @@ function parseMessages(out: string, groupId: string): RawMessage[] {
     console.warn("[yzj] non-JSON CLI output; ignoring");
     return [];
   }
+}
+
+/**
+ * Recent Yunzhijia private chats (`type: 1`) via `yzj-cli im group recent`.
+ * Returns ids only — never logs message contents. Caller applies recentDmLimit.
+ */
+export async function listRecentYzjPrivateChats(opts: {
+  cli?: string;
+  limit?: number;
+} = {}): Promise<string[]> {
+  const cli = opts.cli ?? process.env.ATOM_YZJ_CLI ?? "yzj-cli";
+  const out = await runCli(cli, ["im", "group", "recent"]);
+  const ids = parseRecentPrivateGroupIds(out);
+  if (opts.limit == null) return ids;
+  return ids.slice(0, Math.max(0, opts.limit));
 }

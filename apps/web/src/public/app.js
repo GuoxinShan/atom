@@ -333,7 +333,11 @@ function renderTriggers(data, missing) {
       firstHuman(t.name, t.label, t.title, t.displayName) ||
       [kindLabel(t.kind), pipeline].filter(Boolean).join(" · ") ||
       shortSlug(t.id);
-    const extra = t.config?.path || "";
+    const extra =
+      t.config?.path ||
+      (t.kind === "cron" && t.config?.everyMinutes != null
+        ? `every ${t.config.everyMinutes}m`
+        : "");
     el.innerHTML = `
       <div class="row">
         <h3>${escapeHtml(title)}</h3>

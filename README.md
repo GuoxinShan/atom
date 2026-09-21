@@ -26,7 +26,7 @@ pnpm atom candidates   # GET /api/candidates
 
 Digest lands in `out/digest-YYYY-MM-DD.md`. SQLite at `data/atom.sqlite`.
 
-Daily: use **Desk**. Automation: **curl the API** or `pnpm atom` (thin client). Always keep `pnpm atom serve` (or `pnpm web`) running.
+Daily: use **Desk**. Timed ingest runs **inside** `pnpm atom serve` (15-minute weekday poll, Asia/Shanghai 08:00–20:00). Curl still works if you want a one-shot. Always keep `pnpm atom serve` (or `pnpm web`) running.
 
 If the API is down, the CLI exits with:
 
@@ -78,10 +78,14 @@ Light zinc inbox (paper + indigo `#6e7bf2`). Listen → propose → approve → 
 
 ### Cron / webhooks
 
+Serve starts an in-process 15-minute poll (`data/triggers.json` → `poll-yzj-15m`) that runs the same pipeline as `POST /api/run` for `yzj-ai-advance`, plus up to 8 recent Yunzhijia private chats, on **weekdays Asia/Shanghai 08:00–20:00**. Overlap is skipped; one log line per tick (`ok` / `skip` / `fail`). Disable the row or set `ATOM_CRON=0`. Do **not** keep `com.guoxinshan.atom.morning-run` — only `com.guoxinshan.atom.serve`.
+
+One-shot still:
+
 ```bash
 curl -sS -X POST http://127.0.0.1:8787/api/run \
   -H 'content-type: application/json' \
-  -d '{"source":"yzj"}'
+  -d '{"source":"yzj-ai-advance"}'
 ```
 
 Inbound webhooks use `/hooks/run` (same pipeline). CLI `run` uses `/api/run`.

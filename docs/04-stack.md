@@ -6,7 +6,7 @@
 | Package manager | pnpm |
 | Run | `tsx` |
 | DB | SQLite (`better-sqlite3` or `libsql`) |
-| Schedule | local `cron` / `launchd` |
+| Schedule | in-process interval on `pnpm serve` (`data/triggers.json`) |
 | LLM | OpenAI-compatible API + Zod structured output |
 | Digest | Markdown files under `./out/` |
 | Layout | `ingest/` `extract/` `approve/` `export/` |
@@ -33,4 +33,4 @@ data/              # sqlite (gitignored)
 
 ## Triggers (beyond week-1 cron)
 
-Manual + stubs first; webhook / IM hook / fs watch share one Trigger interface — see `docs/06-extensibility.md`.
+Manual + in-process cron first; webhook / IM hook / fs watch share one Trigger interface — see `docs/06-extensibility.md`.

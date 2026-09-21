@@ -16,7 +16,7 @@ Pipelines are started by **triggers**, not only a daily cron.
 | kind | examples |
 |---|---|
 | `manual` | `atom run`, UI button |
-| `cron` | launchd / cron expression |
+| `cron` | in-process interval on `pnpm serve` (`data/triggers.json`) |
 | `webhook` | HTTP callback from GitHub, Stripe, custom |
 | `hook` | local git hook, file watcher |
 | `im_event` | new Yunzhijia/Slack message matching filter |
@@ -24,7 +24,7 @@ Pipelines are started by **triggers**, not only a daily cron.
 
 Irregular timing is first-class. The runner is: `Trigger → select pipeline (ingest|extract|run) → SourceRegistry + ExtractAgent → append atoms`.
 
-Stage1 ships `manual` + config stubs; other kinds land behind the same interface.
+Stage1 ships `manual` + in-process `cron` (weekday 15m poll) + webhook config stubs; other kinds land behind the same interface.
 
 ## UI
 
