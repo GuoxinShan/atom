@@ -50,11 +50,23 @@ export const RawMessageSchema = z.object({
 });
 export type RawMessage = z.infer<typeof RawMessageSchema>;
 
+export const CandidateTagsSchema = z
+  .object({
+    theme: z.string().optional(),
+    project: z.string().optional(),
+  })
+  .passthrough();
+export type CandidateTags = z.infer<typeof CandidateTagsSchema>;
+
 export const CandidateProposalSchema = z.object({
   title: z.string().min(1),
   body: z.string().default(""),
   confidence: z.number().min(0).max(1).default(0.6),
   cluster_key: z.string().optional(),
+  /** Display grouping only — not a Laya classification gate. */
+  theme: z.string().optional(),
+  project: z.string().optional(),
+  tags: CandidateTagsSchema.optional(),
   refs: z.array(RefSchema).min(1),
   source_message_ids: z.array(z.string()).default([]),
 });
@@ -71,6 +83,9 @@ export interface CandidateView {
   refs: Ref[];
   updated_at: string;
   cluster_key?: string;
+  theme?: string;
+  project?: string;
+  tags?: CandidateTags;
 }
 
 export interface SourceAdapter {

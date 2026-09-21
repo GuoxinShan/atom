@@ -3,6 +3,8 @@ const PAGES = ["needs-you", "processed", "preferences", "advanced"];
 const state = {
   page: "needs-you",
   candidates: [],
+  groups: [],
+  groupOpen: {},
   specs: [],
   checklists: [],
   sources: [],
@@ -554,6 +556,68 @@ function formatLastActivity(info) {
   return `${label} ${when}`;
 }
 
+function isGroupOpen(key) {
+  if (Object.prototype.hasOwnProperty.call(state.groupOpen, key)) return Boolean(state.groupOpen[key]);
+  return true;
+}
+
+function renderSuggestedCard(c) {
+  const card = document.createElement("article");
+  const selected =
+    state.selectedKind !== "checklist" &&
+    (state.selectedId === c.id || specForCandidate(c.id)?.id === state.selectedId);
+  card.className = `item${selected ? " selected" : ""}`;
+  card.dataset.select = c.id;
+  const title = firstHuman(c.title) || "未命名事项";
+  const summary = (c.body || "").trim();
+  card.innerHTML = `
+        <h3>${escapeHtml(title)}</h3>
+        ${summary ? `<p>${escapeHtml(summary.slice(0, 220))}</p>` : ""}
+        ${metaLine({
+          sources: citeLabels(c.refs),
+          status: c.status,
+          when: relativeTime(c.updated_at),
+        })}
+        <div class="card-actions">
+          <button type="button" data-act="approve" data-id="${escapeHtml(c.id)}">Approve</button>
+          <button type="button" data-act="reject" data-id="${escapeHtml(c.id)}">Reject</button>
+        </div>
+      `;
+  return card;
+}
+
+function fallbackNeedsGroups(suggested) {
+  const buckets = new Map();
+  for (const c of suggested) {
+    const theme = firstHuman(c.theme, c.tags?.theme);
+    const project = firstHuman(c.project, c.tags?.project);
+    const stem = firstHuman(c.cluster_key) || "";
+    let key;
+    let title;
+    let kind;
+    if (theme) {
+      key = `theme:${theme.toLowerCase()}`;
+      title = theme;
+      kind = "theme";
+    } else if (project) {
+      key = `project:${project.toLowerCase()}`;
+      title = project;
+      kind = "project";
+    } else if (stem && !looksTechnicalId(stem)) {
+      key = `heuristic:stem:${stem.toLowerCase()}`;
+      title = stem;
+      kind = "heuristic";
+    } else {
+      key = "heuristic:other";
+      title = "其他";
+      kind = "heuristic";
+    }
+    if (!buckets.has(key)) buckets.set(key, { key, title, kind, candidate_ids: [] });
+    buckets.get(key).candidate_ids.push(c.id);
+  }
+  return [...buckets.values()];
+}
+
 function renderQueue() {
   const suggested = state.candidates.filter((c) => c.status === "suggested");
   const acks = awaitingChecklists();
@@ -579,27 +643,35 @@ function renderQueue() {
     const section = document.createElement("section");
     section.className = "col suggested";
     section.innerHTML = `<h2>Suggested <b>${suggested.length}</b></h2>`;
-    for (const c of suggested) {
-      const card = document.createElement("article");
-      const selected = state.selectedKind !== "checklist" && (state.selectedId === c.id || specForCandidate(c.id)?.id === state.selectedId);
-      card.className = `item${selected ? " selected" : ""}`;
-      card.dataset.select = c.id;
-      const title = firstHuman(c.title) || "未命名事项";
-      const summary = (c.body || "").trim();
-      card.innerHTML = `
-        <h3>${escapeHtml(title)}</h3>
-        ${summary ? `<p>${escapeHtml(summary.slice(0, 220))}</p>` : ""}
-        ${metaLine({
-          sources: citeLabels(c.refs),
-          status: c.status,
-          when: relativeTime(c.updated_at),
-        })}
-        <div class="card-actions">
-          <button type="button" data-act="approve" data-id="${escapeHtml(c.id)}">Approve</button>
-          <button type="button" data-act="reject" data-id="${escapeHtml(c.id)}">Reject</button>
-        </div>
-      `;
-      section.appendChild(card);
+    const byId = Object.fromEntries(suggested.map((c) => [c.id, c]));
+    const groups =
+      Array.isArray(state.groups) && state.groups.length ? state.groups : fallbackNeedsGroups(suggested);
+    const seen = new Set();
+    for (const g of groups) {
+      const cards = (g.candidate_ids || []).map((id) => byId[id]).filter(Boolean);
+      if (!cards.length) continue;
+      for (const c of cards) seen.add(c.id);
+      const wrap = document.createElement("details");
+      wrap.className = "needs-group";
+      wrap.dataset.groupKey = g.key || "";
+      wrap.dataset.groupKind = g.kind || "heuristic";
+      wrap.open = isGroupOpen(g.key || "heuristic:other");
+      wrap.innerHTML = `<summary class="needs-group-summary"><span class="group-title">${escapeHtml(
+        firstHuman(g.title) || "其他"
+      )}</span><b>${cards.length}</b></summary>`;
+      for (const c of cards) wrap.appendChild(renderSuggestedCard(c));
+      section.appendChild(wrap);
+    }
+    const leftovers = suggested.filter((c) => !seen.has(c.id));
+    if (leftovers.length) {
+      const wrap = document.createElement("details");
+      wrap.className = "needs-group";
+      wrap.dataset.groupKey = "heuristic:other";
+      wrap.dataset.groupKind = "heuristic";
+      wrap.open = isGroupOpen("heuristic:other");
+      wrap.innerHTML = `<summary class="needs-group-summary"><span class="group-title">其他</span><b>${leftovers.length}</b></summary>`;
+      for (const c of leftovers) wrap.appendChild(renderSuggestedCard(c));
+      section.appendChild(wrap);
     }
     queue.appendChild(section);
   }
@@ -757,6 +829,14 @@ async function copyId(id, btn) {
   }
 }
 
+queue.addEventListener("toggle", (e) => {
+  const el = e.target;
+  if (!(el instanceof HTMLDetailsElement)) return;
+  if (!el.classList.contains("needs-group")) return;
+  const key = el.dataset.groupKey;
+  if (key) state.groupOpen[key] = el.open;
+});
+
 document.getElementById("page-needs-you").addEventListener("click", async (e) => {
   const copyBtn = e.target.closest("button[data-copy-id]");
   if (copyBtn) {
@@ -830,6 +910,7 @@ document.getElementById("page-needs-you").addEventListener("click", async (e) =>
     selectMatter(chk.dataset.selectChecklist, "checklist");
     return;
   }
+  if (e.target.closest("summary.needs-group-summary")) return;
   const selectable = e.target.closest("[data-select]");
   if (selectable) selectMatter(selectable.dataset.select);
 });
@@ -895,6 +976,7 @@ async function loadDesk() {
       fetchJson("/api/meta", {}),
     ]);
   state.candidates = cands.candidates || [];
+  state.groups = Array.isArray(cands.groups) ? cands.groups : [];
   state.specs = specs.specs || [];
   state.checklists = checks.checklists || [];
   state.sources = sources.sources || [];

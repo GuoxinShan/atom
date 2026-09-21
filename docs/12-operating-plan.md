@@ -18,7 +18,7 @@ ATOM is a **cited demand inbox + human triage desk**, not a coding factory and n
 | You start it | `docker compose up -d` (or `pnpm serve`) | Desk API + in-process poll on Rock-Shan. **Not** a login item / LaunchAgent; compose uses `restart: "no"`. |
 | Weekdays 08:00–20:00, every 15m | Desk daemon | Same pipeline as `POST /api/run` for `yzj-ai-advance` (configured groups ∪ ~8 recent private chats). Skip nights/weekends/overlap. |
 | After a morning tick | 干饭人 / you | `pnpm atom gate-digest` — paste the markdown if you want a gate-acceptance line in the group; JSON is `GET /api/gate-digest` |
-| Anytime | You | Open Desk → **Needs you** only (approve / reject / checklist ack) |
+| Anytime | You | Open Desk → **Needs you** only (approve / reject / checklist ack). Hard-refresh `:8787` so cards show in collapsible theme/project groups. |
 | After triage | You | `pnpm atom preference-rsi` (dry-run) then `--apply` if the deltas look right |
 
 Toggle the poll in `data/triggers.json` (`id: poll-yzj-15m`). Restart the container / serve after edits. `ATOM_CRON=0` disables the timer.

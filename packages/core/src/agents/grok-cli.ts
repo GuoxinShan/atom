@@ -19,6 +19,8 @@ const JSON_SCHEMA = {
           confidence: { type: "number" },
           source_message_ids: { type: "array", items: { type: "string" } },
           cluster_key: { type: "string" },
+          theme: { type: "string" },
+          project: { type: "string" },
         },
         required: ["title", "source_message_ids"],
       },
@@ -123,6 +125,8 @@ export class GrokCliExtractAgent implements ExtractAgent {
         body: String(c.body ?? ""),
         confidence: Number(c.confidence ?? 0.7),
         cluster_key: c.cluster_key ? String(c.cluster_key) : undefined,
+        theme: c.theme ? String(c.theme) : undefined,
+        project: c.project ? String(c.project) : undefined,
         refs,
         source_message_ids: ids,
       });

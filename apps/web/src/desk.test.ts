@@ -8,6 +8,7 @@ import { after, before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import { createDaemon, type Daemon } from "./context.js";
 import { handleApi } from "./routes.js";
+import { newId } from "@atom/core";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const tmpDirs: string[] = [];
@@ -92,6 +93,10 @@ describe("Desk shell", () => {
     assert.match(js, /队列空着是正常的/);
     assert.match(js, /PAGES = \["needs-you", "processed", "preferences", "advanced"\]/);
     assert.match(js, /showPage\(pageFromHash\(\)\)/);
+    assert.match(js, /className = "needs-group"/);
+    assert.match(js, /needs-group-summary/);
+    assert.match(html, /按主题\/项目折叠/);
+    assert.match(js, /fallbackNeedsGroups/);
   });
 });
 
@@ -117,6 +122,7 @@ describe("Desk operator APIs", () => {
     const cands = await api(daemon, "GET", "/api/candidates");
     assert.equal(cands.status, 200);
     assert.ok(Array.isArray(cands.json.candidates));
+    assert.ok(Array.isArray(cands.json.groups));
 
     const digest = await api(daemon, "GET", "/api/gate-digest?since=24h");
     assert.equal(digest.status, 200);
@@ -137,6 +143,72 @@ describe("Desk operator APIs", () => {
     assert.equal(mem.thresholds?.noise, 0.8);
     assert.equal(mem.cursor_at, null);
     assert.equal(memory.json.last_rsi, null);
+  });
+
+  it("groups Needs-you candidates by theme/project or workspace heuristic", async () => {
+    const daemon = await tempDaemon();
+    fs.writeFileSync(
+      path.join(daemon.repoRoot, "data/workspaces.json"),
+      JSON.stringify({
+        version: 1,
+        defaultMachine: "test",
+        machines: {},
+        workspaces: [
+          {
+            id: "atom",
+            machine: "test",
+            path: "/atom",
+            kind: "personal",
+            tags: ["atom"],
+            match: ["ATOM", "事元产品"],
+          },
+          {
+            id: "yzj",
+            machine: "test",
+            path: "/yzj",
+            kind: "work",
+            tags: ["1023"],
+            match: ["云之家", "1023", "日历"],
+          },
+        ],
+      })
+    );
+    const ref = { token: "yzj:im:g:desk", kind: "im" as const, digest: "d" };
+    const seed = (title: string, extra: Record<string, unknown> = {}) => {
+      const id = newId("cand");
+      daemon.store.append({
+        type: "candidate_proposed",
+        subject_id: id,
+        summary: title,
+        detail: { title, body: title, confidence: 0.8, ...extra },
+        refs: [ref],
+        actor: "test",
+      });
+      return id;
+    };
+    const oauthA = seed("Desk OAuth login", { theme: "OAuth" });
+    const oauthB = seed("OAuth refresh", { tags: { theme: "OAuth" } });
+    seed("需要给 ATOM Desk 加上空状态文案");
+    seed("需要给 1023 日历加上冲突提醒");
+
+    const cands = await api(daemon, "GET", "/api/candidates");
+    assert.equal(cands.status, 200);
+    const list = cands.json.candidates as Array<{ id: string; theme?: string }>;
+    assert.equal(list.length, 4);
+    assert.equal(list.find((c) => c.id === oauthA)?.theme, "OAuth");
+    const groups = cands.json.groups as Array<{
+      key: string;
+      title: string;
+      kind: string;
+      candidate_ids: string[];
+    }>;
+    assert.ok(Array.isArray(groups));
+    const oauth = groups.find((g) => g.kind === "theme" && g.title === "OAuth");
+    assert.ok(oauth);
+    assert.deepEqual([...oauth.candidate_ids].sort(), [oauthA, oauthB].sort());
+    assert.ok(groups.some((g) => g.key.startsWith("heuristic:ws:atom")));
+    assert.ok(groups.some((g) => g.key.startsWith("heuristic:ws:yzj")));
+    assert.ok(groups.length >= 3);
   });
 
   it("PATCH preference-memory clamps floors and writes the json file", async () => {
