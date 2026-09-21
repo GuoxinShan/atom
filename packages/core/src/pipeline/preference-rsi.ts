@@ -139,6 +139,9 @@ function collectFeedback(store: EventStore, sinceIso: string | null): FeedbackRo
     } else if (ev.type === "decision_merged") {
       row.status = "merged";
       row.decidedAt = ev.created_at;
+    } else if (ev.type === "decision_reopened") {
+      row.status = "suggested";
+      row.rejectReason = undefined;
     }
   }
 
@@ -220,6 +223,7 @@ export function computePreferenceRsi(
   let mergeFailOpenMerged = 0;
 
   for (const row of rows) {
+    if ((row.rejectReason ?? "").toLowerCase() === "already_done") continue;
     if (row.status === "accepted") accepted += 1;
     else if (row.status === "rejected") rejected += 1;
     else if (row.status === "merged") merged += 1;

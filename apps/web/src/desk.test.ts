@@ -87,6 +87,8 @@ describe("Desk shell", () => {
     const css = fs.readFileSync(path.join(here, "public/styles.css"), "utf8");
     assert.match(html, /data-page="needs-you"[^>]*class="active">需要你拍板/);
     assert.match(html, /data-page="processed">系统已处理/);
+    assert.match(html, /已在仓库\/历史进度关闭/);
+    assert.match(js, /PAGES = \["needs-you", "processed", "preferences", "advanced"\]/);
     assert.match(html, /data-page="preferences">我的偏好/);
     assert.match(html, /data-page="advanced">高级/);
     assert.doesNotMatch(html, /<nav[^>]*>[\s\S]*data-page="atoms"/);
@@ -101,6 +103,10 @@ describe("Desk shell", () => {
     assert.match(js, /is-other/);
     assert.match(js, /group-chevron/);
     assert.match(js, /fallbackNeedsGroups/);
+    assert.match(js, /data-reopen/);
+    assert.match(js, /仍要我跟/);
+    assert.match(js, /already_done/);
+    assert.match(js, /processed-done/);
     assert.match(html, /按主题\/项目折叠/);
     assert.match(css, /needs-group\.is-other/);
     assert.match(css, /empty-desk/);
@@ -303,6 +309,96 @@ describe("Desk operator APIs", () => {
     assert.equal(list.find((c) => c.id === accepted)?.status, "accepted");
     assert.equal(list.find((c) => c.id === untagged)?.theme, "速记");
     assert.equal(storeHasTagged(daemon), 2);
+  });
+
+  it("done-sweep closes a merged-PR near-dup and reopen returns it to Needs-you", async () => {
+    const daemon = await tempDaemon();
+    fs.writeFileSync(
+      path.join(daemon.repoRoot, "data/workspaces.json"),
+      JSON.stringify({
+        version: 1,
+        defaultMachine: "test",
+        machines: {},
+        workspaces: [
+          {
+            id: "atom",
+            machine: "test",
+            path: "/atom",
+            kind: "personal",
+            tags: ["atom"],
+            match: ["ATOM", "Desk"],
+          },
+        ],
+      })
+    );
+    fs.writeFileSync(
+      path.join(daemon.repoRoot, "data/progress-snapshot.json"),
+      JSON.stringify({
+        version: 1,
+        generated_at: "2026-09-21T00:00:00.000Z",
+        source: "progress-scan",
+        since_days: 90,
+        workspaces: [
+          {
+            id: "atom",
+            path: "/atom",
+            available: true,
+            fail_open: false,
+            items: [
+              {
+                kind: "pr",
+                title: "feat: migrate stenography into lingee MCP",
+                body: "速记迁入灵基 MCP",
+                workspace_id: "atom",
+              },
+            ],
+          },
+        ],
+      })
+    );
+    const id = newId("cand");
+    daemon.store.append({
+      type: "candidate_proposed",
+      subject_id: id,
+      summary: "需要把速记迁入灵基 MCP",
+      detail: {
+        title: "需要把速记迁入灵基 MCP",
+        body: "stenography / MCP 进灵基",
+        confidence: 0.8,
+      },
+      refs: [{ token: "yzj:im:g:steno", kind: "im", digest: "s" }],
+      actor: "test",
+    });
+
+    const status = await api(daemon, "GET", "/api/status");
+    const progress = status.json.progress as { snapshot?: boolean; items?: number };
+    assert.equal(progress.snapshot, true);
+    assert.equal(progress.items, 1);
+
+    const swept = await api(daemon, "POST", "/api/done-sweep", { apply: true });
+    assert.equal(swept.status, 200);
+    assert.equal(swept.json.closed, 1);
+
+    const cands = await api(daemon, "GET", "/api/candidates");
+    const list = cands.json.candidates as Array<{
+      id: string;
+      status: string;
+      disposition?: string;
+      closed_reason?: string;
+    }>;
+    const row = list.find((c) => c.id === id);
+    assert.equal(row?.status, "rejected");
+    assert.equal(row?.disposition, "already_done");
+    assert.equal(row?.closed_reason, "已在仓库/历史进度关闭");
+
+    const reopened = await api(daemon, "POST", "/api/reopen", { id, note: "仍要我跟" });
+    assert.equal(reopened.status, 200);
+    const after = await api(daemon, "GET", "/api/candidates");
+    const live = (after.json.candidates as Array<{ id: string; status: string; keep_open?: boolean }>).find(
+      (c) => c.id === id
+    );
+    assert.equal(live?.status, "suggested");
+    assert.equal(live?.keep_open, true);
   });
 });
 

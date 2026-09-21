@@ -5,6 +5,7 @@
  */
 import fs from "node:fs";
 import { api, apiOk, ApiDownError, apiBase, runServe } from "./client.js";
+import { resolveRepoRoot } from "./root.js";
 
 function usage(): never {
   console.log(`ATOM CLI
@@ -28,6 +29,9 @@ Usage:
   pnpm atom reject-noise
   pnpm atom merge-sweep [--apply]
   pnpm atom tag-backfill [--apply]
+  pnpm atom progress-scan [--apply]
+  pnpm atom done-sweep [--apply]
+  pnpm atom reopen <candidateId>
   pnpm atom outbound-check [--title ...] [--body ... | --path <file>] [--kind digest]
   pnpm atom preference-rsi [--dry-run | --apply]
   pnpm atom gate-digest [--since 24h|7d|YYYY-MM-DD|ISO] [--json]
@@ -106,9 +110,10 @@ async function main() {
       proposed: number;
       skipped: number;
       noiseDropped: number;
+      alreadyDone?: number;
     }>("POST", "/api/extract", { source: sourceId, agent: agentName, groupIds });
     console.log(
-      `OK extract agent=${data.agent} seeds=${data.seeded} gated_out=${data.gated} proposed=${data.proposed} skipped=${data.skipped} noise_dropped=${data.noiseDropped}`
+      `OK extract agent=${data.agent} seeds=${data.seeded} gated_out=${data.gated} proposed=${data.proposed} skipped=${data.skipped} noise_dropped=${data.noiseDropped} already_done=${data.alreadyDone ?? 0}`
     );
     return;
   }
@@ -208,6 +213,76 @@ async function main() {
       }>;
     }>("POST", "/api/tag-backfill", { apply });
     printTagBackfill(data);
+    return;
+  }
+
+  if (cmd === "progress-scan") {
+    // Host-local: Docker Desk cannot see Mac git paths. Writes the mounted
+    // data/progress-snapshot.json. Optional --apply then hits Desk done-sweep.
+    const { runProgressScan } = await import("@atom/core");
+    const result = await runProgressScan(resolveRepoRoot());
+    console.log(
+      `OK progress-scan wrote=${result.path} available=${result.available} fail_open=${result.failOpen} items=${result.items}`
+    );
+    for (const w of result.snapshot.workspaces) {
+      const mark = w.available ? "ok" : "fail-open";
+      console.log(
+        `- ${w.id} ${mark} items=${w.items.length}${w.reason ? ` (${w.reason})` : ""}`
+      );
+    }
+    if (flags.apply) {
+      try {
+        const sweep = await apiOk<{
+          apply: boolean;
+          considered: number;
+          closed: number;
+          skipped: number;
+          failOpen: boolean;
+          snapshotMissing: boolean;
+          items: Array<{ id: string; title: string; reason: string }>;
+        }>("POST", "/api/done-sweep", { apply: true });
+        printDoneSweep(sweep);
+      } catch (err) {
+        if (err instanceof ApiDownError) {
+          console.log(
+            "snapshot written; Desk API is down — next extract/cron will apply the Done gate. Or start serve and run pnpm atom done-sweep --apply"
+          );
+        } else {
+          throw err;
+        }
+      }
+    } else {
+      console.log(
+        "snapshot ready. To close existing Needs-you matches: pnpm atom done-sweep --apply (Desk must be up), or wait for the next extract/cron tick."
+      );
+    }
+    return;
+  }
+
+  if (cmd === "done-sweep") {
+    const apply = Boolean(flags.apply);
+    const data = await apiOk<{
+      apply: boolean;
+      considered: number;
+      closed: number;
+      skipped: number;
+      failOpen: boolean;
+      snapshotMissing: boolean;
+      items: Array<{ id: string; title: string; reason: string }>;
+    }>("POST", "/api/done-sweep", { apply });
+    printDoneSweep(data);
+    return;
+  }
+
+  if (cmd === "reopen") {
+    const id = positional(argv.slice(1));
+    if (!id) usage();
+    const data = await apiOk<{ candidate: { id: string; status: string; title: string } }>(
+      "POST",
+      "/api/reopen",
+      { id, note: flags.note }
+    );
+    console.log(`OK reopened ${data.candidate.id} status=${data.candidate.status}`);
     return;
   }
 
@@ -662,6 +737,41 @@ function printTagBackfill(data: {
   }
   if (!data.apply) {
     console.log("(no writes — pass --apply to persist Chinese allowlist tags)");
+  }
+}
+
+function printDoneSweep(data: {
+  apply: boolean;
+  considered: number;
+  closed: number;
+  skipped?: number;
+  failOpen?: boolean;
+  snapshotMissing?: boolean;
+  items: Array<{ id: string; title: string; reason: string }>;
+}) {
+  const mode = data.apply ? "apply" : "dry-run";
+  if (data.snapshotMissing) {
+    console.log(
+      `done-sweep (${mode}): no data/progress-snapshot.json — fail-open for repo evidence. On the Mac: pnpm atom progress-scan`
+    );
+  }
+  if (!data.closed) {
+    console.log(
+      `OK done-sweep (${mode}): open=${data.considered} skipped=${data.skipped ?? 0} nothing already_done`
+    );
+    return;
+  }
+  console.log(
+    `OK done-sweep (${mode}): open=${data.considered} already_done=${data.closed}${
+      data.apply ? " wrote=yes" : " wrote=no"
+    }`
+  );
+  for (const it of data.items ?? []) {
+    console.log(`- ${it.id}  ${it.title}`);
+    console.log(`    ${it.reason}`);
+  }
+  if (!data.apply) {
+    console.log("(no writes — pass --apply to close matching Needs-you cards)");
   }
 }
 

@@ -13,6 +13,7 @@ export const AtomTypeSchema = z.enum([
   "decision_accepted",
   "decision_rejected",
   "decision_merged",
+  "decision_reopened",
   "spec_drafted",
   "pr_opened",
   "evidence_attached",
@@ -87,6 +88,15 @@ export interface CandidateView {
   theme?: string;
   project?: string;
   tags?: CandidateTags;
+  /** `already_done` when the Done gate auto-closed this card. */
+  disposition?: "already_done";
+  reject_reason?: string;
+  /** Human line for 系统已处理, e.g. 已在仓库/历史进度关闭. */
+  closed_reason?: string;
+  /** After 「仍要我跟」 — Done gate must not auto-close this id again. */
+  keep_open?: boolean;
+  /** Laya duplicate-fold loser; survivor id still on Needs-you. */
+  merged_into?: string;
 }
 
 export interface SourceAdapter {

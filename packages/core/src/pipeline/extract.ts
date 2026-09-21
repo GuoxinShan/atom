@@ -26,6 +26,14 @@ import {
 import { loadThemeVocabulary, tagLabelsForExtract } from "../agents/theme-vocabulary.js";
 import { appendLayaMergeDecision, isLayaMergeNow } from "./laya-merge.js";
 import { recordExtractFinished } from "./runtime-meta.js";
+import {
+  appendAlreadyDone,
+  applyDoneGateToSuggested,
+  doneGateToDetail,
+  loadDoneContext,
+  matchProposalToDone,
+  rememberDoneHistory,
+} from "./done-gate.js";
 
 /** Laya tags overlay extract-provided theme/project; fail-open keeps them. */
 export function persistCandidateTags(
@@ -112,6 +120,7 @@ export async function runExtract(
   gated: number;
   noiseDropped: number;
   merged: number;
+  alreadyDone: number;
 }> {
   const runId = newId("agent");
   const useGate = opts?.heuristicGate !== false;
@@ -174,11 +183,13 @@ export async function runExtract(
     let skipped = 0;
     let noiseDropped = 0;
     let merged = 0;
+    let alreadyDone = 0;
     let layaNoiseDropped = 0;
     let layaMerged = 0;
     let layaTagged = 0;
     let layaFailOpen = !layaAvailable && Boolean(laya?.isEnabled());
     const tagLabels = tagLabelsForExtract(opts?.repoRoot);
+    const doneCtx = loadDoneContext(store, opts?.repoRoot);
     for (const p of proposals) {
       const key = p.cluster_key ?? p.title;
       if (seenKeys.has(key)) {
@@ -275,6 +286,41 @@ export async function runExtract(
         continue;
       }
 
+      const doneHit = matchProposalToDone(p, doneCtx);
+      if (doneHit) {
+        store.append({
+          type: "candidate_proposed",
+          subject_id: candId,
+          summary: p.title,
+          detail: {
+            title: p.title,
+            body: p.body,
+            confidence: p.confidence,
+            cluster_key: key,
+            source_message_ids: p.source_message_ids,
+            agent_id: agent.id,
+            gated_by: useGate ? "heuristic-gate" : "none",
+            done_gate: doneGateToDetail(doneHit),
+            ...(layaGate ? { laya_gate: layaGateToDetail(layaGate) } : {}),
+            ...(layaMerge ? { laya_merge: layaMergeToDetail(layaMerge) } : {}),
+          },
+          refs: p.refs,
+          actor: `agent:${agent.id}`,
+        });
+        appendAlreadyDone(store, { id: candId, title: p.title, refs: p.refs }, doneHit);
+        rememberDoneHistory(doneCtx, {
+          id: candId,
+          title: p.title,
+          body: p.body,
+          refs: p.refs.map((r) => r.token),
+          status: "rejected",
+        });
+        seenKeys.add(key);
+        alreadyDone += 1;
+        console.log(`[extract] already_done: ${p.title} — ${doneHit.reason}`);
+        continue;
+      }
+
       let layaTags: LayaTagGate | undefined;
       if (laya?.isEnabled() && layaAvailable && !laya.unavailable) {
         layaTags = await laya.tagCandidate({
@@ -319,8 +365,18 @@ export async function runExtract(
       proposed += 1;
     }
 
+    const swept = applyDoneGateToSuggested(store, {
+      apply: true,
+      repoRoot: opts?.repoRoot,
+      ctx: doneCtx,
+    });
+    alreadyDone += swept.closed;
+
     if (noiseDropped > 0) {
       console.log(`[extract] dropped ${noiseDropped} noise proposals`);
+    }
+    if (alreadyDone > 0) {
+      console.log(`[extract] already_done=${alreadyDone} (off Needs-you)`);
     }
 
     store.append({
@@ -333,11 +389,13 @@ export async function runExtract(
         proposed,
         skipped,
         merged,
+        already_done: alreadyDone,
         noise_dropped: noiseDropped,
         laya_noise_dropped: layaNoiseDropped,
         laya_merged: layaMerged,
         laya_tagged: layaTagged,
         laya_fail_open: layaFailOpen,
+        done_fail_open: swept.failOpen,
         message_count: all.length,
         seed_count: seeded.length,
       },
@@ -352,6 +410,7 @@ export async function runExtract(
       gated: all.length - seeded.length,
       noiseDropped,
       merged,
+      alreadyDone,
     };
   } catch (err) {
     store.append({

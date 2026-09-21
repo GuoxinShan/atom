@@ -47,7 +47,8 @@ type Ref = {
 | `candidate_tagged` | candidate id | no | overlay theme/project (+ `tags.*`, `laya_tags` audit). Display grouping only; status/refs unchanged |
 | `decision_accepted` | candidate id | optional | note |
 | `decision_rejected` | candidate id | optional | reason |
-| `decision_merged` | surviving candidate id | optional | `merged_ids[]` |
+| `decision_merged` | surviving candidate id | optional | `merged_ids[]` (Laya fold: subject is the loser, `merged_into` = survivor) |
+| `decision_reopened` | candidate id | optional | 「仍要我跟」 after Done-gate `already_done`; projection returns to `suggested` + `keep_open` |
 | `spec_drafted` | spec id | yes (to candidate / messages) | acceptance criteria[] |
 | `handoff_exported` | handoff id | yes | target (`cursor`/`codex`/file path) |
 | `evidence_attached` | evidence id | yes | kind (`test`/`screenshot`/`log`), path |
@@ -68,6 +69,7 @@ Derived fields (examples):
 
 - `title`, `body`, `confidence`
 - `status`: `suggested` \| `accepted` \| `rejected` \| `merged`
+- optional `disposition` / `closed_reason` / `keep_open` (Done gate `already_done` + reopen)
 - `refs[]` union from propose + later attachments
 - `updated_at` = last related atom time
 - optional `theme` / `project` (or `tags.theme` / `tags.project`) for Desk grouping; later `candidate_tagged` overlays those fields without changing status. `cluster_key` remains the same-request skip key

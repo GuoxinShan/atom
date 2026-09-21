@@ -760,6 +760,23 @@ code { font-family: ui-monospace, "SF Mono", Menlo, "Cascadia Mono", monospace; 
   line-height: 1.5;
   margin: 0 0 16px;
 }
+.processed-done { display: grid; gap: 10px; margin: 0 0 18px; }
+.processed-done-head {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+.processed-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+}
+.processed-card h3 {
+  margin: 0 0 6px;
+  font-size: 15px;
+  font-weight: 500;
+}
 .pref-block {
   background: var(--card);
   border: 1px solid var(--line);
