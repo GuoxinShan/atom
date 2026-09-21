@@ -10,8 +10,32 @@ import { newId } from "../schema/ids.js";
 import { CandidateProposalSchema, type RawMessage } from "../schema/types.js";
 import { refTokenForMessage } from "../schema/ids.js";
 
-/** Build ExtractAgent from data/agents.json (local-cli or webhook). */
+/** Docker / headless override. `heuristic` skips grok spawn (ingest still runs). */
+function envExtractOverride(): ExtractAgent | null {
+  const raw = (process.env.ATOM_EXTRACT_AGENT ?? "").trim().toLowerCase();
+  if (!raw) return null;
+  if (raw === "heuristic") {
+    return {
+      id: "heuristic",
+      async extract() {
+        console.warn(
+          "[extract] ATOM_EXTRACT_AGENT=heuristic — skipping grok-cli (no agentic extract)"
+        );
+        return [];
+      },
+    } satisfies ExtractAgent;
+  }
+  if (raw === "grok-cli" || raw === "grok") {
+    return new GrokCliExtractAgent();
+  }
+  return null;
+}
+
+/** Build ExtractAgent from env override, then data/agents.json (local-cli or webhook). */
 export function resolveExtractAgent(repoRoot: string, workspaceId?: string): ExtractAgent {
+  const fromEnv = envExtractOverride();
+  if (fromEnv) return fromEnv;
+
   const reg = new AgentProviderRegistry(repoRoot);
   let provider: AgentProviderConfig;
   try {

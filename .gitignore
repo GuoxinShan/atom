@@ -10,3 +10,6 @@ out/**
 .env
 .env.*
 *.tgz
+# Optional bind-mounts of CLI login dirs — never commit tokens
+.yzj-cli/
+.grok/

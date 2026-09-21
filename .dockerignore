@@ -10,6 +10,8 @@ out
 *.tgz
 .env
 .env.*
+.yzj-cli
+.grok
 data/*.sqlite
 data/*.sqlite-*
 data/preference-memory.json

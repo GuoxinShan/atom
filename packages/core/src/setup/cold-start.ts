@@ -44,32 +44,40 @@ export function runColdStart(repoRoot: string): ColdStartReport {
   });
 
   const grok = which(process.env.ATOM_GROK_BIN ?? "grok");
+  const heuristicExtract =
+    (process.env.ATOM_EXTRACT_AGENT ?? "").trim().toLowerCase() === "heuristic";
   checks.push({
     id: "grok",
     title: "Grok Build CLI (agentic extract / coding)",
-    status: grok ? "ok" : "warn",
-    detail: grok ?? "not found on PATH",
-    fix: "Install Grok CLI and ensure `grok` is on PATH",
+    status: grok || heuristicExtract ? "ok" : "warn",
+    detail: grok
+      ? grok
+      : heuristicExtract
+        ? "ATOM_EXTRACT_AGENT=heuristic — grok not required"
+        : "not found on PATH",
+    fix: grok
+      ? undefined
+      : "Install @xai-official/grok (Linux image already does) or set ATOM_EXTRACT_AGENT=heuristic",
   });
 
-  const yzj = which("yzj-cli");
+  const yzj = which(process.env.ATOM_YZJ_CLI ?? "yzj-cli");
   checks.push({
     id: "yzj-cli",
     title: "yzj-cli",
     status: yzj ? "ok" : "warn",
     detail: yzj ?? "not found — fixture source still works",
-    fix: "Install/login yzj-cli for live Yunzhijia ingest",
+    fix: "npm i -g @yunzhijia/cli (Linux image already does this)",
   });
 
   if (yzj) {
-    const who = spawnSync("yzj-cli", ["whoami"], { encoding: "utf8" });
+    const who = spawnSync(yzj, ["whoami"], { encoding: "utf8" });
     const ok = who.status === 0 && /success|openId|name/i.test(who.stdout || "");
     checks.push({
       id: "yzj-auth",
       title: "yzj-cli auth",
       status: ok ? "ok" : "fail",
       detail: ok ? "logged in" : (who.stderr || who.stdout || "auth failed").slice(0, 200),
-      fix: "Run `yzj-cli auth login`",
+      fix: "yzj-cli auth login --device  (Docker: docker compose exec desk yzj-cli auth login --device)",
     });
   }
 

@@ -26,13 +26,14 @@ Toggle the poll in `data/triggers.json` (`id: poll-yzj-15m`). Restart the contai
 **Dogfood (Mac):** no LaunchAgents. Start Desk yourself:
 
 ```bash
-docker compose up -d
+docker compose up -d --build
 # open http://127.0.0.1:8787
+# one-time: docker compose exec desk yzj-cli auth login --device
 # Laya remains http://127.0.0.1:8790 on the Mac (LAYA_URL=http://host.docker.internal:8790 in compose)
-docker compose down
+docker compose down          # keeps yzj/grok named volumes (login)
 ```
 
-Host `pnpm serve` is still valid. Do not reinstall `com.guoxinshan.atom.serve` or `com.guoxinshan.atom.morning-run`. Live 云之家 ingest from the Linux image needs a Linux `yzj-cli` (Mac CLI + Keychain do not cross Docker Desktop) — see README **Yunzhijia from Docker**.
+Host `pnpm serve` is still valid. Do not reinstall `com.guoxinshan.atom.serve` or `com.guoxinshan.atom.morning-run`. Live 云之家 ingest from Docker: Linux `@yunzhijia/cli` is **in the image**; one-time `docker compose exec desk yzj-cli auth login --device` (no host sidecar, no Mac binary bind-mount) — see README **Yunzhijia from Docker**.
 
 Rules:
 - Autonomous job may **only** ingest + extract + write digest projection.

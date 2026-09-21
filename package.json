@@ -9,7 +9,7 @@
     "web": "tsx apps/web/src/server.ts",
     "serve": "tsx apps/web/src/server.ts",
     "typecheck": "pnpm -r run typecheck",
-    "test": "tsx --test packages/core/src/agents/laya.test.ts packages/core/src/agents/preference-memory.test.ts packages/core/src/pipeline/laya-gates.test.ts packages/core/src/pipeline/merge-sweep.test.ts packages/core/src/pipeline/preference-rsi.test.ts packages/core/src/pipeline/gate-digest.test.ts packages/core/src/pipeline/cron-schedule.test.ts apps/web/src/desk.test.ts",
+    "test": "tsx --test packages/core/src/agents/laya.test.ts packages/core/src/agents/preference-memory.test.ts packages/core/src/agents/grok-cli.test.ts packages/core/src/agents/resolve.test.ts packages/core/src/pipeline/laya-gates.test.ts packages/core/src/pipeline/merge-sweep.test.ts packages/core/src/pipeline/preference-rsi.test.ts packages/core/src/pipeline/gate-digest.test.ts packages/core/src/pipeline/cron-schedule.test.ts apps/web/src/desk.test.ts",
     "check:lead-routing": "tsx scripts/check-lead-routing.ts"
   },
   "devDependencies": {
