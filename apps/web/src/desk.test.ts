@@ -84,6 +84,7 @@ describe("Desk shell", () => {
   it("renders operator tabs with Needs you as the default home", () => {
     const html = fs.readFileSync(path.join(here, "public/index.html"), "utf8");
     const js = fs.readFileSync(path.join(here, "public/app.js"), "utf8");
+    const css = fs.readFileSync(path.join(here, "public/styles.css"), "utf8");
     assert.match(html, /data-page="needs-you"[^>]*class="active">需要你拍板/);
     assert.match(html, /data-page="processed">系统已处理/);
     assert.match(html, /data-page="preferences">我的偏好/);
@@ -91,12 +92,19 @@ describe("Desk shell", () => {
     assert.doesNotMatch(html, /<nav[^>]*>[\s\S]*data-page="atoms"/);
     assert.match(html, /id="page-needs-you"[^>]*class="page desk active"/);
     assert.match(js, /队列空着是正常的/);
+    assert.match(js, /新卡片来自你盯着的群/);
+    assert.match(js, /empty-desk/);
     assert.match(js, /PAGES = \["needs-you", "processed", "preferences", "advanced"\]/);
     assert.match(js, /showPage\(pageFromHash\(\)\)/);
-    assert.match(js, /className = "needs-group"/);
+    assert.match(js, /needs-group/);
     assert.match(js, /needs-group-summary/);
-    assert.match(html, /按主题\/项目折叠/);
+    assert.match(js, /is-other/);
+    assert.match(js, /group-chevron/);
     assert.match(js, /fallbackNeedsGroups/);
+    assert.match(html, /按主题\/项目折叠/);
+    assert.match(css, /needs-group\.is-other/);
+    assert.match(css, /empty-desk/);
+    assert.doesNotMatch(css, /#6e7bf2/);
   });
 });
 
