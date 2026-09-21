@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "_comment": "Closed Chinese theme/project titles for Laya Needs-you grouping. Product can edit titles, hints, and aliases here without code changes. Laya must pick from these lists; unknown/empty/garbage maps to nearest alias if confident, else 「其他」. Do not add English kebab slugs as titles.",
+  "other": "其他",
+  "themes": [
+    {
+      "title": "AI推进",
+      "hint": "company AI advance / lingee / 推进五态 — use AI推进, not ai-advance",
+      "aliases": ["ai-advance", "lingee-advance", "lingee", "ai 推进", "推进五态"]
+    },
+    {
+      "title": "日程/会议",
+      "hint": "calendar, 日程, meetings, schedule MCP — use 日程/会议, not Schedule Mcp or calendar",
+      "aliases": [
+        "日历",
+        "日程",
+        "会议",
+        "schedule mcp",
+        "schedule/mcp",
+        "schedule-mcp",
+        "schedule_mcp",
+        "calendar",
+        "meeting",
+        "meetings"
+      ]
+    },
+    {
+      "title": "云之家",
+      "hint": "yunzhijia client / 1023 IM product work",
+      "aliases": ["yunzhijia", "yzj", "1023"]
+    },
+    {
+      "title": "发布与发布流程",
+      "hint": "release, ship, rollout, 发布流程 — use 发布与发布流程, not release-process",
+      "aliases": [
+        "release-process",
+        "release_process",
+        "release process",
+        "release",
+        "发布",
+        "发布流程"
+      ]
+    },
+    {
+      "title": "产品缺陷",
+      "hint": "product bugs / 缺陷 — use 产品缺陷, not product-bug",
+      "aliases": ["product-bug", "product_bug", "product bug", "bug", "缺陷", "产品bug"]
+    },
+    {
+      "title": "迁移方案",
+      "hint": "migration plan / 迁移",
+      "aliases": ["migration", "migrate", "迁移"]
+    },
+    {
+      "title": "能力缺口",
+      "hint": "capability gap / missing ability",
+      "aliases": ["capability-gap", "capability_gap", "capability gap", "gap", "缺口"]
+    },
+    {
+      "title": "文档",
+      "hint": "docs, README, 说明文档",
+      "aliases": ["docs", "documentation", "readme"]
+    },
+    {
+      "title": "速记",
+      "hint": "shorthand / 速记 notes",
+      "aliases": ["shorthand"]
+    },
+    {
+      "title": "其他",
+      "hint": "does not fit any other theme — keep the card, group under 其他",
+      "aliases": ["other", "misc", "uncategorized"]
+    }
+  ],
+  "projects": [
+    {
+      "title": "AI推进",
+      "hint": "company AI advance / lingee monorepo",
+      "aliases": ["ai-advance", "lingee-advance", "lingee", "推进五态"]
+    },
+    {
+      "title": "云之家",
+      "hint": "yunzhijia / 1023 client",
+      "aliases": ["yunzhijia", "yzj", "1023"]
+    },
+    {
+      "title": "事元",
+      "hint": "personal ATOM / Desk / 事元产品",
+      "aliases": ["atom", "desk", "事元产品"]
+    },
+    {
+      "title": "其他",
+      "hint": "no clear project — still keep the card",
+      "aliases": ["other", "misc"]
+    }
+  ]
+}

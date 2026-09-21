@@ -88,6 +88,7 @@ export function runColdStart(repoRoot: string): ColdStartReport {
     "data/subscriptions.json",
     "data/triggers.json",
     "data/agents.json",
+    "data/theme-vocabulary.json",
   ];
   for (const rel of required) {
     const p = path.join(repoRoot, rel);

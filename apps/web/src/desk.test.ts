@@ -186,8 +186,8 @@ describe("Desk operator APIs", () => {
       });
       return id;
     };
-    const oauthA = seed("Desk OAuth login", { theme: "OAuth" });
-    const oauthB = seed("OAuth refresh", { tags: { theme: "OAuth" } });
+    const bugA = seed("Desk OAuth login", { theme: "产品缺陷" });
+    const bugB = seed("OAuth refresh", { tags: { theme: "product-bug" } });
     seed("需要给 ATOM Desk 加上空状态文案");
     seed("需要给 1023 日历加上冲突提醒");
 
@@ -195,7 +195,7 @@ describe("Desk operator APIs", () => {
     assert.equal(cands.status, 200);
     const list = cands.json.candidates as Array<{ id: string; theme?: string }>;
     assert.equal(list.length, 4);
-    assert.equal(list.find((c) => c.id === oauthA)?.theme, "OAuth");
+    assert.equal(list.find((c) => c.id === bugA)?.theme, "产品缺陷");
     const groups = cands.json.groups as Array<{
       key: string;
       title: string;
@@ -203,12 +203,16 @@ describe("Desk operator APIs", () => {
       candidate_ids: string[];
     }>;
     assert.ok(Array.isArray(groups));
-    const oauth = groups.find((g) => g.kind === "theme" && g.title === "OAuth");
-    assert.ok(oauth);
-    assert.deepEqual([...oauth.candidate_ids].sort(), [oauthA, oauthB].sort());
+    const bugs = groups.find((g) => g.kind === "theme" && g.title === "产品缺陷");
+    assert.ok(bugs);
+    assert.deepEqual([...bugs.candidate_ids].sort(), [bugA, bugB].sort());
     assert.ok(groups.some((g) => g.key.startsWith("heuristic:ws:atom")));
     assert.ok(groups.some((g) => g.key.startsWith("heuristic:ws:yzj")));
     assert.ok(groups.length >= 3);
+    assert.equal(
+      groups.some((g) => /[A-Za-z]/.test(g.title) && !/[\u3400-\u9fff]/.test(g.title) && g.kind === "theme"),
+      false
+    );
   });
 
   it("PATCH preference-memory clamps floors and writes the json file", async () => {

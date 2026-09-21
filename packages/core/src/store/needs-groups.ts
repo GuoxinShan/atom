@@ -7,6 +7,11 @@ import {
   type WorkspacesFile,
 } from "../agents/lead.js";
 import type { CandidateView } from "../schema/types.js";
+import {
+  DEFAULT_THEME_VOCABULARY,
+  mapToAllowlist,
+  type ThemeVocabulary,
+} from "../agents/theme-vocabulary.js";
 
 export type NeedsGroupKind = "theme" | "project" | "heuristic";
 
@@ -58,7 +63,8 @@ const ATOM_GROUP_ALIASES = ["desk", "dispatch desk", "需要你拍板"];
 /** Display-only grouping. Does not fold/merge candidates. */
 export function groupNeedsYouCandidates(
   candidates: CandidateView[],
-  workspaces: WorkspaceEntry[] = []
+  workspaces: WorkspaceEntry[] = [],
+  vocab: ThemeVocabulary = DEFAULT_THEME_VOCABULARY
 ): NeedsGroup[] {
   const suggested = candidates.filter((c) => c.status === "suggested");
   if (!suggested.length) return [];
@@ -72,7 +78,7 @@ export function groupNeedsYouCandidates(
     stem?: string;
   };
 
-  const tentatives: Tentative[] = suggested.map((cand) => classify(cand, workspaces));
+  const tentatives: Tentative[] = suggested.map((cand) => classify(cand, workspaces, vocab));
   const stemCount = new Map<string, number>();
   const wsStemCount = new Map<string, number>();
   for (const t of tentatives) {
@@ -133,8 +139,8 @@ export function loadGroupingWorkspaces(repoRoot: string): WorkspaceEntry[] {
   }
 }
 
-function classify(cand: CandidateView, workspaces: WorkspaceEntry[]) {
-  const theme = pickTheme(cand);
+function classify(cand: CandidateView, workspaces: WorkspaceEntry[], vocab: ThemeVocabulary) {
+  const theme = pickTheme(cand, vocab);
   if (theme) {
     return {
       cand,
@@ -143,7 +149,7 @@ function classify(cand: CandidateView, workspaces: WorkspaceEntry[]) {
       title: theme,
     };
   }
-  const project = pickProject(cand);
+  const project = pickProject(cand, vocab);
   if (project) {
     return {
       cand,
@@ -213,12 +219,22 @@ function assignHeuristic(
   };
 }
 
-export function pickTheme(cand: Pick<CandidateView, "theme" | "tags">): string | undefined {
-  return firstHuman(cand.theme, cand.tags?.theme);
+export function pickTheme(
+  cand: Pick<CandidateView, "theme" | "tags">,
+  vocab: ThemeVocabulary = DEFAULT_THEME_VOCABULARY
+): string | undefined {
+  const raw = optionalHuman(cand.theme) ?? optionalHuman(cand.tags?.theme);
+  if (!raw) return undefined;
+  return mapToAllowlist(raw, vocab.themes, vocab.other);
 }
 
-export function pickProject(cand: Pick<CandidateView, "project" | "tags">): string | undefined {
-  return firstHuman(cand.project, cand.tags?.project);
+export function pickProject(
+  cand: Pick<CandidateView, "project" | "tags">,
+  vocab: ThemeVocabulary = DEFAULT_THEME_VOCABULARY
+): string | undefined {
+  const raw = optionalHuman(cand.project) ?? optionalHuman(cand.tags?.project);
+  if (!raw) return undefined;
+  return mapToAllowlist(raw, vocab.projects, vocab.other);
 }
 
 export function titleStem(raw: string): string {

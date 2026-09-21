@@ -708,11 +708,44 @@ describe("extract → Laya theme/project tags", () => {
       }
     ).questions;
     assert.equal("AI推进" in (questions?.theme?.criteria ?? {}), true);
+    assert.equal("其他" in (questions?.theme?.criteria ?? {}), true);
 
     const groups = groupNeedsYouCandidates(cands, []);
     assert.equal(groups.length, 1);
     assert.equal(groups[0]?.kind, "theme");
     assert.equal(groups[0]?.title, "AI推进");
+  });
+
+  it("maps kebab theme slugs onto the Chinese allowlist", async () => {
+    const store = await tempStore();
+    const { fetch } = recordingFetch(async (url, init) => {
+      if (url.endsWith("/health")) return jsonResponse({ ok: true });
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      if (isTagPredict(body)) return jsonResponse(tagAnswers("release-process", "none"));
+      if (isMergePredict(body)) {
+        return jsonResponse({
+          answers: {
+            action: { choice: "new", confidence: 0.91 },
+            same_request: { noul: 0.07 },
+            target: { choice: "none", confidence: 0.9 },
+          },
+        });
+      }
+      return jsonResponse(demandAnswers());
+    });
+    const laya = new LayaClient({ fetch, enabled: true, timeoutMs: 200 });
+    const result = await runExtract(store, stubAgent([tagProposal]), {
+      heuristicGate: false,
+      laya,
+      repoRoot,
+    });
+    assert.equal(result.proposed, 1);
+    const cands = projectCandidates(store);
+    assert.equal(cands[0]?.theme, "发布与发布流程");
+    assert.equal(cands[0]?.project, undefined);
+    const groups = groupNeedsYouCandidates(cands, []);
+    assert.equal(groups[0]?.title, "发布与发布流程");
+    assert.equal(groups[0]?.kind, "theme");
   });
 
   it("fail-opens tagging on timeout and keeps the untagged candidate", async () => {
@@ -743,7 +776,7 @@ describe("extract → Laya theme/project tags", () => {
     assert.equal(detail.laya_tags?.reason, "timeout");
   });
 
-  it("keeps extract-provided tags when Laya parse-fails", async () => {
+  it("maps empty tag answers to 其他 without dropping the candidate", async () => {
     const store = await tempStore();
     const tagged: CandidateProposal = {
       ...tagProposal,
@@ -761,10 +794,10 @@ describe("extract → Laya theme/project tags", () => {
     });
     assert.equal(result.proposed, 1);
     const cand = projectCandidates(store)[0];
-    assert.equal(cand?.theme, "OAuth");
+    assert.equal(cand?.theme, "其他");
     const groups = groupNeedsYouCandidates(projectCandidates(store), []);
     assert.equal(groups[0]?.kind, "theme");
-    assert.equal(groups[0]?.title, "OAuth");
+    assert.equal(groups[0]?.title, "其他");
   });
 
   it("does not tag a candidate that was auto-merged", async () => {
