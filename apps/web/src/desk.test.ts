@@ -328,6 +328,22 @@ describe("Desk operator APIs", () => {
             tags: ["atom"],
             match: ["ATOM", "Desk"],
           },
+          {
+            id: "yzj",
+            machine: "test",
+            path: "/yzj",
+            kind: "work",
+            tags: ["yunzhijia"],
+            match: ["云之家", "日历"],
+          },
+          {
+            id: "ai-advance",
+            machine: "test",
+            path: "/ai-advance",
+            kind: "work",
+            tags: ["ai-advance"],
+            match: ["AI推进", "lingee"],
+          },
         ],
       })
     );
@@ -342,6 +358,14 @@ describe("Desk operator APIs", () => {
           {
             id: "atom",
             path: "/atom",
+            available: false,
+            fail_open: true,
+            reason: "path missing",
+            items: [],
+          },
+          {
+            id: "ai-advance",
+            path: "/ai-advance",
             available: true,
             fail_open: false,
             items: [
@@ -349,7 +373,7 @@ describe("Desk operator APIs", () => {
                 kind: "pr",
                 title: "feat: migrate stenography into lingee MCP",
                 body: "速记迁入灵基 MCP",
-                workspace_id: "atom",
+                workspace_id: "ai-advance",
               },
             ],
           },

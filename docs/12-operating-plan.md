@@ -84,7 +84,7 @@ Keep as candidates (human decides):
 Duplicate policy:
 - Same `cluster_key` / same primary ref token → skip on extract (`skipped`)
 - Laya merge gate on extract folds new twins into an existing Needs-you item (open-item window ranked by title/body/ref near-duplicate; paraphrases merge at `same_request` ≥ 0.72)
-- **Done gate** (after noise/merge, before theme tag) matches suggested cards against `data/progress-snapshot.json` (atom / yzj / ai-advance merged PRs, closed issues, recent main\|master commits) plus Desk accept/reject/merge history. Hit → `already_done` (off Needs-you, reason 「已在仓库/历史进度关闭」). Uncertain or repo-scan fail → stay suggested
+- **Done gate** (after noise/merge, before theme tag) matches suggested cards against `data/progress-snapshot.json` (atom / yzj / ai-advance merged PRs, closed issues, recent main\|master commits) plus Desk accept/reject/merge history. Repo title/stem hits need workspace affinity or shared distinctive tokens; atom meta PRs (Desk / Done-gate / chore) are not evidence that yzj / ai-advance product work is done. Hit → `already_done` (off Needs-you, reason 「已在仓库/历史进度关闭」). Uncertain or repo-scan fail → stay suggested
 - Host-side refresh: `pnpm atom progress-scan` on the Mac (not docker exec) then `pnpm atom done-sweep --apply` or wait for extract/cron. Hard-refresh Desk.
 - One-shot backfill of twins created *before* that gate: `pnpm atom merge-sweep` then `--apply` (Laya up; dry-run default)
 - One-shot theme/project tag backfill of untagged / 「其他」 / pre-allowlist suggested cards: `pnpm atom tag-backfill` then `--apply` (title/body divert + kebab aliases remap locally without new vocabulary; Laya up for remaining leftovers; dry-run default)

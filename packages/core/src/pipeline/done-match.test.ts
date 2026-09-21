@@ -31,54 +31,72 @@ const workspaces: WorkspaceEntry[] = [
   },
 ];
 
-function snapshot(items: ProgressSnapshot["workspaces"][number]["items"], extra?: Partial<ProgressSnapshot["workspaces"][number]>): ProgressSnapshot {
+const WS_PATH: Record<string, string> = {
+  atom: "/Users/kingdee/dev/personal/atom",
+  yzj: "/Users/kingdee/dev/yzj",
+  "ai-advance": "/Users/kingdee/dev/ai-advance",
+};
+
+function snapshot(
+  items: ProgressSnapshot["workspaces"][number]["items"],
+  extra?: Partial<ProgressSnapshot["workspaces"][number]>,
+  workspaceId: "atom" | "yzj" | "ai-advance" = "atom"
+): ProgressSnapshot {
+  const ids = ["atom", "yzj", "ai-advance"] as const;
   return {
     version: 1,
     generated_at: "2026-09-21T00:00:00.000Z",
     source: "progress-scan",
     since_days: 90,
-    workspaces: [
-      {
-        id: "atom",
-        path: "/Users/kingdee/dev/personal/atom",
+    workspaces: ids.map((id) => {
+      if (id !== workspaceId) {
+        return {
+          id,
+          path: WS_PATH[id],
+          available: false,
+          fail_open: true,
+          reason: "path missing",
+          items: [],
+        };
+      }
+      return {
+        id,
+        path: WS_PATH[id],
         available: true,
         fail_open: false,
         items,
         ...extra,
-      },
-      {
-        id: "yzj",
-        path: "/Users/kingdee/dev/yzj",
-        available: false,
-        fail_open: true,
-        reason: "path missing",
-        items: [],
-      },
-      {
-        id: "ai-advance",
-        path: "/Users/kingdee/dev/ai-advance",
-        available: false,
-        fail_open: true,
-        reason: "path missing",
-        items: [],
-      },
-    ],
+      };
+    }),
   };
 }
 
+const ATOM_CHORE_PR = {
+  kind: "pr" as const,
+  title: "Tighten Desk-history Done matching across themes",
+  body: "After #30 dogfood on Rock-Shan, Done closed Needs-you 33→2, but Desk history same-topic matching could false-positive across themes (速记 vs 日程). Cross-theme near-dups do not already_done from history alone — 速记 vs 日程/会议, 产品缺陷 vs 发布与发布流程. Repo PR title near-dup still works.",
+  url: "https://github.com/GuoxinShan/atom/pull/31",
+  number: 31,
+  workspace_id: "atom",
+};
+
 describe("done matcher", () => {
-  it("hits a title near-dup of a merged PR", () => {
+  it("hits a title near-dup of a merged PR in ai-advance", () => {
     const ctx: DoneMatchContext = {
-      snapshot: snapshot([
-        {
-          kind: "pr",
-          title: "feat: migrate stenography into lingee MCP",
-          body: "速记迁入灵基 MCP",
-          url: "https://github.com/GuoxinShan/atom/pull/42",
-          number: 42,
-          workspace_id: "atom",
-        },
-      ]),
+      snapshot: snapshot(
+        [
+          {
+            kind: "pr",
+            title: "feat: migrate stenography into lingee MCP",
+            body: "速记迁入灵基 MCP",
+            url: "https://github.com/kingdee/ai-advance/pull/42",
+            number: 42,
+            workspace_id: "ai-advance",
+          },
+        ],
+        undefined,
+        "ai-advance"
+      ),
       history: [],
       workspaces,
     };
@@ -89,7 +107,96 @@ describe("done matcher", () => {
     assert.equal(hit.hit, true);
     if (hit.hit) {
       assert.equal(hit.evidence.kind, "pr");
+      assert.equal(hit.evidence.workspace_id, "ai-advance");
       assert.match(hit.reason, /PR|提交|标题/);
+    }
+  });
+
+  it("does not close 发布与发布流程 business cards against atom chore PR titles", () => {
+    const ctx: DoneMatchContext = {
+      snapshot: snapshot([ATOM_CHORE_PR]),
+      history: [],
+      workspaces,
+    };
+    const skill = matchCandidateToDone(
+      {
+        title: "明确88技能同步发布流程",
+        body: "需要明确 88 技能同步到发布流程",
+        theme: "发布与发布流程",
+        tags: { theme: "发布与发布流程" },
+      },
+      ctx
+    );
+    const pipeline = matchCandidateToDone(
+      {
+        title: "流水线审核还没过",
+        body: "发布与发布流程里流水线审核卡住",
+        theme: "发布与发布流程",
+        tags: { theme: "发布与发布流程" },
+      },
+      ctx
+    );
+    assert.equal(skill.hit, false);
+    assert.equal(pipeline.hit, false);
+  });
+
+  it("closes 发布与发布流程 card against same-workspace yzj PR title", () => {
+    const ctx: DoneMatchContext = {
+      snapshot: snapshot(
+        [
+          {
+            kind: "pr",
+            title: "feat: 明确88技能同步发布流程",
+            body: "同步 88 技能到发布流水线",
+            url: "https://code.yzjop.com/yzj/yzj/pull/88",
+            number: 88,
+            workspace_id: "yzj",
+          },
+        ],
+        undefined,
+        "yzj"
+      ),
+      history: [],
+      workspaces,
+    };
+    const hit = matchCandidateToDone(
+      {
+        title: "明确88技能同步发布流程",
+        body: "需要明确 88 技能同步发布流程",
+        theme: "发布与发布流程",
+        tags: { theme: "发布与发布流程" },
+      },
+      ctx
+    );
+    assert.equal(hit.hit, true);
+    if (hit.hit) {
+      assert.equal(hit.via, "title");
+      assert.equal(hit.evidence.workspace_id, "yzj");
+    }
+  });
+
+  it("closes ATOM Desk card against atom repo PR", () => {
+    const ctx: DoneMatchContext = {
+      snapshot: snapshot([
+        {
+          kind: "pr",
+          title: "feat: ATOM Desk OAuth login",
+          body: "本机登录后才能批候选",
+          url: "https://github.com/GuoxinShan/atom/pull/9",
+          number: 9,
+          workspace_id: "atom",
+        },
+      ]),
+      history: [],
+      workspaces,
+    };
+    const hit = matchCandidateToDone(
+      { title: "需要给 ATOM Desk 加上 OAuth 登录", body: "本机登录后才能批候选" },
+      ctx
+    );
+    assert.equal(hit.hit, true);
+    if (hit.hit) {
+      assert.equal(hit.evidence.workspace_id, "atom");
     }
   });
 

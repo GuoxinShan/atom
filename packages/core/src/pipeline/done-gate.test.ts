@@ -76,6 +76,41 @@ async function tempCtx(): Promise<{ store: EventStore; repoRoot: string }> {
 
 const ref: Ref = { token: "yzj:im:g:done", kind: "im", digest: "d" };
 
+function stenoPrSnapshot(): Parameters<typeof writeProgressSnapshot>[1] {
+  return {
+    version: 1,
+    generated_at: "2026-09-21T00:00:00.000Z",
+    source: "progress-scan",
+    since_days: 90,
+    workspaces: [
+      {
+        id: "atom",
+        path: "/Users/kingdee/dev/personal/atom",
+        available: false,
+        fail_open: true,
+        reason: "path missing",
+        items: [],
+      },
+      {
+        id: "ai-advance",
+        path: "/Users/kingdee/dev/ai-advance",
+        available: true,
+        fail_open: false,
+        items: [
+          {
+            kind: "pr",
+            title: "feat: migrate stenography into lingee MCP",
+            body: "速记迁入灵基 MCP",
+            url: "https://github.com/kingdee/ai-advance/pull/42",
+            number: 42,
+            workspace_id: "ai-advance",
+          },
+        ],
+      },
+    ],
+  };
+}
+
 function seedSuggested(
   store: EventStore,
   title: string,
@@ -178,6 +213,21 @@ describe("done gate", () => {
 
   it("closes a title near-dup to a merged PR as already_done", async () => {
     const { store, repoRoot } = await tempCtx();
+    writeProgressSnapshot(repoRoot, stenoPrSnapshot());
+    const id = seedSuggested(store, "需要把速记迁入灵基 MCP", {
+      body: "群里说 stenography / MCP 要进灵基",
+    });
+    const result = await runDoneSweep(store, { apply: true, repoRoot });
+    assert.equal(result.closed, 1);
+    const cand = projectCandidates(store).find((c) => c.id === id);
+    assert.equal(cand?.status, "rejected");
+    assert.equal(cand?.disposition, "already_done");
+    assert.equal(cand?.reject_reason, ALREADY_DONE_REASON);
+    assert.equal(cand?.closed_reason, ALREADY_DONE_LABEL);
+  });
+
+  it("does not close 发布与发布流程 business cards against atom chore PRs", async () => {
+    const { store, repoRoot } = await tempCtx();
     writeProgressSnapshot(repoRoot, {
       version: 1,
       generated_at: "2026-09-21T00:00:00.000Z",
@@ -192,26 +242,30 @@ describe("done gate", () => {
           items: [
             {
               kind: "pr",
-              title: "feat: migrate stenography into lingee MCP",
-              body: "速记迁入灵基 MCP",
-              url: "https://github.com/GuoxinShan/atom/pull/42",
-              number: 42,
+              title: "Tighten Desk-history Done matching across themes",
+              body: "Desk history same-topic matching could false-positive across themes (速记 vs 日程). 产品缺陷 vs 发布与发布流程. Repo PR title near-dup still works.",
+              url: "https://github.com/GuoxinShan/atom/pull/31",
+              number: 31,
               workspace_id: "atom",
             },
           ],
         },
       ],
     });
-    const id = seedSuggested(store, "需要把速记迁入灵基 MCP", {
-      body: "群里说 stenography / MCP 要进灵基",
+    const skill = seedSuggested(store, "明确88技能同步发布流程", {
+      body: "需要明确 88 技能同步发布流程",
+      theme: "发布与发布流程",
+      tags: { theme: "发布与发布流程" },
     });
-    const result = await runDoneSweep(store, { apply: true, repoRoot });
-    assert.equal(result.closed, 1);
-    const cand = projectCandidates(store).find((c) => c.id === id);
-    assert.equal(cand?.status, "rejected");
-    assert.equal(cand?.disposition, "already_done");
-    assert.equal(cand?.reject_reason, ALREADY_DONE_REASON);
-    assert.equal(cand?.closed_reason, ALREADY_DONE_LABEL);
+    const pipeline = seedSuggested(store, "流水线审核还没过", {
+      body: "发布与发布流程里流水线审核卡住",
+      theme: "发布与发布流程",
+      tags: { theme: "发布与发布流程" },
+    });
+    const result = applyDoneGateToSuggested(store, { apply: true, repoRoot });
+    assert.equal(result.closed, 0);
+    assert.equal(projectCandidates(store).find((c) => c.id === skill)?.status, "suggested");
+    assert.equal(projectCandidates(store).find((c) => c.id === pipeline)?.status, "suggested");
   });
 
   it("closes a history hit (previously accepted) as already_done", async () => {
@@ -297,28 +351,7 @@ describe("done gate", () => {
 
   it("extract live gate closes a near-dup PR and leaves unrelated suggested", async () => {
     const { store, repoRoot } = await tempCtx();
-    writeProgressSnapshot(repoRoot, {
-      version: 1,
-      generated_at: "2026-09-21T00:00:00.000Z",
-      source: "progress-scan",
-      since_days: 90,
-      workspaces: [
-        {
-          id: "atom",
-          path: "/Users/kingdee/dev/personal/atom",
-          available: true,
-          fail_open: false,
-          items: [
-            {
-              kind: "pr",
-              title: "feat: migrate stenography into lingee MCP",
-              body: "速记迁入灵基",
-              workspace_id: "atom",
-            },
-          ],
-        },
-      ],
-    });
+    writeProgressSnapshot(repoRoot, stenoPrSnapshot());
     const result = await runExtract(
       store,
       stubAgent([
@@ -351,28 +384,7 @@ describe("done gate", () => {
 
   it("reopen escape puts already_done back on Needs-you and skip later sweeps", async () => {
     const { store, repoRoot } = await tempCtx();
-    writeProgressSnapshot(repoRoot, {
-      version: 1,
-      generated_at: "2026-09-21T00:00:00.000Z",
-      source: "progress-scan",
-      since_days: 90,
-      workspaces: [
-        {
-          id: "atom",
-          path: "/Users/kingdee/dev/personal/atom",
-          available: true,
-          fail_open: false,
-          items: [
-            {
-              kind: "pr",
-              title: "feat: migrate stenography into lingee MCP",
-              body: "速记迁入灵基 MCP",
-              workspace_id: "atom",
-            },
-          ],
-        },
-      ],
-    });
+    writeProgressSnapshot(repoRoot, stenoPrSnapshot());
     const id = seedSuggested(store, "需要把速记迁入灵基 MCP");
     applyDoneGateToSuggested(store, { apply: true, repoRoot });
     const live = reopenCandidate(store, id, "仍要我跟");

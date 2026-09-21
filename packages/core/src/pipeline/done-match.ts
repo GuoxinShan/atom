@@ -8,6 +8,11 @@
  * (or both untagged), else workspace keyword overlap / a higher title floor.
  * Cross-theme near-dups (速记 vs 日程/会议, 产品缺陷 vs 发布与发布流程) do not
  * `already_done` from history alone.
+ *
+ * Repo title/stem hits need workspace affinity or shared distinctive tokens.
+ * Atom meta PRs (Desk / Done-gate / chore titles) are not evidence that
+ * yzj / ai-advance product work is done, unless the candidate itself routes
+ * to atom. Link/SHA hits stay. Fail-open.
  */
 
 import {
@@ -20,7 +25,14 @@ import {
   type MergeText,
   type NearDuplicateScore,
 } from "../agents/near-duplicate.js";
-import { canonicalNonOtherTheme } from "../agents/theme-vocabulary.js";
+import {
+  canonicalNonOtherTheme,
+  compactKey,
+  divertProjectFromText,
+  TAG_OTHER,
+  tryMapAllowlist,
+  DEFAULT_THEME_VOCABULARY,
+} from "../agents/theme-vocabulary.js";
 import type { WorkspaceEntry } from "../agents/lead.js";
 import type { ProgressItem, ProgressSnapshot } from "./progress-snapshot.js";
 
@@ -32,7 +44,7 @@ export const DONE_TITLE_HINT_MIN = NEAR_DUP_TITLE_MIN;
 export const DONE_STEM_STRONG_MIN = 3;
 /**
  * Mixed tagged/untagged history pairs need a stronger title floor than
- * same-theme paraphrases (repo snapshot matching is unchanged).
+ * same-theme paraphrases. Repo snapshot matching uses workspace affinity.
  */
 export const DONE_HISTORY_MIXED_TITLE_MIN = NEAR_DUP_OVERRIDE_TITLE_MIN;
 
@@ -62,9 +74,60 @@ export type DoneMiss = {
 
 export type DoneVerdict = DoneHit | DoneMiss;
 
+/** Generic process words that must not count as shipped-work stems. */
+const DONE_GENERIC_PHRASES = [
+  "发布",
+  "流程",
+  "修复",
+  "发布流程",
+  "发布与发布流程",
+  "feat",
+  "fix",
+  "chore",
+  "docs",
+  "doc",
+  "test",
+  "tests",
+  "refactor",
+  "wip",
+  "bump",
+  "ci",
+  "build",
+  "style",
+  "tighten",
+  "matching",
+  "across",
+  "themes",
+  "theme",
+  "history",
+  "done",
+  "gate",
+  "pull",
+  "request",
+  "merge",
+  "pr",
+  "issue",
+  "commit",
+] as const;
+
+function buildGenericStemSet(): Set<string> {
+  const out = new Set<string>();
+  for (const p of DONE_GENERIC_PHRASES) {
+    const t = p.toLowerCase();
+    out.add(t);
+    if (/[\u3400-\u9fff]/.test(t)) {
+      for (let i = 0; i < t.length - 1; i++) out.add(t.slice(i, i + 2));
+    }
+  }
+  return out;
+}
+
+export const DONE_GENERIC_STEMS = buildGenericStemSet();
+
 export type DoneThemeFields = {
   theme?: string;
-  tags?: { theme?: string };
+  project?: string;
+  tags?: { theme?: string; project?: string };
 };
 
 export type DoneHistoryItem = DoneThemeFields & {
@@ -172,6 +235,56 @@ export function resolveDoneTheme(item: DoneThemeFields & { title?: string; body?
   });
 }
 
+/** Stored or diverted non-其他 project (事元 / 云之家 / AI推进). */
+export function resolveDoneProject(item: DoneThemeFields & { title?: string; body?: string }): string | undefined {
+  const stored = tryMapAllowlist(item.project ?? item.tags?.project, DEFAULT_THEME_VOCABULARY.projects);
+  if (stored && stored !== TAG_OTHER) return stored;
+  return divertProjectFromText(item.title, item.body);
+}
+
+function affinityBlob(cand: DoneCandidate): string {
+  return [
+    blobOf(cand),
+    cand.theme ?? "",
+    cand.project ?? "",
+    cand.tags?.theme ?? "",
+    cand.tags?.project ?? "",
+  ].join(" ");
+}
+
+function labelHitsWorkspace(label: string, ws: WorkspaceEntry): boolean {
+  const t = label.toLowerCase();
+  const compactT = compactKey(label);
+  for (const n of [...(ws.match ?? []), ...(ws.tags ?? [])]) {
+    const needle = n.trim().toLowerCase();
+    if (needle.length < 2) continue;
+    if (t.includes(needle) || needle.includes(t)) return true;
+    const compactN = compactKey(n);
+    if (compactN.length >= 2 && (compactT.includes(compactN) || compactN.includes(compactT))) return true;
+  }
+  return false;
+}
+
+/**
+ * Candidate theme/keywords vs workspace `match`/`tags`.
+ * Atom evidence requires this before a title/stem hit can close.
+ */
+export function candidateAffinesWorkspace(
+  cand: DoneCandidate,
+  workspaceId: string | undefined,
+  workspaces: WorkspaceEntry[]
+): boolean {
+  if (!workspaceId) return false;
+  if (workspaceKeywordHits(affinityBlob(cand), workspaces, workspaceId).length > 0) return true;
+  const ws = workspaces.find((w) => w.id === workspaceId);
+  if (!ws) return false;
+  const theme = resolveDoneTheme(cand);
+  if (theme && labelHitsWorkspace(theme, ws)) return true;
+  const project = resolveDoneProject(cand);
+  if (project && labelHitsWorkspace(project, ws)) return true;
+  return false;
+}
+
 /**
  * Desk-history guard. Cross-theme near-dups never close from history alone.
  * Same theme, or both untagged, keep the existing topic score. Mixed
@@ -253,20 +366,41 @@ function strongSharedStems(a: string, b: string): string[] {
   return shared;
 }
 
+export function isDistinctiveStem(tok: string): boolean {
+  if (tok.length < 2) return false;
+  if (DONE_GENERIC_STEMS.has(tok.toLowerCase())) return false;
+  return /[\u3400-\u9fff]/.test(tok) || tok.length >= 3;
+}
+
+/** Shared CJK / long tokens excluding generic 发布/流程/修复 / chore prefixes. */
+export function distinctiveSharedStems(a: string, b: string): string[] {
+  return strongSharedStems(a, b).filter(isDistinctiveStem);
+}
+
 function titleHit(
-  cand: MergeText,
+  cand: DoneCandidate,
   item: ProgressItem,
   workspaces: WorkspaceEntry[]
 ): { ok: boolean; overlap: number; hinted: boolean } {
-  const score = scoreNearDuplicate(cand, itemText(item));
-  const hinted = workspaceKeywordHits(blobOf(cand), workspaces, item.workspace_id).length > 0;
+  const text: MergeText = {
+    title: cand.title,
+    body: cand.body ?? "",
+    refs: cand.refs ?? [],
+  };
+  const score = scoreNearDuplicate(text, itemText(item));
+  const hinted = candidateAffinesWorkspace(cand, item.workspace_id, workspaces);
+  // Atom meta PRs (Desk / Done-gate / chore) are not product-done evidence.
+  if (item.workspace_id === "atom" && !hinted) {
+    return { ok: false, overlap: Math.max(score.titleOverlap, score.textOverlap), hinted: false };
+  }
   // PR titles are often English while Desk cards stay Chinese — use title+body stem
   // overlap, not title-to-title only (merge's nearDuplicate requires titleOverlap ≥ 0.18).
   const overlap = Math.max(score.titleOverlap, score.textOverlap);
-  const stems = strongSharedStems(blobOf(cand), `${item.title} ${item.body ?? ""}`);
-  if (score.nearDuplicate) return { ok: true, overlap, hinted };
+  const stems = distinctiveSharedStems(blobOf(text), `${item.title} ${item.body ?? ""}`);
+  const distinctive = stems.length >= 1;
+  if (score.nearDuplicate && (hinted || distinctive)) return { ok: true, overlap, hinted };
   if (stems.length >= DONE_STEM_STRONG_MIN) return { ok: true, overlap, hinted };
-  if (overlap >= DONE_TITLE_MIN) return { ok: true, overlap, hinted };
+  if (overlap >= DONE_TITLE_MIN && (hinted || distinctive)) return { ok: true, overlap, hinted };
   if (hinted && overlap >= DONE_TITLE_HINT_MIN) {
     return { ok: true, overlap, hinted };
   }
@@ -298,7 +432,7 @@ function bestRepoHit(
         reason: `与${where}「${item.title}」共享链接/引用`,
       };
     }
-    const t = titleHit(text, item, workspaces);
+    const t = titleHit(cand, item, workspaces);
     if (!t.ok) continue;
     if (!bestTitle || t.overlap > bestTitle.overlap) bestTitle = { item, overlap: t.overlap, hinted: t.hinted };
   }
