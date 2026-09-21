@@ -92,14 +92,42 @@ export function projectCandidates(store: EventStore): CandidateView[] {
     if (ev.type === "decision_accepted") {
       cur.status = "accepted";
       cur.updated_at = ev.created_at;
+      delete cur.keep_open;
+      delete cur.disposition;
+      delete cur.reject_reason;
+      delete cur.closed_reason;
     } else if (ev.type === "decision_rejected") {
       cur.status = "rejected";
       cur.updated_at = ev.created_at;
+      delete cur.keep_open;
+      const reason = optionalText(detail.reason);
+      const label = optionalText(detail.reason_label);
+      if (reason) cur.reject_reason = reason;
+      else delete cur.reject_reason;
+      const alreadyDone =
+        reason === "already_done" || optionalText(detail.disposition) === "already_done";
+      if (alreadyDone) {
+        cur.disposition = "already_done";
+        cur.closed_reason = label ?? "已在仓库/历史进度关闭";
+      } else {
+        delete cur.disposition;
+        if (label) cur.closed_reason = label;
+        else delete cur.closed_reason;
+      }
+    } else if (ev.type === "decision_reopened") {
+      cur.status = "suggested";
+      cur.updated_at = ev.created_at;
+      cur.keep_open = true;
+      delete cur.disposition;
+      delete cur.reject_reason;
+      delete cur.closed_reason;
     } else if (ev.type === "candidate_tagged") {
       overlayTags(cur, detail, ev.created_at);
     } else if (ev.type === "decision_merged") {
       cur.status = "merged";
       cur.updated_at = ev.created_at;
+      const mergedInto = detail.merged_into ? String(detail.merged_into) : undefined;
+      if (mergedInto) cur.merged_into = mergedInto;
       const mergedIds = Array.isArray(detail.merged_ids)
         ? (detail.merged_ids as string[])
         : [];
@@ -112,7 +140,6 @@ export function projectCandidates(store: EventStore): CandidateView[] {
       }
       // Laya duplicate fold: subject is the loser; attach refs onto the survivor
       // without taking it off the Needs-you queue.
-      const mergedInto = detail.merged_into ? String(detail.merged_into) : undefined;
       if (mergedInto) {
         const survivor = map.get(mergedInto);
         if (survivor) {

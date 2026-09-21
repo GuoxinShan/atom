@@ -3,6 +3,7 @@ dist/
 data/*.sqlite
 data/*.sqlite-*
 data/preference-memory.json
+data/progress-snapshot.json
 out/**
 !out/.gitkeep
 .DS_Store

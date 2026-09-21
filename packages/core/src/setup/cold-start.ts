@@ -121,6 +121,19 @@ export function runColdStart(repoRoot: string): ColdStartReport {
     });
   }
 
+  const snapPath = path.join(repoRoot, "data", "progress-snapshot.json");
+  checks.push({
+    id: "progress-snapshot",
+    title: "Repo progress snapshot (Done gate)",
+    status: exists(snapPath) ? "ok" : "warn",
+    detail: exists(snapPath)
+      ? "present — Done gate can match merged PRs / git log"
+      : "missing — Done gate fail-opens repo matching (history still applies)",
+    fix: exists(snapPath)
+      ? undefined
+      : "On the Mac (not docker exec): pnpm atom progress-scan  # writes data/progress-snapshot.json",
+  });
+
   const ready = checks.every((c) => c.status !== "fail");
   return { ready, checks };
 }

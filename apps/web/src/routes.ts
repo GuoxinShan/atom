@@ -44,6 +44,10 @@ import {
   readLastPreferenceRsi,
   LayaClient,
   loadThemeVocabulary,
+  runProgressScan,
+  runDoneSweep,
+  reopenCandidate,
+  loadProgressSnapshot,
 } from "@atom/core";
 import type { Daemon } from "./context.js";
 import { json, readJson } from "./http.js";
@@ -87,6 +91,7 @@ export async function handleApi(
         source_of_truth: PREFERENCE_MEMORY_FILE,
       },
       laya: await probeLayaCheap(daemon.repoRoot),
+      progress: progressStatus(daemon.repoRoot),
     });
     return true;
   }
@@ -199,6 +204,38 @@ export async function handleApi(
       repoRoot: daemon.repoRoot,
     });
     json(res, { ok: true, ...result });
+    return true;
+  }
+
+  if (method === "POST" && p === "/api/progress-scan") {
+    const result = await runProgressScan(daemon.repoRoot);
+    json(res, { ok: true, ...result, snapshot: result.snapshot });
+    return true;
+  }
+
+  if (method === "POST" && p === "/api/done-sweep") {
+    const body = await readJson(req);
+    const result = await runDoneSweep(daemon.store, {
+      apply: body.apply === true,
+      repoRoot: daemon.repoRoot,
+    });
+    json(res, { ok: true, ...result });
+    return true;
+  }
+
+  if (method === "POST" && p === "/api/reopen") {
+    const body = await readJson(req);
+    const id = str(body, "id");
+    if (!id) {
+      json(res, { error: "id required" }, 400);
+      return true;
+    }
+    try {
+      const candidate = reopenCandidate(daemon.store, id, body.note ? String(body.note) : undefined);
+      json(res, { ok: true, candidate });
+    } catch (err) {
+      json(res, { error: (err as Error).message }, 400);
+    }
     return true;
   }
 
@@ -532,6 +569,26 @@ async function probeLayaCheap(
   } catch {
     return { enabled: true, ok: false };
   }
+}
+
+function progressStatus(repoRoot: string): {
+  snapshot: boolean;
+  generated_at: string | null;
+  available: number;
+  fail_open: number;
+  items: number;
+} {
+  const snap = loadProgressSnapshot(repoRoot);
+  if (!snap) {
+    return { snapshot: false, generated_at: null, available: 0, fail_open: 0, items: 0 };
+  }
+  return {
+    snapshot: true,
+    generated_at: snap.generated_at || null,
+    available: snap.workspaces.filter((w) => w.available).length,
+    fail_open: snap.workspaces.filter((w) => w.fail_open).length,
+    items: snap.workspaces.reduce((n, w) => n + w.items.length, 0),
+  };
 }
 
 function str(body: Record<string, unknown>, ...keys: string[]): string {

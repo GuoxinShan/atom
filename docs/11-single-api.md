@@ -38,6 +38,8 @@ If the API is down, the CLI prints one line and exits — it does **not** import
 ATOM API is not running at http://127.0.0.1:8787. Start it with `pnpm atom serve` (or `pnpm web`).
 ```
 
+**Exception:** `pnpm atom progress-scan` writes `data/progress-snapshot.json` on the host (git/`gh` against `workspaces.json` paths). Desk in Docker cannot see `/Users/kingdee/dev/…`, so this command is host-local by design. It does not open SQLite. `--apply` still talks to the API (`POST /api/done-sweep`) when Desk is up.
+
 Optional: `ATOM_API_AUTO_START=1` may spawn `serve` once and retry. If spawn/health fails, same one-liner — never a silent core fallback.
 
 ## Daily vs automation
@@ -83,6 +85,9 @@ Use **`POST /api/run`** from the CLI. Keep **`POST /hooks/run`** for inbound web
 | `reject-noise` | `POST /api/reject-noise` |
 | `merge-sweep [--apply]` | `POST /api/merge-sweep` `{apply?}` (default dry-run) |
 | `tag-backfill [--apply]` | `POST /api/tag-backfill` `{apply?}` (default dry-run; suggested only) |
+| `progress-scan [--apply]` | **host-local** write `data/progress-snapshot.json` (imports core for git/`gh`; Docker cannot see Mac paths). `--apply` then `POST /api/done-sweep` `{apply:true}` if Desk is up |
+| `done-sweep [--apply]` | `POST /api/done-sweep` `{apply?}` (default dry-run; already_done off Needs-you) |
+| `reopen <id>` | `POST /api/reopen` `{id, note?}` (「仍要我跟」; already_done only) |
 | `outbound-check [--title …] [--body … \| --path]` | `POST /api/outbound-check` `{title?, body?, kind?}` (never sends) |
 | `preference-rsi [--dry-run \| --apply]` | `POST /api/preference-rsi` `{apply?}` (default dry-run; never sends) |
 | `gate-digest [--since …] [--json]` | `GET` or `POST /api/gate-digest` `{since?}` (read-only; default last 24h; never sends) |
@@ -116,4 +121,4 @@ Runtime clocks (real only): `GET /api/meta` → `{ ok, lastExtractAt, lastRunAt 
 
 ## Layout
 
-Handlers live in `apps/web/src/routes.ts` (daemon owns DB + core). The CLI is `apps/cli/src/client.ts` + `main.ts` — no `openDb`, no pipeline imports.
+Handlers live in `apps/web/src/routes.ts` (daemon owns DB + core). The CLI is `apps/cli/src/client.ts` + `main.ts` — no `openDb`, no pipeline imports except **`progress-scan`** (host git snapshot writer).

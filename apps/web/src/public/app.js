@@ -5,6 +5,7 @@ const state = {
   candidates: [],
   groups: [],
   groupOpen: {},
+  alreadyDone: [],
   specs: [],
   checklists: [],
   sources: [],
@@ -64,6 +65,7 @@ const STATUS_LABELS = {
   accepted: "已通过",
   rejected: "已拒绝",
   merged: "已合并",
+  already_done: "已在仓库/历史进度关闭",
   spec: "规格",
 };
 
@@ -1108,16 +1110,35 @@ async function loadStatus() {
 function renderProcessed() {
   const root = document.getElementById("processed-root");
   const d = state.digest;
-  if (!d) {
+  const done = Array.isArray(state.alreadyDone) ? state.alreadyDone : [];
+  if (!d && !done.length) {
     root.innerHTML = '<p class="processed-note">读不到 gate-digest。确认 Desk API 在跑，然后刷新。</p>';
     return;
   }
-  const extract = d.extract || {};
-  const merge = d.merge || {};
-  const outbound = d.outbound || {};
-  const proxies = d.proxies || {};
-  const desk = d.desk || {};
-  const windowLabel = d.window_hours != null ? `${d.window_hours}h` : "24h";
+  const extract = d?.extract || {};
+  const merge = d?.merge || {};
+  const outbound = d?.outbound || {};
+  const proxies = d?.proxies || {};
+  const desk = d?.desk || {};
+  const windowLabel = d?.window_hours != null ? `${d.window_hours}h` : "24h";
+  const doneCards = done
+    .map((c) => {
+      const reason = firstHuman(c.closed_reason) || "已在仓库/历史进度关闭";
+      return `<article class="item processed-card" data-done-id="${escapeHtml(c.id)}">
+        <h3>${escapeHtml(firstHuman(c.title) || "未命名事项")}</h3>
+        <p class="card-summary">${escapeHtml(reason)}</p>
+        ${metaLine({
+          sources: citeLabels(c.refs),
+          extra: ["自动关闭"],
+          when: relativeTime(c.updated_at),
+          quiet: true,
+        })}
+        <div class="card-actions">
+          <button type="button" class="ghost" data-reopen="${escapeHtml(c.id)}">仍要我跟</button>
+        </div>
+      </article>`;
+    })
+    .join("");
   root.innerHTML = `
     <p class="processed-note">窗口 ${escapeHtml(windowLabel)} · 只读 · 未发云之家、未改门槛、未训练 Laya。</p>
     <div class="stat-grid">
@@ -1136,6 +1157,11 @@ function renderProcessed() {
         <span class="sub">Needs you 仍开 ${escapeHtml(String(merge.open ?? 0))}</span>
       </div>
       <div class="stat-card">
+        <span class="num">${escapeHtml(String(extract.already_done ?? done.length))}</span>
+        <span class="lbl">进度已关闭</span>
+        <span class="sub">已在仓库/历史进度关闭</span>
+      </div>
+      <div class="stat-card">
         <span class="num">${escapeHtml(
           `${outbound.allow ?? 0} / ${outbound.drop ?? 0} / ${outbound.hold ?? 0}`
         )}</span>
@@ -1152,7 +1178,15 @@ function renderProcessed() {
       String(desk.rejected ?? 0)
     )} · 待拍板 ${escapeHtml(String(desk.suggested ?? 0))}</p>
     ${
-      d.markdown
+      done.length
+        ? `<div class="processed-done">
+            <h3 class="processed-done-head">自动关闭</h3>
+            ${doneCards}
+          </div>`
+        : '<p class="processed-note">尚无「已在仓库/历史进度关闭」的卡片。</p>'
+    }
+    ${
+      d?.markdown
         ? `<details><summary>原始 markdown</summary><pre class="rsi-preview">${escapeHtml(
             d.markdown
           )}</pre></details>`
@@ -1162,8 +1196,17 @@ function renderProcessed() {
 }
 
 async function loadProcessed() {
-  const data = await fetchJson("/api/gate-digest?since=24h", null);
-  state.digest = data && data.ok !== false ? data : null;
+  const [digest, cands] = await Promise.all([
+    fetchJson("/api/gate-digest?since=24h", null),
+    fetchJson("/api/candidates", { candidates: [] }),
+  ]);
+  state.digest = digest && digest.ok !== false ? digest : null;
+  const list = Array.isArray(cands.candidates) ? cands.candidates : [];
+  state.alreadyDone = list.filter(
+    (c) =>
+      c.status === "rejected" &&
+      (c.disposition === "already_done" || c.reject_reason === "already_done")
+  );
   renderProcessed();
 }
 
@@ -1375,6 +1418,30 @@ document.getElementById("page-preferences").addEventListener("submit", async (e)
     return;
   }
   await patchPreference({ blocklist_add: [value] });
+});
+
+document.getElementById("page-processed")?.addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-reopen]");
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/reopen", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: btn.dataset.reopen, note: "仍要我跟" }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      btn.disabled = false;
+      btn.textContent = data.error || "无法重开";
+      return;
+    }
+    await loadProcessed();
+    await loadDesk();
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = String(err);
+  }
 });
 
 window.addEventListener("hashchange", () => {

@@ -3,7 +3,7 @@
 ## Stage map
 
 ```
-[ingest] → [extract] → suggested candidates
+[ingest] → [extract] → noise/merge → Done gate → theme tag → suggested candidates
                               ↓ human
                     accept | reject | merge
                               ↓

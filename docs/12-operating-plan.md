@@ -7,7 +7,7 @@ Owner: Guoxin (human gates) · ATOM daemon (timed pull) · Lead (route/brief onl
 
 ATOM is a **cited demand inbox + human triage desk**, not a coding factory and not Cursor Projects.
 
-- In: 云之家 (scoped groups) → seeds → Grok extract → Needs you
+- In: 云之家 (scoped groups) → seeds → Grok extract → noise/merge → Done gate → theme tag → Needs you
 - Out: accepted → spec → handoff pack in the right workspace → checklist → you decide PR
 - Not in: auto-code, auto-merge, auto-post to 云之家, multi-tenant SaaS
 
@@ -18,6 +18,7 @@ ATOM is a **cited demand inbox + human triage desk**, not a coding factory and n
 | You start it | `docker compose up -d` (or `pnpm serve`) | Desk API + in-process poll on Rock-Shan. **Not** a login item / LaunchAgent; compose uses `restart: "no"`. |
 | Weekdays 08:00–20:00, every 15m | Desk daemon | Same pipeline as `POST /api/run` for `yzj-ai-advance` (configured groups ∪ ~8 recent private chats). Skip nights/weekends/overlap. |
 | After a morning tick | 干饭人 / you | `pnpm atom gate-digest` — paste the markdown if you want a gate-acceptance line in the group; JSON is `GET /api/gate-digest` |
+| When you ship / after PRs land | You (Mac) | `pnpm atom progress-scan` then `pnpm atom done-sweep --apply` (or wait for extract). Hard-refresh Desk. Do not docker-exec the scan. |
 | Anytime | You | Open Desk → **Needs you** only (approve / reject / checklist ack). Hard-refresh `:8787` so cards show in collapsible theme/project groups. |
 | After triage | You | `pnpm atom preference-rsi` (dry-run) then `--apply` if the deltas look right |
 
@@ -30,13 +31,16 @@ docker compose up -d --build
 # open http://127.0.0.1:8787
 # one-time: docker compose exec desk yzj-cli auth login --device
 # Laya remains http://127.0.0.1:8790 on the Mac (LAYA_URL=http://host.docker.internal:8790 in compose)
+# Done loop: on the Mac checkout (not docker exec)
+pnpm atom progress-scan
+pnpm atom done-sweep --apply   # or wait for extract/cron; then hard-refresh Desk
 docker compose down          # keeps yzj/grok named volumes (login)
 ```
 
 Host `pnpm serve` is still valid. Do not reinstall `com.guoxinshan.atom.serve` or `com.guoxinshan.atom.morning-run`. Live 云之家 ingest from Docker: Linux `@yunzhijia/cli` is **in the image**; one-time `docker compose exec desk yzj-cli auth login --device` (no host sidecar, no Mac binary bind-mount) — see README **Yunzhijia from Docker**.
 
 Rules:
-- Autonomous job may **only** ingest + extract + write digest projection.
+- Autonomous job may **only** ingest + extract + write digest projection (+ Done-gate `already_done` closes for already-shipped matches; never auto-accept, never auto-send).
 - Never auto-approve, never auto-handoff `--run`, never send 云之家 without confirm.
 - If serve is down, there is no timed pull (the timer lives in the daemon). Start compose / `pnpm serve` when you want the poll; do not add a second DB writer path.
 
@@ -80,6 +84,8 @@ Keep as candidates (human decides):
 Duplicate policy:
 - Same `cluster_key` / same primary ref token → skip on extract (`skipped`)
 - Laya merge gate on extract folds new twins into an existing Needs-you item (open-item window ranked by title/body/ref near-duplicate; paraphrases merge at `same_request` ≥ 0.72)
+- **Done gate** (after noise/merge, before theme tag) matches suggested cards against `data/progress-snapshot.json` (atom / yzj / ai-advance merged PRs, closed issues, recent main\|master commits) plus Desk accept/reject/merge history. Hit → `already_done` (off Needs-you, reason 「已在仓库/历史进度关闭」). Uncertain or repo-scan fail → stay suggested
+- Host-side refresh: `pnpm atom progress-scan` on the Mac (not docker exec) then `pnpm atom done-sweep --apply` or wait for extract/cron. Hard-refresh Desk.
 - One-shot backfill of twins created *before* that gate: `pnpm atom merge-sweep` then `--apply` (Laya up; dry-run default)
 - One-shot theme/project tag backfill of untagged / 「其他」 / pre-allowlist suggested cards: `pnpm atom tag-backfill` then `--apply` (title/body divert + kebab aliases remap locally without new vocabulary; Laya up for remaining leftovers; dry-run default)
 - Desk: if two suggested share the same ref token, show one and offer “拒重复”

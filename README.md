@@ -51,6 +51,9 @@ It does not fall back to in-process `@atom/core`. Optional `ATOM_API_AUTO_START=
 | `pnpm atom reject-noise` | reject suggested junk (`bot digest` / `收到✅` / log dumps) as `decision_rejected` reason `noise-heuristic` |
 | `pnpm atom merge-sweep [--apply]` | one-shot Laya fold of existing open Needs-you twins (dry-run default; `--apply` writes) |
 | `pnpm atom tag-backfill [--apply]` | one-shot Laya theme/project tags on existing suggested cards (dry-run default; `--apply` writes Chinese allowlist titles) |
+| `pnpm atom progress-scan [--apply]` | **host-local** git/`gh` scan of `atom`/`yzj`/`ai-advance` → `data/progress-snapshot.json`. Docker Desk cannot see Mac paths — run this on the Mac, not `docker compose exec`. `--apply` then `POST /api/done-sweep` if Desk is up |
+| `pnpm atom done-sweep [--apply]` | close open Needs-you cards that match snapshot + Desk history (`already_done`). Dry-run default |
+| `pnpm atom reopen <id>` | 「仍要我跟」 — put an auto-closed already_done card back on Needs-you |
 | `pnpm atom outbound-check [--title …] [--body … \| --path <file>] [--kind digest]` | Laya pre-post gate (allow/drop/hold); never sends |
 | `pnpm atom preference-rsi [--dry-run \| --apply]` | daily Desk-feedback loop: tune Laya floors / allowlists (dry-run default; `--apply` writes `data/preference-memory.json`) |
 | `pnpm atom gate-digest [--since 24h\|7d\|YYYY-MM-DD\|ISO] [--json]` | read-only Laya gate acceptance digest for the morning report (default last 24h; markdown stdout, JSON for Desk) |
@@ -68,7 +71,7 @@ pnpm atom run --agent grok-cli
 
 ### Dispatch Desk
 
-Same daemon, same SQLite. Home is **需要你拍板** (Approve/Reject). Cards fold into collapsible **theme/project groups**. After extract, Laya labels new candidates from the closed Chinese list in `data/theme-vocabulary.json` (「AI推进」, 「日程/会议」, 「其他」, …). Untagged / 「其他」 titles divert onto that same list from title/body (no new labels). Timeout/5xx never drop the card; Laya tags stay off, but local divert still shrinks 「其他」. Near-duplicate merge needs Laya up and fail-opens if it is down. Unknown slugs map onto that list or become 「其他」. Approve/Reject is still per card. Hard-refresh `http://127.0.0.1:8787` after pull. **系统已处理** is a read-only 24h gate-digest. **我的偏好** shows `data/preference-memory.json`. **高级** hides the Atoms log placeholder. Lead NL configures sources.
+Same daemon, same SQLite. Home is **需要你拍板** (Approve/Reject). Cards fold into collapsible **theme/project groups**. After extract, Laya labels new candidates from the closed Chinese list in `data/theme-vocabulary.json` (「AI推进」, 「日程/会议」, 「其他」, …). Untagged / 「其他」 titles divert onto that same list from title/body (no new labels). Timeout/5xx never drop the card; Laya tags stay off, but local divert still shrinks 「其他」. Near-duplicate merge needs Laya up and fail-opens if it is down. The **Done gate** (after noise/merge, before theme tag) matches new and existing suggested cards against `data/progress-snapshot.json` (merged PRs / closed issues / recent commits) plus Desk accept/reject/merge history. A hit is `already_done` — it leaves Needs-you and shows on **系统已处理** as 「已在仓库/历史进度关闭」. Repo scan fail / missing path / Docker-without-git **fail-opens** (card stays). 「仍要我跟」 reopens. Unknown slugs map onto that list or become 「其他」. Approve/Reject is still per card. Hard-refresh `http://127.0.0.1:8787` after pull. **系统已处理** is last-24h gate-digest plus auto-closed cards. **我的偏好** shows `data/preference-memory.json`. **高级** hides the Atoms log placeholder. Lead NL configures sources.
 
 ```bash
 pnpm atom serve
@@ -119,6 +122,32 @@ pnpm atom tag-backfill          # dry-run: print tags, write nothing
 pnpm atom tag-backfill --apply  # write candidate_tagged overlays
 # hard-refresh http://127.0.0.1:8787 — heuristic groups should shrink
 ```
+
+### Done loop (already shipped)
+
+Needs-you must not resurface work you already shipped. Progress sources are the existing `data/workspaces.json` entries **`atom`**, **`yzj`**, **`ai-advance`** (paths already there).
+
+**Dogfood (Rock-Shan / Docker):** the Desk image does not contain those host checkouts. Refresh the snapshot **on the Mac**, then rebuild/refresh Desk:
+
+```bash
+# 1) On the Mac checkout (not docker compose exec) — git + optional gh auth
+pnpm atom progress-scan
+# writes data/progress-snapshot.json (compose already mounts ./data)
+
+# 2) Close cards that already match (Desk daemon must be up)
+pnpm atom done-sweep           # dry-run
+pnpm atom done-sweep --apply   # or: pnpm atom progress-scan --apply
+# next extract / poll-yzj-15m also runs the Done gate
+
+# 3) If you pulled this branch:
+docker compose up -d --build
+# hard-refresh http://127.0.0.1:8787
+# 速记 / MCP items that already landed as merged PRs / commits / prior
+# accept-reject-merge should leave 需要你拍板, or sit under 系统已处理
+# with 「已在仓库/历史进度关闭」. 「仍要我跟」 reopens that card.
+```
+
+Do **not** `docker compose exec desk pnpm atom progress-scan` as the dogfood path — those `/Users/kingdee/dev/…` paths are not in the image. If a scan fails or git is invisible, the gate **fail-opens** (card stays in Needs-you). Optional compose volume mounts for the three workspace paths are commented in `docker-compose.yml` (v1 still prefers the snapshot file).
 
 Before a human send (Desk / 干饭人), check outbound content. Same `LAYA_URL` / timeout; fail-open allow if Laya is down. **Does not post to Yunzhijia.**
 

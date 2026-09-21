@@ -34,6 +34,7 @@ export type GateDigestCountsExtract = {
   runs: number;
   laya_noise_dropped: number;
   merged: number;
+  already_done: number;
   fail_open_candidates: number;
 };
 
@@ -195,6 +196,10 @@ function isMergeSweepCompleted(detail: Record<string, unknown>): boolean {
   return detail.kind === "merge-sweep";
 }
 
+function isDoneSweepCompleted(detail: Record<string, unknown>): boolean {
+  return detail.kind === "done-sweep";
+}
+
 function isOutboundCheck(detail: Record<string, unknown>): boolean {
   return detail.kind === "outbound-check";
 }
@@ -292,7 +297,7 @@ function formatMarkdown(result: Omit<GateDigestResult, "markdown">): string {
   const auto =
     autoPct == null
       ? `- auto_rate: n/a — ${result.proxies.auto_rate_note}`
-      : `- auto_rate: ${autoPct}%  (${result.proxies.auto_handled}/${autoDenom}) = (noise_dropped + merged) / (those + proposed_to_desk)`;
+      : `- auto_rate: ${autoPct}%  (${result.proxies.auto_handled}/${autoDenom}) = (noise_dropped + merged + already_done) / (those + proposed_to_desk)`;
 
   const override =
     result.proxies.override_auditable === 0
@@ -308,6 +313,7 @@ function formatMarkdown(result: Omit<GateDigestResult, "markdown">): string {
     "",
     `- proposed: ${result.extract.proposed}`,
     `- noise_dropped: ${result.extract.noise_dropped}${extractLaya}`,
+    `- already_done: ${result.extract.already_done}`,
     `- fail_open: ${extractFail}`,
     "",
     "## Merge",
@@ -373,6 +379,7 @@ export function runGateDigest(
     runs: 0,
     laya_noise_dropped: 0,
     merged: 0,
+    already_done: 0,
     fail_open_candidates: 0,
   };
 
@@ -384,7 +391,10 @@ export function runGateDigest(
       extract.noise_dropped += asNumber(detail.noise_dropped);
       extract.laya_noise_dropped += asNumber(detail.laya_noise_dropped);
       extract.merged += asNumber(detail.merged);
+      extract.already_done += asNumber(detail.already_done);
       if (asBool(detail.laya_fail_open)) extract.fail_open += 1;
+    } else if (isDoneSweepCompleted(detail)) {
+      extract.already_done += asNumber(detail.closed);
     }
   }
 
@@ -428,9 +438,14 @@ export function runGateDigest(
     if (gate?.fail_open === true) outbound.fail_open += 1;
   }
 
+  const alreadyDoneRejects = rejectedEvents.filter((ev) => {
+    const detail = parseDetail(ev.detail_json);
+    return String(detail.reason ?? "") === "already_done" || ev.actor === "system:done-gate";
+  }).length;
+
   const desk: GateDigestCountsDesk = {
     accepted: acceptedEvents.length,
-    rejected: rejectedEvents.length,
+    rejected: rejectedEvents.length - alreadyDoneRejects,
     suggested: merge.open,
   };
 
@@ -442,7 +457,7 @@ export function runGateDigest(
     last_rsi: readLastPreferenceRsi(store),
   };
 
-  const autoHandled = extract.noise_dropped + merge.merged;
+  const autoHandled = extract.noise_dropped + merge.merged + extract.already_done;
   const proposedToDesk = extract.proposed;
   const autoDenom = autoHandled + proposedToDesk;
   let autoRate: number | null = null;
@@ -451,13 +466,14 @@ export function runGateDigest(
     autoNote = "no extract proposals or auto-handled items in this window";
   } else {
     autoRate = roundRate(autoHandled / autoDenom);
-    autoNote = `(noise_dropped ${extract.noise_dropped} + merged ${merge.merged}) / (those + proposed_to_desk ${proposedToDesk})`;
+    autoNote = `(noise_dropped ${extract.noise_dropped} + merged ${merge.merged} + already_done ${extract.already_done}) / (those + proposed_to_desk ${proposedToDesk})`;
   }
 
   const audits = proposedAudits(store);
   let overrideRejected = 0;
   let overrideAuditable = 0;
   for (const ev of [...acceptedEvents, ...rejectedEvents]) {
+    if (ev.actor === "system:done-gate") continue;
     const row = audits.get(ev.subject_id);
     if (!isAutoIsh(row)) continue;
     overrideAuditable += 1;

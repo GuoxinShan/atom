@@ -39,6 +39,14 @@ services:
       - yzj-cli-config:/root/.yzj-cli
       - yzj-cli-data:/root/.local/share/yzj-cli
       - grok-home:/root/.grok
+      # Done gate v1: do NOT rely on host git inside the image. Rock-Shan runs
+      # `pnpm atom progress-scan` on the Mac; it writes data/progress-snapshot.json
+      # which this ./data mount already exposes. Optional read-only repo mounts
+      # (same paths as data/workspaces.json) only help if you also install git
+      # in the image — not required for v1:
+      # - /Users/kingdee/dev/personal/atom:/Users/kingdee/dev/personal/atom:ro
+      # - /Users/kingdee/dev/yzj:/Users/kingdee/dev/yzj:ro
+      # - /Users/kingdee/dev/ai-advance:/Users/kingdee/dev/ai-advance:ro
     restart: "no"
     init: true
 
