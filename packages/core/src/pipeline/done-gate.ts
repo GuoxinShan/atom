@@ -71,6 +71,7 @@ export function historyFromStore(store: EventStore): DoneHistoryItem[] {
       refs: c.refs.map((r) => r.token),
       status: c.status,
       ...(c.theme ? { theme: c.theme } : {}),
+      ...(c.project ? { project: c.project } : {}),
       ...(c.tags ? { tags: c.tags } : {}),
     });
   }
@@ -140,7 +141,7 @@ function proposalRefs(p: Pick<CandidateProposal, "refs">): string[] {
 }
 
 export function matchProposalToDone(
-  p: Pick<CandidateProposal, "title" | "body" | "refs" | "theme" | "tags"> & { id?: string },
+  p: Pick<CandidateProposal, "title" | "body" | "refs" | "theme" | "project" | "tags"> & { id?: string },
   ctx: DoneMatchContext
 ): DoneHit | null {
   const verdict = matchCandidateToDone(
@@ -150,6 +151,7 @@ export function matchProposalToDone(
       body: p.body,
       refs: proposalRefs(p),
       theme: p.theme,
+      project: p.project,
       tags: p.tags,
     },
     ctx
@@ -181,6 +183,7 @@ export function applyDoneGateToSuggested(
         body: c.body,
         refs: c.refs.map((r) => r.token),
         theme: c.theme,
+        project: c.project,
         tags: c.tags,
       },
       ctx
@@ -206,6 +209,7 @@ export function applyDoneGateToSuggested(
         refs: c.refs.map((r) => r.token),
         status: "rejected",
         ...(c.theme ? { theme: c.theme } : {}),
+        ...(c.project ? { project: c.project } : {}),
         ...(c.tags ? { tags: c.tags } : {}),
       });
       console.log(`[done-gate] already_done ${c.id}: ${c.title} — ${hit.reason}`);
