@@ -77,7 +77,15 @@ export class EventStore {
     return record;
   }
 
-  list(opts?: { type?: AtomType; subject_id?: string; limit?: number }): EventRecord[] {
+  list(opts?: {
+    type?: AtomType;
+    subject_id?: string;
+    limit?: number;
+    /** Inclusive ISO-8601 lower bound on created_at (lexicographic; writer uses toISOString). */
+    since?: string;
+    /** Inclusive ISO-8601 upper bound on created_at. */
+    until?: string;
+  }): EventRecord[] {
     const clauses: string[] = [];
     const params: unknown[] = [];
     if (opts?.type) {
@@ -87,6 +95,14 @@ export class EventStore {
     if (opts?.subject_id) {
       clauses.push("subject_id = ?");
       params.push(opts.subject_id);
+    }
+    if (opts?.since) {
+      clauses.push("created_at >= ?");
+      params.push(opts.since);
+    }
+    if (opts?.until) {
+      clauses.push("created_at <= ?");
+      params.push(opts.until);
     }
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
     const limit = opts?.limit ?? 500;

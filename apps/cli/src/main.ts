@@ -29,6 +29,7 @@ Usage:
   pnpm atom merge-sweep [--apply]
   pnpm atom outbound-check [--title ...] [--body ... | --path <file>] [--kind digest]
   pnpm atom preference-rsi [--dry-run | --apply]
+  pnpm atom gate-digest [--since 24h|7d|YYYY-MM-DD|ISO] [--json]
   pnpm atom route <specOrCandidateId>
   pnpm atom doctor
   pnpm atom setup
@@ -251,6 +252,31 @@ async function main() {
       added_blocklist: string[];
     }>("POST", "/api/preference-rsi", { apply, dryRun });
     printPreferenceRsi(data);
+    return;
+  }
+
+  if (cmd === "gate-digest" || cmd === "gate-acceptance") {
+    const since = (flags.since as string | undefined) ?? undefined;
+    const asJson = Boolean(flags.json);
+    const q = new URLSearchParams();
+    if (since) q.set("since", since);
+    const path = q.toString() ? `/api/gate-digest?${q.toString()}` : "/api/gate-digest";
+    const data = await apiOk<{
+      markdown: string;
+      since: string;
+      until: string;
+      extract: Record<string, unknown>;
+      merge: Record<string, unknown>;
+      outbound: Record<string, unknown>;
+      desk: Record<string, unknown>;
+      preference: Record<string, unknown>;
+      proxies: Record<string, unknown>;
+    }>("GET", path);
+    if (asJson) {
+      console.log(JSON.stringify(data, null, 2));
+    } else {
+      console.log(data.markdown.replace(/\n$/, ""));
+    }
     return;
   }
 

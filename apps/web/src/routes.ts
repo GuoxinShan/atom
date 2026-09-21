@@ -23,6 +23,8 @@ import {
   runExtract,
   runMergeSweep,
   runPreferenceRsi,
+  runGateDigest,
+  GateDigestError,
   writeDigest,
   evaluateOutboundGate,
   layaOutboundToDetail,
@@ -153,6 +155,28 @@ export async function handleApi(
       repoRoot: daemon.repoRoot,
     });
     json(res, { ok: true, ...result });
+    return true;
+  }
+
+  if ((method === "GET" || method === "POST") && p === "/api/gate-digest") {
+    let since = url.searchParams.get("since") ?? "";
+    if (method === "POST") {
+      const body = await readJson(req);
+      if (!since) since = str(body, "since");
+    }
+    try {
+      const result = runGateDigest(daemon.store, {
+        since: since || undefined,
+        repoRoot: daemon.repoRoot,
+      });
+      json(res, { ok: true, ...result });
+    } catch (err) {
+      if (err instanceof GateDigestError) {
+        json(res, { error: err.message }, 400);
+        return true;
+      }
+      throw err;
+    }
     return true;
   }
 
