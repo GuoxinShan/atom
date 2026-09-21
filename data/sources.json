@@ -24,13 +24,19 @@
       "kind": "yzj",
       "enabled": true,
       "groupIds": [
-        "6a9a59d1e4b043b377865acf"
+        "6a9a59d1e4b043b377865acf",
+        "6a86d3ffe4b0d37c27fa7ab0",
+        "6a8659fbe4b00daf35d99711",
+        "6a4ce0e0e4b0611af90e3087"
       ],
       "groupNames": {
-        "6a9a59d1e4b043b377865acf": "【AI推进】"
+        "6a9a59d1e4b043b377865acf": "【AI推进】",
+        "6a86d3ffe4b0d37c27fa7ab0": "【会议】AI推进产品与架构对齐",
+        "6a8659fbe4b00daf35d99711": "AI速记与推进",
+        "6a4ce0e0e4b0611af90e3087": "mcpApp开发群"
       },
       "cli": "yzj-cli",
-      "limit": 40
+      "limit": 20
     }
   ],
   "defaultSourceId": "yzj-ai-advance",
