@@ -216,7 +216,21 @@ function citeLabels(refs) {
   return labels;
 }
 
-function metaLine({ sources = [], status = "", when = "", extra = [] } = {}) {
+function metaLine({ sources = [], status = "", when = "", extra = [], quiet = false } = {}) {
+  if (quiet) {
+    const bits = [
+      ...sources,
+      status ? statusLabel(status) || status : "",
+      ...extra,
+      when,
+    ]
+      .map((s) => String(s ?? "").trim())
+      .filter(Boolean);
+    if (!bits.length) return "";
+    return `<div class="meta-line quiet">${bits
+      .map((b) => `<span>${escapeHtml(b)}</span>`)
+      .join('<span class="dot">·</span>')}</div>`;
+  }
   const bits = [
     ...sources.map((s) => pill(s)),
     status ? pill(statusLabel(status) || status) : "",
@@ -561,22 +575,39 @@ function isGroupOpen(key) {
   return true;
 }
 
+function isOtherGroup(g) {
+  const title = String(g?.title ?? "").trim();
+  const key = String(g?.key ?? "");
+  return title === "其他" || key === "heuristic:other";
+}
+
+function groupSummaryHtml(title, count) {
+  const n = Number(count) || 0;
+  const label = firstHuman(title) || "其他";
+  return `<summary class="needs-group-summary" aria-label="${escapeHtml(
+    `${label}，${n} 张，展开或收起`
+  )}"><span class="group-chevron" aria-hidden="true"></span><span class="group-title">${escapeHtml(
+    label
+  )}</span><span class="group-count">${n}</span></summary>`;
+}
+
 function renderSuggestedCard(c) {
   const card = document.createElement("article");
   const selected =
     state.selectedKind !== "checklist" &&
     (state.selectedId === c.id || specForCandidate(c.id)?.id === state.selectedId);
-  card.className = `item${selected ? " selected" : ""}`;
+  card.className = `item needs-card${selected ? " selected" : ""}`;
   card.dataset.select = c.id;
   const title = firstHuman(c.title) || "未命名事项";
   const summary = (c.body || "").trim();
   card.innerHTML = `
         <h3>${escapeHtml(title)}</h3>
-        ${summary ? `<p>${escapeHtml(summary.slice(0, 220))}</p>` : ""}
+        ${summary ? `<p class="card-summary">${escapeHtml(summary.slice(0, 220))}</p>` : ""}
         ${metaLine({
           sources: citeLabels(c.refs),
           status: c.status,
           when: relativeTime(c.updated_at),
+          quiet: true,
         })}
         <div class="card-actions">
           <button type="button" data-act="approve" data-id="${escapeHtml(c.id)}">Approve</button>
@@ -633,16 +664,17 @@ function renderQueue() {
 
   if (!suggested.length && !acks.length && !outbound) {
     queue.innerHTML = `
-      <p class="clear">今天没有要你拍板的</p>
-      <p class="clear-meta">队列空着是正常的。盯着的群里出现新话题时，卡片会到这里，主操作是 Approve / Reject。</p>
+      <div class="empty-desk">
+        <p class="clear">今天没有要你拍板的</p>
+        <p class="clear-meta">队列空着是正常的。新卡片来自你盯着的群里出现的新话题。</p>
+      </div>
     `;
     return;
   }
 
   if (suggested.length) {
     const section = document.createElement("section");
-    section.className = "col suggested";
-    section.innerHTML = `<h2>Suggested <b>${suggested.length}</b></h2>`;
+    section.className = "needs-board";
     const byId = Object.fromEntries(suggested.map((c) => [c.id, c]));
     const groups =
       Array.isArray(state.groups) && state.groups.length ? state.groups : fallbackNeedsGroups(suggested);
@@ -652,24 +684,23 @@ function renderQueue() {
       if (!cards.length) continue;
       for (const c of cards) seen.add(c.id);
       const wrap = document.createElement("details");
-      wrap.className = "needs-group";
+      const other = isOtherGroup(g);
+      wrap.className = `needs-group${other ? " is-other" : ""}`;
       wrap.dataset.groupKey = g.key || "";
       wrap.dataset.groupKind = g.kind || "heuristic";
       wrap.open = isGroupOpen(g.key || "heuristic:other");
-      wrap.innerHTML = `<summary class="needs-group-summary"><span class="group-title">${escapeHtml(
-        firstHuman(g.title) || "其他"
-      )}</span><b>${cards.length}</b></summary>`;
+      wrap.innerHTML = groupSummaryHtml(g.title, cards.length);
       for (const c of cards) wrap.appendChild(renderSuggestedCard(c));
       section.appendChild(wrap);
     }
     const leftovers = suggested.filter((c) => !seen.has(c.id));
     if (leftovers.length) {
       const wrap = document.createElement("details");
-      wrap.className = "needs-group";
+      wrap.className = "needs-group is-other";
       wrap.dataset.groupKey = "heuristic:other";
       wrap.dataset.groupKind = "heuristic";
       wrap.open = isGroupOpen("heuristic:other");
-      wrap.innerHTML = `<summary class="needs-group-summary"><span class="group-title">其他</span><b>${leftovers.length}</b></summary>`;
+      wrap.innerHTML = groupSummaryHtml("其他", leftovers.length);
       for (const c of leftovers) wrap.appendChild(renderSuggestedCard(c));
       section.appendChild(wrap);
     }
@@ -678,21 +709,22 @@ function renderQueue() {
 
   if (acks.length) {
     const section = document.createElement("section");
-    section.className = "col suggested";
-    section.innerHTML = `<h2>Checklist <b>${acks.length}</b></h2>`;
+    section.className = "needs-board";
+    section.innerHTML = `<h2 class="needs-board-label">确认清单 <span>${acks.length}</span></h2>`;
     for (const chk of acks) {
       const card = document.createElement("article");
       const selected = state.selectedKind === "checklist" && state.selectedId === chk.subjectId;
-      card.className = `item${selected ? " selected" : ""}`;
+      card.className = `item needs-card${selected ? " selected" : ""}`;
       card.dataset.selectChecklist = chk.subjectId;
       const linked = state.candidates.find((c) => c.id === chk.candidateId);
       card.innerHTML = `
         <h3>${escapeHtml(firstHuman(chk.title, linked?.title) || "确认清单")}</h3>
-        <p>其余项已完成，等你确认。ATOM 不会自动代点。</p>
+        <p class="card-summary">其余项已完成，等你确认。ATOM 不会自动代点。</p>
         ${metaLine({
           sources: citeLabels(linked?.refs),
           extra: ["等人确认"],
           when: relativeTime(linked?.updated_at),
+          quiet: true,
         })}
         <div class="card-actions">
           <button type="button" data-ack="${escapeHtml(chk.subjectId)}">Ack</button>

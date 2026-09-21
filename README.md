@@ -75,7 +75,7 @@ pnpm atom serve
 # open Desk at http://127.0.0.1:8787
 ```
 
-Light zinc inbox (paper + indigo `#6e7bf2`). Listen → propose → approve → route.
+Light paper inbox (warm cream + calm ink). Listen → propose → approve → route.
 
 ### Cron / webhooks
 
