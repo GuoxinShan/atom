@@ -2,7 +2,8 @@
  * Laya System-1 HTTP client (typed decisions only — never text generation).
  *
  * ATOM uses two endpoints:
- * - POST /v1/predict  — extract → candidate noise gate, then duplicate-merge gate
+ * - POST /v1/predict  — extract → candidate noise gate, then duplicate-merge gate;
+ *   outbound / pre-post gate (digest, subscription emit, Desk/CLI check)
  * - POST /v1/route-model — lead handoff → ornith (heavy) vs bonsai (light)
  *
  * Fail-open: timeout, 5xx, or truly ambiguous (both noul and choice weak)
@@ -82,6 +83,23 @@ export type LayaMergeGate = {
   targetId?: string;
 };
 
+/**
+ * Pre-post / outbound gate. Drop high-confidence noise; hold is a high-conf
+ * Desk-confirm signal; everything else (including fail-open) is allow.
+ * Never auto-sends — Desk remains the irreversible-send authority.
+ */
+export type LayaOutboundAction = "allow" | "drop" | "hold";
+
+export type LayaOutboundGate = {
+  action: LayaOutboundAction;
+  failOpen: boolean;
+  reason: string;
+  kind?: string;
+  confidence?: number;
+  demandNoul?: number;
+  noiseNoul?: number;
+};
+
 export type LayaModelRoute = {
   model?: string;
   intensity: CodingIntensity;
@@ -119,6 +137,34 @@ export const CANDIDATE_GATE_QUESTIONS: Record<string, unknown> = {
     type: "noul",
     instructions:
       "Is this casual chat or noise rather than a work demand? Treat 「明天一起吃饭」 as noise.",
+  },
+};
+
+/**
+ * Outbound / pre-post questions. Same noul heads as the extract noise gate
+ * (no Laya retrain) plus allow|drop|hold choice for the send itself.
+ */
+export const OUTBOUND_GATE_QUESTIONS: Record<string, unknown> = {
+  kind: {
+    type: "choice",
+    instructions:
+      "Should this outbound post (digest, IM, subscription) be sent to humans/groups, dropped as noise, or held for Desk confirm?",
+    criteria: {
+      allow:
+        "real work update, demand digest, or handoff note that humans/groups should receive",
+      drop: "casual chat, social, lunch, weather, ack, bot digest — e.g. 明天一起吃饭 must not be posted",
+      hold: "uncertain; Desk should confirm before this leaves ATOM",
+    },
+  },
+  is_work_demand: {
+    type: "noul",
+    instructions:
+      "Is this real work content that humans/groups should receive outbound?",
+  },
+  is_chat_noise: {
+    type: "noul",
+    instructions:
+      "Is this casual chat or noise rather than a work post? Treat 「明天一起吃饭」 as noise that must not be sent.",
   },
 };
 
@@ -300,6 +346,83 @@ export function interpretCandidateAnswers(
   };
 }
 
+function outboundChoice(raw: string | undefined): LayaOutboundAction | undefined {
+  const c = raw?.toLowerCase();
+  if (c === "drop" || c === "noise") return "drop";
+  if (c === "hold") return "hold";
+  if (c === "allow" || c === "demand") return "allow";
+  return undefined;
+}
+
+export function interpretOutboundAnswers(
+  answers: Record<string, LayaAnswer>,
+  minConfidence = DEFAULT_LAYA_MIN_CONFIDENCE
+): LayaOutboundGate {
+  const kind = answers.kind;
+  const mapped = outboundChoice(kind?.choice);
+  const conf = kind?.confidence ?? 0;
+  const demandNoul = answers.is_work_demand?.noul;
+  const noiseNoul = answers.is_chat_noise?.noul;
+
+  // Same noul-first policy as interpretCandidateAnswers. Choice only breaks
+  // ties (both noul high, or both absent/weak). High-conf hold is a real
+  // Desk-confirm decision — not fail-open.
+  const noiseNoulHigh = noulClears(noiseNoul, minConfidence);
+  const demandNoulHigh = noulClears(demandNoul, minConfidence);
+  const choiceHigh = conf >= minConfidence;
+
+  const dropGate = (driving: number | undefined): LayaOutboundGate => ({
+    action: "drop",
+    failOpen: false,
+    reason: LAYA_NOISE_REASON,
+    kind: mapped ?? kind?.choice?.toLowerCase() ?? "drop",
+    confidence: driving ?? conf,
+    demandNoul,
+    noiseNoul,
+  });
+  const allowGate = (driving: number | undefined): LayaOutboundGate => ({
+    action: "allow",
+    failOpen: false,
+    reason: "demand",
+    kind: mapped ?? kind?.choice?.toLowerCase() ?? "allow",
+    confidence: driving ?? conf,
+    demandNoul,
+    noiseNoul,
+  });
+  const holdGate = (driving: number | undefined): LayaOutboundGate => ({
+    action: "hold",
+    failOpen: false,
+    reason: "hold",
+    kind: mapped ?? "hold",
+    confidence: driving ?? conf,
+    demandNoul,
+    noiseNoul,
+  });
+
+  if (noiseNoulHigh && !demandNoulHigh) return dropGate(noiseNoul);
+  if (demandNoulHigh && !noiseNoulHigh) return allowGate(demandNoul);
+
+  if (noiseNoulHigh && demandNoulHigh) {
+    if (mapped === "drop") return dropGate(noiseNoul);
+    if (mapped === "hold") return holdGate(Math.max(noiseNoul ?? 0, demandNoul ?? 0, conf));
+    if (mapped === "allow") return allowGate(demandNoul);
+  } else {
+    if (mapped === "drop" && choiceHigh) return dropGate(conf);
+    if (mapped === "hold" && choiceHigh) return holdGate(conf);
+    if (mapped === "allow" && choiceHigh) return allowGate(conf);
+  }
+
+  return {
+    action: "allow",
+    failOpen: true,
+    reason: "ambiguous",
+    kind: mapped ?? kind?.choice?.toLowerCase(),
+    confidence: conf || demandNoul || noiseNoul,
+    demandNoul,
+    noiseNoul,
+  };
+}
+
 export function interpretMergeAnswers(
   answers: Record<string, LayaAnswer>,
   openItems: OpenItemSnippet[],
@@ -460,6 +583,18 @@ export function interpretRouteModel(raw: unknown): LayaModelRoute {
 }
 
 export function layaGateToDetail(gate: LayaCandidateGate): Record<string, unknown> {
+  return {
+    action: gate.action,
+    kind: gate.kind ?? null,
+    confidence: gate.confidence ?? null,
+    fail_open: gate.failOpen,
+    reason: gate.reason,
+    demand_noul: gate.demandNoul ?? null,
+    noise_noul: gate.noiseNoul ?? null,
+  };
+}
+
+export function layaOutboundToDetail(gate: LayaOutboundGate): Record<string, unknown> {
   return {
     action: gate.action,
     kind: gate.kind ?? null,
@@ -649,6 +784,30 @@ export class LayaClient {
       return { action: "suggested", failOpen: true, reason: this.transportFail() };
     }
     return interpretCandidateAnswers(predicted.answers, this.minConfidence);
+  }
+
+  async gateOutbound(input: {
+    title: string;
+    body?: string;
+    kind?: string;
+  }): Promise<LayaOutboundGate> {
+    if (!this.enabled) {
+      return { action: "allow", failOpen: true, reason: "unavailable" };
+    }
+    const predicted = await this.predict(
+      {
+        title: input.title,
+        body: input.body ?? "",
+        text: [input.title, input.body].filter(Boolean).join("\n"),
+        payload_kind: input.kind ?? "outbound",
+        channel: "outbound",
+      },
+      OUTBOUND_GATE_QUESTIONS
+    );
+    if (!predicted) {
+      return { action: "allow", failOpen: true, reason: this.transportFail() };
+    }
+    return interpretOutboundAnswers(predicted.answers, this.minConfidence);
   }
 
   async gateMerge(input: {

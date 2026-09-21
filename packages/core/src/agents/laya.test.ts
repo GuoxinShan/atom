@@ -6,6 +6,7 @@ import {
   LayaClient,
   interpretCandidateAnswers,
   interpretMergeAnswers,
+  interpretOutboundAnswers,
   interpretRouteModel,
   intensityFromLayaModel,
   type LayaFetch,
@@ -116,6 +117,71 @@ describe("interpretCandidateAnswers", () => {
     assert.equal(gate.action, "suggested");
     assert.equal(gate.failOpen, false);
     assert.equal(gate.reason, "demand");
+  });
+});
+
+describe("interpretOutboundAnswers", () => {
+  it("drops high-confidence chat/noise", () => {
+    const gate = interpretOutboundAnswers({
+      kind: { choice: "drop", confidence: 0.94 },
+      is_chat_noise: { noul: 0.91 },
+      is_work_demand: { noul: 0.08 },
+    });
+    assert.equal(gate.action, "drop");
+    assert.equal(gate.failOpen, false);
+  });
+
+  it("maps extract-style kind=noise onto drop", () => {
+    const gate = interpretOutboundAnswers({
+      kind: { choice: "noise", confidence: 0.22 },
+      is_chat_noise: { noul: 0.93 },
+      is_work_demand: { noul: 0.12 },
+    });
+    assert.equal(gate.action, "drop");
+    assert.equal(gate.failOpen, false);
+    assert.equal(gate.confidence, 0.93);
+  });
+
+  it("allows high-confidence real work posts", () => {
+    const gate = interpretOutboundAnswers({
+      kind: { choice: "allow", confidence: 0.9 },
+      is_work_demand: { noul: 0.88 },
+      is_chat_noise: { noul: 0.05 },
+    });
+    assert.equal(gate.action, "allow");
+    assert.equal(gate.failOpen, false);
+    assert.equal(gate.reason, "demand");
+  });
+
+  it("holds when Laya is high-confidence hold", () => {
+    const gate = interpretOutboundAnswers({
+      kind: { choice: "hold", confidence: 0.91 },
+      is_chat_noise: { noul: 0.4 },
+      is_work_demand: { noul: 0.42 },
+    });
+    assert.equal(gate.action, "hold");
+    assert.equal(gate.failOpen, false);
+    assert.equal(gate.reason, "hold");
+  });
+
+  it("fail-opens ambiguous answers to allow (never auto-send)", () => {
+    const gate = interpretOutboundAnswers({
+      kind: { choice: "drop", confidence: 0.41 },
+      is_chat_noise: { noul: 0.5 },
+      is_work_demand: { noul: 0.48 },
+    });
+    assert.equal(gate.action, "allow");
+    assert.equal(gate.failOpen, true);
+  });
+
+  it("allows when is_work_demand noul is high even if kind confidence is low", () => {
+    const gate = interpretOutboundAnswers({
+      kind: { choice: "allow", confidence: 0.18 },
+      is_work_demand: { noul: 0.9 },
+      is_chat_noise: { noul: 0.08 },
+    });
+    assert.equal(gate.action, "allow");
+    assert.equal(gate.failOpen, false);
   });
 });
 
@@ -438,6 +504,61 @@ describe("LayaClient", () => {
     assert.equal(second.action, "merge");
     assert.equal(second.failOpen, false);
     assert.equal(second.targetId, "cand_oauth");
+    assert.equal(n, 2);
+  });
+
+  it("POSTs /v1/predict outbound questions and drops chat", async () => {
+    const { fetch, calls } = recordingFetch(async (url) => {
+      if (url.endsWith("/health")) return jsonResponse({ ok: true });
+      assert.match(url, /\/v1\/predict$/);
+      return jsonResponse({
+        answers: {
+          kind: { type: "choice", choice: "drop", confidence: 0.96 },
+          is_chat_noise: { type: "noul", noul: 0.93, confidence: 0.93 },
+          is_work_demand: { type: "noul", noul: 0.04, confidence: 0.04 },
+        },
+      });
+    });
+    const client = new LayaClient({ fetch, enabled: true, timeoutMs: 200 });
+    const gate = await client.gateOutbound({
+      title: "明天一起吃饭",
+      body: "晚上七点见",
+      kind: "digest",
+    });
+    assert.equal(gate.action, "drop");
+    const predict = calls.find((c) => c.url.endsWith("/v1/predict"));
+    assert.ok(predict);
+    const questions = (predict?.body as { questions?: Record<string, { type?: string }> }).questions;
+    assert.equal(questions?.kind?.type, "choice");
+    assert.equal(questions?.is_chat_noise?.type, "noul");
+    const state = (predict?.body as { state?: { channel?: string; payload_kind?: string } }).state;
+    assert.equal(state?.channel, "outbound");
+    assert.equal(state?.payload_kind, "digest");
+  });
+
+  it("fail-opens outbound predict on timeout without marking unavailable", async () => {
+    let n = 0;
+    const fetch: LayaFetch = async (url, init) => {
+      n += 1;
+      if (n === 1) return hangFetch()(url, init);
+      return jsonResponse({
+        answers: {
+          kind: { type: "choice", choice: "drop", confidence: 0.96 },
+          is_chat_noise: { type: "noul", noul: 0.93 },
+          is_work_demand: { type: "noul", noul: 0.04 },
+        },
+      });
+    };
+    const client = new LayaClient({ fetch, enabled: true, timeoutMs: 40 });
+    const first = await client.gateOutbound({ title: "明天一起吃饭", kind: "digest" });
+    assert.equal(first.action, "allow");
+    assert.equal(first.failOpen, true);
+    assert.equal(first.reason, "timeout");
+    assert.equal(client.unavailable, false);
+
+    const second = await client.gateOutbound({ title: "明天一起吃饭", kind: "digest" });
+    assert.equal(second.action, "drop");
+    assert.equal(second.failOpen, false);
     assert.equal(n, 2);
   });
 

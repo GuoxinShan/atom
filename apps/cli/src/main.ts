@@ -3,6 +3,7 @@
  * Thin HTTP client for the ATOM desk daemon.
  * Side effects live in the local API (`pnpm atom serve`); this file only fetch()s.
  */
+import fs from "node:fs";
 import { api, apiOk, ApiDownError, apiBase, runServe } from "./client.js";
 
 function usage(): never {
@@ -26,6 +27,7 @@ Usage:
   pnpm atom pr-open <handoffOrCandidateId> --url <prUrl> [--branch ...] [--force]
   pnpm atom reject-noise
   pnpm atom merge-sweep [--apply]
+  pnpm atom outbound-check [--title ...] [--body ... | --path <file>] [--kind digest]
   pnpm atom route <specOrCandidateId>
   pnpm atom doctor
   pnpm atom setup
@@ -180,6 +182,46 @@ async function main() {
       }>;
     }>("POST", "/api/merge-sweep", { apply });
     printMergeSweep(data);
+    return;
+  }
+
+  if (cmd === "outbound-check") {
+    const pathFlag = flags.path as string | undefined;
+    let title = (flags.title as string | undefined) ?? "";
+    let bodyText = (flags.body as string | undefined) ?? (flags.text as string | undefined) ?? "";
+    const kind = (flags.kind as string | undefined) ?? (pathFlag ? "digest" : "outbound");
+    if (pathFlag) {
+      if (!fs.existsSync(pathFlag)) {
+        console.error(`outbound-check: file not found: ${pathFlag}`);
+        process.exit(1);
+      }
+      bodyText = fs.readFileSync(pathFlag, "utf8");
+      if (!title) title = pathFlag.split(/[/\\]/).at(-1) ?? pathFlag;
+    }
+    if (!title && !bodyText) {
+      console.log(
+        'Usage: pnpm atom outbound-check --title "…" --body "…"\n       pnpm atom outbound-check --path out/digest-YYYY-MM-DD.md --kind digest'
+      );
+      process.exit(1);
+    }
+    const data = await apiOk<{
+      action: string;
+      fail_open: boolean;
+      reason: string;
+      confidence: number | null;
+      laya_available: boolean;
+      delivered: boolean;
+      event_id: string | null;
+      kind: string;
+      laya_outbound: {
+        action: string;
+        fail_open: boolean;
+        reason: string;
+        demand_noul: number | null;
+        noise_noul: number | null;
+      };
+    }>("POST", "/api/outbound-check", { title, body: bodyText, kind });
+    printOutboundCheck(data);
     return;
   }
 
@@ -488,6 +530,41 @@ function printMergeSweep(data: {
   }
   if (!data.apply) {
     console.log("(no writes — pass --apply to merge)");
+  }
+}
+
+function printOutboundCheck(data: {
+  action: string;
+  fail_open: boolean;
+  reason: string;
+  confidence?: number | null;
+  laya_available?: boolean;
+  delivered?: boolean;
+  kind?: string;
+  laya_outbound?: {
+    demand_noul?: number | null;
+    noise_noul?: number | null;
+  };
+}) {
+  const open = data.fail_open ? " fail_open" : "";
+  console.log(
+    `OK outbound-check action=${data.action} reason=${data.reason}${open} kind=${data.kind ?? "outbound"}`
+  );
+  if (data.laya_available === false) {
+    console.log("Laya unavailable — fail-open allow. Desk remains the send authority.");
+  }
+  const noul = data.laya_outbound;
+  if (noul?.noise_noul != null || noul?.demand_noul != null) {
+    console.log(
+      `noise_noul=${noul.noise_noul ?? "-"} demand_noul=${noul.demand_noul ?? "-"}`
+    );
+  }
+  if (data.action === "drop") {
+    console.log("drop: do not post (high-confidence noise)");
+  } else if (data.action === "hold") {
+    console.log("hold: Desk should confirm before send");
+  } else {
+    console.log("allow: Laya would not block; Desk still confirms irreversible Yunzhijia sends");
   }
 }
 

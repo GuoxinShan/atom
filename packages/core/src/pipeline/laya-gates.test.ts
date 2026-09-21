@@ -7,6 +7,11 @@ import { fileURLToPath } from "node:url";
 import { LayaClient, type LayaFetch } from "../agents/laya.js";
 import { runExtract } from "./extract.js";
 import { exportHandoff } from "./handoff.js";
+import {
+  evaluateOutboundGate,
+  publishOutbound,
+  shouldDeliverOutbound,
+} from "./laya-outbound.js";
 import { openDb } from "../store/db.js";
 import { EventStore } from "../store/events.js";
 import { projectCandidates } from "../store/candidates.js";
@@ -578,5 +583,227 @@ describe("extract → Laya duplicate merge gate", () => {
     assert.equal(detail.laya_merge?.fail_open, false);
     assert.equal(detail.laya_merge?.same_request, 0.98);
     assert.equal(detail.laya_merge?.confidence, 0.98);
+  });
+});
+
+function isOutboundPredict(body: unknown): boolean {
+  const state = (body as { state?: { channel?: string } })?.state;
+  const q = (body as { questions?: Record<string, unknown> })?.questions;
+  return Boolean(
+    state?.channel === "outbound" ||
+      (q && typeof q === "object" && !Array.isArray(q) && "kind" in q && !("action" in q))
+  );
+}
+
+function outboundNoiseAnswers() {
+  return {
+    answers: {
+      kind: { choice: "drop", confidence: 0.95 },
+      is_chat_noise: { noul: 0.92 },
+      is_work_demand: { noul: 0.06 },
+    },
+  };
+}
+
+function outboundDemandAnswers() {
+  return {
+    answers: {
+      kind: { choice: "allow", confidence: 0.9 },
+      is_work_demand: { noul: 0.88 },
+      is_chat_noise: { noul: 0.04 },
+    },
+  };
+}
+
+describe("outbound / pre-post Laya gate", () => {
+  it("drops high-confidence noise and does not deliver", async () => {
+    const store = await tempStore();
+    const { fetch, calls } = recordingFetch(async (url) => {
+      if (url.endsWith("/health")) return jsonResponse({ ok: true });
+      return jsonResponse(outboundNoiseAnswers());
+    });
+    const laya = new LayaClient({ fetch, enabled: true, timeoutMs: 200 });
+    let delivered = 0;
+    const result = await publishOutbound(
+      repoRoot,
+      { kind: "digest", text: "明天一起吃饭，晚上七点不算工作" },
+      {
+        store,
+        laya,
+        deliver: async () => {
+          delivered += 1;
+        },
+      }
+    );
+
+    assert.equal(result.gate.action, "drop");
+    assert.equal(result.gate.failOpen, false);
+    assert.equal(result.delivered, false);
+    assert.equal(delivered, 0);
+    assert.equal(shouldDeliverOutbound(result.gate), false);
+    assert.equal(
+      calls.some((c) => c.url.endsWith("/v1/predict") && isOutboundPredict(c.body)),
+      true
+    );
+    const ev = store.list({ type: "agent_completed" }).at(-1);
+    assert.ok(ev);
+    const detail = JSON.parse(ev!.detail_json) as {
+      kind?: string;
+      delivered?: boolean;
+      laya_outbound?: {
+        action?: string;
+        fail_open?: boolean;
+        noise_noul?: number;
+        reason?: string;
+      };
+    };
+    assert.equal(detail.kind, "outbound-check");
+    assert.equal(detail.delivered, false);
+    assert.equal(detail.laya_outbound?.action, "drop");
+    assert.equal(detail.laya_outbound?.fail_open, false);
+    assert.equal(detail.laya_outbound?.noise_noul, 0.92);
+  });
+
+  it("fail-opens low/ambiguous answers and delivers", async () => {
+    const store = await tempStore();
+    const { fetch } = recordingFetch(async () =>
+      jsonResponse({
+        answers: {
+          kind: { choice: "drop", confidence: 0.41 },
+          is_chat_noise: { noul: 0.5 },
+          is_work_demand: { noul: 0.48 },
+        },
+      })
+    );
+    const laya = new LayaClient({ fetch, enabled: true, timeoutMs: 200 });
+    let delivered = 0;
+    const result = await publishOutbound(
+      repoRoot,
+      { kind: "digest", text: "maybe a work digest?" },
+      {
+        store,
+        laya,
+        deliver: async () => {
+          delivered += 1;
+        },
+      }
+    );
+    assert.equal(result.gate.action, "allow");
+    assert.equal(result.gate.failOpen, true);
+    assert.equal(result.delivered, true);
+    assert.equal(delivered, 1);
+    const ev = store.list({ type: "agent_completed" }).at(-1);
+    const detail = JSON.parse(ev!.detail_json) as {
+      delivered?: boolean;
+      laya_outbound?: { action?: string; fail_open?: boolean; reason?: string };
+    };
+    assert.equal(detail.delivered, true);
+    assert.equal(detail.laya_outbound?.action, "allow");
+    assert.equal(detail.laya_outbound?.fail_open, true);
+    assert.equal(detail.laya_outbound?.reason, "ambiguous");
+  });
+
+  it("fail-opens timeout, delivers, and does not poison later outbound checks", async () => {
+    const store = await tempStore();
+    let n = 0;
+    const { fetch } = recordingFetch(async (url, init) => {
+      n += 1;
+      if (n === 1) return hangFetch()(url, init);
+      return jsonResponse(outboundNoiseAnswers());
+    });
+    const laya = new LayaClient({ fetch, enabled: true, timeoutMs: 40 });
+    let delivered = 0;
+    const first = await publishOutbound(
+      repoRoot,
+      { kind: "digest", text: "明天一起吃饭" },
+      {
+        store,
+        laya,
+        deliver: async () => {
+          delivered += 1;
+        },
+      }
+    );
+    assert.equal(first.gate.action, "allow");
+    assert.equal(first.gate.failOpen, true);
+    assert.equal(first.gate.reason, "timeout");
+    assert.equal(first.delivered, true);
+    assert.equal(delivered, 1);
+    assert.equal(laya.unavailable, false);
+
+    const second = await publishOutbound(
+      repoRoot,
+      { kind: "digest", text: "明天一起吃饭" },
+      {
+        store,
+        laya,
+        deliver: async () => {
+          delivered += 1;
+        },
+      }
+    );
+    assert.equal(second.gate.action, "drop");
+    assert.equal(second.gate.failOpen, false);
+    assert.equal(second.delivered, false);
+    assert.equal(delivered, 1);
+    assert.equal(n, 2);
+    assert.equal(laya.unavailable, false);
+  });
+
+  it("evaluateOutboundGate records laya_outbound and never delivers", async () => {
+    const store = await tempStore();
+    const { fetch } = recordingFetch(async () => jsonResponse(outboundDemandAnswers()));
+    const laya = new LayaClient({ fetch, enabled: true, timeoutMs: 200 });
+    const result = await evaluateOutboundGate(
+      {
+        title: "ATOM 需求日报",
+        body: "Suggested：Desk OAuth 登录",
+        kind: "digest",
+      },
+      { store, laya }
+    );
+    assert.equal(result.gate.action, "allow");
+    assert.equal(result.gate.failOpen, false);
+    assert.equal(result.delivered, false);
+    assert.equal(result.kind, "digest");
+    const ev = store.list({ type: "agent_completed" }).find((e) =>
+      e.summary.startsWith("outbound-check:")
+    );
+    assert.ok(ev);
+    const detail = JSON.parse(ev!.detail_json) as {
+      laya_outbound?: { action?: string; demand_noul?: number; fail_open?: boolean };
+      delivered?: boolean;
+    };
+    assert.equal(detail.delivered, false);
+    assert.equal(detail.laya_outbound?.action, "allow");
+    assert.equal(detail.laya_outbound?.fail_open, false);
+    assert.equal(detail.laya_outbound?.demand_noul, 0.88);
+  });
+
+  it("fail-opens when Laya is unavailable and still delivers", async () => {
+    const store = await tempStore();
+    const fetch: LayaFetch = async () => {
+      const err = new TypeError("fetch failed");
+      (err as TypeError & { cause: { code: string } }).cause = { code: "ECONNREFUSED" };
+      throw err;
+    };
+    const laya = new LayaClient({ fetch, enabled: true, timeoutMs: 200 });
+    let delivered = 0;
+    const result = await publishOutbound(
+      repoRoot,
+      { kind: "digest", text: "Suggested: Desk OAuth" },
+      {
+        store,
+        laya,
+        deliver: async () => {
+          delivered += 1;
+        },
+      }
+    );
+    assert.equal(result.gate.action, "allow");
+    assert.equal(result.gate.failOpen, true);
+    assert.equal(result.gate.reason, "unavailable");
+    assert.equal(result.delivered, true);
+    assert.equal(delivered, 1);
   });
 });
