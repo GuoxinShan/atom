@@ -53,16 +53,16 @@ describe("Needs-you display grouping", () => {
   it("groups by stored theme tags and keeps cards distinct", () => {
     const groups = groupNeedsYouCandidates(
       [
-        cand("a", "Desk OAuth login", { theme: "OAuth" }),
-        cand("b", "OAuth refresh expiry", { tags: { theme: "OAuth" } }),
-        cand("c", "日历冲突", { theme: "日历" }),
+        cand("a", "Desk OAuth login", { theme: "产品缺陷" }),
+        cand("b", "OAuth refresh expiry", { tags: { theme: "产品缺陷" } }),
+        cand("c", "日历冲突", { theme: "日程/会议" }),
       ],
       workspaces
     );
-    const oauth = groups.find((g) => g.kind === "theme" && g.title === "OAuth");
-    const cal = groups.find((g) => g.kind === "theme" && g.title === "日历");
-    assert.ok(oauth);
-    assert.deepEqual(oauth?.candidate_ids.sort(), ["a", "b"]);
+    const bugs = groups.find((g) => g.kind === "theme" && g.title === "产品缺陷");
+    const cal = groups.find((g) => g.kind === "theme" && g.title === "日程/会议");
+    assert.ok(bugs);
+    assert.deepEqual(bugs?.candidate_ids.sort(), ["a", "b"]);
     assert.deepEqual(cal?.candidate_ids, ["c"]);
     assert.equal(groups.reduce((n, g) => n + g.candidate_ids.length, 0), 3);
   });
@@ -71,13 +71,13 @@ describe("Needs-you display grouping", () => {
     const groups = groupNeedsYouCandidates(
       [
         cand("a", "one", { project: "ATOM" }),
-        cand("b", "two", { tags: { project: "ATOM" } }),
+        cand("b", "two", { tags: { project: "事元" } }),
       ],
       workspaces
     );
     assert.equal(groups.length, 1);
     assert.equal(groups[0]?.kind, "project");
-    assert.equal(groups[0]?.title, "ATOM");
+    assert.equal(groups[0]?.title, "事元");
     assert.deepEqual(groups[0]?.candidate_ids.sort(), ["a", "b"]);
   });
 
@@ -94,11 +94,37 @@ describe("Needs-you display grouping", () => {
 
   it("prefers theme over project on the same card", () => {
     const groups = groupNeedsYouCandidates(
-      [cand("a", "x", { theme: "OAuth", project: "ATOM" })],
+      [cand("a", "x", { theme: "产品缺陷", project: "ATOM" })],
       workspaces
     );
     assert.equal(groups[0]?.kind, "theme");
-    assert.equal(groups[0]?.title, "OAuth");
+    assert.equal(groups[0]?.title, "产品缺陷");
+  });
+
+  it("maps kebab slugs and unknown titles onto the Chinese allowlist", () => {
+    const groups = groupNeedsYouCandidates(
+      [
+        cand("a", "ship checklist", { theme: "release-process" }),
+        cand("b", "rollout notes", { tags: { theme: "release_process" } }),
+        cand("c", "crash on save", { theme: "product-bug" }),
+        cand("d", "oauth leftover", { theme: "OAuth" }),
+        cand("e", "also unknown", { tags: { theme: "foo-bar-baz" } }),
+        cand("f", "old calendar tag", { theme: "日历" }),
+      ],
+      workspaces
+    );
+    const titles = groups.map((g) => g.title).sort();
+    assert.deepEqual(titles, ["其他", "发布与发布流程", "产品缺陷", "日程/会议"].sort());
+    const release = groups.find((g) => g.title === "发布与发布流程");
+    const bugs = groups.find((g) => g.title === "产品缺陷");
+    const other = groups.find((g) => g.title === "其他");
+    const cal = groups.find((g) => g.title === "日程/会议");
+    assert.deepEqual(release?.candidate_ids.sort(), ["a", "b"]);
+    assert.deepEqual(bugs?.candidate_ids, ["c"]);
+    assert.deepEqual(other?.candidate_ids.sort(), ["d", "e"]);
+    assert.deepEqual(cal?.candidate_ids, ["f"]);
+    assert.ok(groups.every((g) => g.kind === "theme"));
+    assert.ok(groups.length <= 4);
   });
 
   it("clusters untagged cards by workspace instead of one flat list", () => {
@@ -149,7 +175,7 @@ describe("Needs-you display grouping", () => {
   it("ignores accepted cards and technical cluster_key ids", () => {
     const groups = groupNeedsYouCandidates(
       [
-        cand("a", "已通过", { status: "accepted", theme: "OAuth" }),
+        cand("a", "已通过", { status: "accepted", theme: "产品缺陷" }),
         cand("b", "剩下的", { cluster_key: "cand_zzzzzz" }),
       ],
       workspaces

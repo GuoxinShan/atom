@@ -17,7 +17,7 @@ import {
   type LayaFetch,
   type OpenItemSnippet,
 } from "./laya.js";
-import { collectTagLabels } from "./laya-tags.js";
+import { DEFAULT_PROJECT_LABELS } from "./theme-vocabulary.js";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -464,8 +464,8 @@ describe("interpretTagAnswers", () => {
     assert.equal(tagged.project, "AI推进");
   });
 
-  it("maps Schedule Mcp to 日历 instead of persisting the slug", () => {
-    assert.equal(resolveTagLabel("Schedule Mcp", DEFAULT_TAG_LABELS), "日历");
+  it("maps Schedule Mcp to 日程/会议 instead of persisting the slug", () => {
+    assert.equal(resolveTagLabel("Schedule Mcp", DEFAULT_TAG_LABELS), "日程/会议");
     const tagged = interpretTagAnswers(
       {
         theme: { choice: "Schedule Mcp", confidence: 0.91 },
@@ -473,15 +473,29 @@ describe("interpretTagAnswers", () => {
       },
       DEFAULT_TAG_LABELS
     );
-    assert.equal(tagged.theme, "日历");
+    assert.equal(tagged.theme, "日程/会议");
     assert.equal(tagged.project, undefined);
     assert.equal(tagged.failOpen, false);
   });
 
-  it("fail-opens missing or unparseable answers", () => {
+  it("maps kebab slugs onto the allowlist and garbage to 其他", () => {
+    const mapped = interpretTagAnswers(
+      {
+        theme: { choice: "release-process", confidence: 0.91 },
+        project: { choice: "product-bug", confidence: 0.9 },
+      },
+      DEFAULT_TAG_LABELS,
+      0.8,
+      DEFAULT_PROJECT_LABELS
+    );
+    assert.equal(mapped.failOpen, false);
+    assert.equal(mapped.theme, "发布与发布流程");
+    assert.equal(mapped.reason, "tagged");
+
     const missing = interpretTagAnswers({}, DEFAULT_TAG_LABELS);
-    assert.equal(missing.failOpen, true);
-    assert.equal(missing.theme, undefined);
+    assert.equal(missing.failOpen, false);
+    assert.equal(missing.theme, "其他");
+    assert.equal(missing.reason, "other");
 
     const garbage = interpretTagAnswers(
       {
@@ -490,10 +504,12 @@ describe("interpretTagAnswers", () => {
       },
       DEFAULT_TAG_LABELS
     );
-    assert.equal(garbage.failOpen, true);
+    assert.equal(garbage.failOpen, false);
+    assert.equal(garbage.theme, "其他");
+    assert.equal(garbage.reason, "other");
   });
 
-  it("treats explicit none as a real untagged decision, not fail-open", () => {
+  it("maps explicit none to 其他 without dropping the candidate", () => {
     const none = interpretTagAnswers(
       {
         theme: { choice: "none", confidence: 0.9 },
@@ -502,8 +518,8 @@ describe("interpretTagAnswers", () => {
       DEFAULT_TAG_LABELS
     );
     assert.equal(none.failOpen, false);
-    assert.equal(none.reason, "none");
-    assert.equal(none.theme, undefined);
+    assert.equal(none.reason, "other");
+    assert.equal(none.theme, "其他");
     assert.equal(none.project, undefined);
   });
 
@@ -517,30 +533,6 @@ describe("interpretTagAnswers", () => {
     );
     assert.equal(weak.failOpen, true);
     assert.equal(weak.theme, undefined);
-  });
-});
-
-describe("collectTagLabels", () => {
-  it("keeps Chinese titles from workspaces and group names", () => {
-    const labels = collectTagLabels({
-      workspaces: [
-        {
-          id: "ai-advance",
-          machine: "test",
-          path: "/ai-advance",
-          kind: "work",
-          match: ["AI推进", "ai-advance", "schedule/mcp"],
-          tags: ["lingee"],
-        },
-      ],
-      groupNames: ["【AI推进】", "mcpApp开发群"],
-      existing: [{ theme: "OAuth" }],
-    });
-    const titles = labels.map((l) => l.title);
-    assert.equal(titles.includes("AI推进"), true);
-    assert.equal(titles.includes("OAuth"), true);
-    assert.equal(titles.includes("mcpApp开发群"), true);
-    assert.equal(titles.includes("schedule/mcp"), false);
   });
 });
 
@@ -721,7 +713,8 @@ describe("LayaClient", () => {
     assert.equal(questions?.theme?.type, "choice");
     assert.equal(questions?.project?.type, "choice");
     assert.equal("AI推进" in (questions?.theme?.criteria ?? {}), true);
-    assert.equal("none" in (questions?.theme?.criteria ?? {}), true);
+    assert.equal("其他" in (questions?.theme?.criteria ?? {}), true);
+    assert.equal("none" in (questions?.theme?.criteria ?? {}), false);
   });
 
   it("fail-opens tag predict on timeout without marking unavailable", async () => {
@@ -745,7 +738,7 @@ describe("LayaClient", () => {
 
     const second = await client.tagCandidate({ title: "日程冲突提醒" });
     assert.equal(second.failOpen, false);
-    assert.equal(second.theme, "日历");
+    assert.equal(second.theme, "日程/会议");
     assert.equal(n, 2);
   });
 

@@ -21,9 +21,8 @@ import {
   type LayaMergeGate,
   type LayaTagGate,
   type OpenItemSnippet,
-  type TagLabel,
 } from "../agents/laya.js";
-import { tagLabelsForExtract } from "../agents/laya-tags.js";
+import { tagLabelsForExtract } from "../agents/theme-vocabulary.js";
 import { appendLayaMergeDecision, isLayaMergeNow } from "./laya-merge.js";
 import { recordExtractFinished } from "./runtime-meta.js";
 
@@ -176,10 +175,7 @@ export async function runExtract(
     let layaMerged = 0;
     let layaTagged = 0;
     let layaFailOpen = !layaAvailable && Boolean(laya?.isEnabled());
-    const tagLabels: TagLabel[] = tagLabelsForExtract(
-      opts?.repoRoot,
-      candidatesByStatus(store, "suggested")
-    );
+    const tagLabels = tagLabelsForExtract(opts?.repoRoot);
     for (const p of proposals) {
       const key = p.cluster_key ?? p.title;
       if (seenKeys.has(key)) {
@@ -274,16 +270,12 @@ export async function runExtract(
         layaTags = await laya.tagCandidate({
           title: p.title,
           body: p.body,
-          labels: tagLabels,
+          themeLabels: tagLabels.themes,
+          projectLabels: tagLabels.projects,
         });
         if (layaTags.failOpen) layaFailOpen = true;
         else if (layaTags.theme || layaTags.project) {
           layaTagged += 1;
-          for (const title of [layaTags.theme, layaTags.project]) {
-            if (title && !tagLabels.some((l) => l.title === title)) {
-              tagLabels.push({ title });
-            }
-          }
           console.log(
             `[extract] laya tagged ${p.title} theme=${layaTags.theme ?? "-"} project=${layaTags.project ?? "-"}`
           );

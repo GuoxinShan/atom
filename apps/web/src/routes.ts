@@ -42,6 +42,7 @@ import {
   PREFERENCE_MEMORY_FILE,
   readLastPreferenceRsi,
   LayaClient,
+  loadThemeVocabulary,
 } from "@atom/core";
 import type { Daemon } from "./context.js";
 import { json, readJson } from "./http.js";
@@ -137,7 +138,11 @@ export async function handleApi(
     const suggested = status === "suggested" ? list : candidatesByStatus(daemon.store, "suggested");
     json(res, {
       candidates: list,
-      groups: groupNeedsYouCandidates(suggested, loadGroupingWorkspaces(daemon.repoRoot)),
+      groups: groupNeedsYouCandidates(
+        suggested,
+        loadGroupingWorkspaces(daemon.repoRoot),
+        loadThemeVocabulary(daemon.repoRoot)
+      ),
     });
     return true;
   }
