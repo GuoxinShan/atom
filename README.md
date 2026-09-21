@@ -67,7 +67,7 @@ pnpm atom run --agent grok-cli
 
 ### Dispatch Desk
 
-Same daemon, same SQLite. Home is **需要你拍板** (Approve/Reject). **系统已处理** is a read-only 24h gate-digest. **我的偏好** shows `data/preference-memory.json`. **高级** hides the Atoms log placeholder. Lead NL configures sources.
+Same daemon, same SQLite. Home is **需要你拍板** (Approve/Reject). Cards fold into collapsible **theme/project groups**; untagged cards cluster by workspace + title stem / `cluster_key`. Approve/Reject is still per card. Hard-refresh `http://127.0.0.1:8787` after pull. **系统已处理** is a read-only 24h gate-digest. **我的偏好** shows `data/preference-memory.json`. **高级** hides the Atoms log placeholder. Lead NL configures sources.
 
 ```bash
 pnpm atom serve
@@ -144,7 +144,7 @@ Desk compose is **manual**. `restart: "no"` so Docker Desktop coming up at login
 
 ```bash
 docker compose up -d          # build + start Desk on :8787
-# open http://127.0.0.1:8787
+# open http://127.0.0.1:8787  (hard-refresh so Needs you shows theme/project groups)
 docker compose logs -f desk   # serve + [cron:poll-yzj-15m] ticks
 docker compose down           # stop (data/, out/, and yzj/grok login volumes stay)
 ```

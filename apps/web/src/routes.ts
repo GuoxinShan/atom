@@ -3,6 +3,8 @@ import path from "node:path";
 import type http from "node:http";
 import {
   candidatesByStatus,
+  groupNeedsYouCandidates,
+  loadGroupingWorkspaces,
   approveCandidate,
   rejectCandidate,
   rejectNoiseCandidates,
@@ -132,7 +134,11 @@ export async function handleApi(
       | "merged"
       | null;
     const list = candidatesByStatus(daemon.store, status ?? undefined);
-    json(res, { candidates: list });
+    const suggested = status === "suggested" ? list : candidatesByStatus(daemon.store, "suggested");
+    json(res, {
+      candidates: list,
+      groups: groupNeedsYouCandidates(suggested, loadGroupingWorkspaces(daemon.repoRoot)),
+    });
     return true;
   }
 

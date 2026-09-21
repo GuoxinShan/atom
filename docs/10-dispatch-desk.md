@@ -28,7 +28,7 @@ Projects optimizes *shipping code over months*. ATOM optimizes *not losing cited
 
 **Home = Needs you.** Only surfaces that need a human gate:
 
-1. Suggested candidates (approve / reject / merge)
+1. Suggested candidates (approve / reject / merge) — **display-grouped** by stored `theme` / `project` tags, else a workspace + title-stem / `cluster_key` heuristic. Same-request merge is unchanged; groups nest distinct cards, they do not fold them.
 2. Checklist human_gate_ack
 3. Outbound digest / chat post confirm (when enabled)
 
@@ -51,7 +51,8 @@ Home is **Needs you**, not a coordinator chat and not a three-column settled boa
 ```
 ┌────────────────────────────────────────┬──────────────────┐
 │ 需要你拍板 (Needs you) — default home  │ Matter detail    │
-│ · Suggested (Approve / Reject)         │ + human CTAs     │
+│ · Suggested, folded by theme/project   │ + human CTAs     │
+│   (Approve / Reject still per card)    │                  │
 │ · Checklist ack (when any)             │                  │
 │ · Outbound confirm (when enabled)      │ ▸ Listening      │
 │                                        │ ▸ Lead           │

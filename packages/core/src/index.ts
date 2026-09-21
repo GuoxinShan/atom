@@ -3,6 +3,7 @@ export * from "./schema/ids.js";
 export * from "./store/db.js";
 export * from "./store/events.js";
 export * from "./store/candidates.js";
+export * from "./store/needs-groups.js";
 export * from "./agents/heuristic.js";
 export * from "./agents/noise.js";
 export * from "./agents/grok-cli.js";

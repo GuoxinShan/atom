@@ -1,4 +1,4 @@
-import { CandidateStatus, CandidateView, Ref } from "../schema/types.js";
+import { CandidateStatus, CandidateTags, CandidateView, Ref } from "../schema/types.js";
 import { EventStore } from "./events.js";
 
 function parseRefs(raw: string): Ref[] {
@@ -18,6 +18,28 @@ function parseDetail(raw: string): Record<string, unknown> {
   }
 }
 
+function optionalText(v: unknown): string | undefined {
+  if (typeof v !== "string") return undefined;
+  const s = v.trim();
+  return s || undefined;
+}
+
+function parseTags(raw: unknown): CandidateTags | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const o = raw as Record<string, unknown>;
+  const theme = optionalText(o.theme);
+  const project = optionalText(o.project);
+  const rest = { ...o };
+  delete rest.theme;
+  delete rest.project;
+  if (!theme && !project && Object.keys(rest).length === 0) return undefined;
+  return {
+    ...(theme ? { theme } : {}),
+    ...(project ? { project } : {}),
+    ...rest,
+  };
+}
+
 /** Fold events into candidate projections. */
 export function projectCandidates(store: EventStore): CandidateView[] {
   const events = store.list({ limit: 5000 });
@@ -28,6 +50,9 @@ export function projectCandidates(store: EventStore): CandidateView[] {
     const refs = parseRefs(ev.refs_json);
 
     if (ev.type === "candidate_proposed") {
+      const tags = parseTags(detail.tags);
+      const theme = optionalText(detail.theme) ?? tags?.theme;
+      const project = optionalText(detail.project) ?? tags?.project;
       map.set(ev.subject_id, {
         id: ev.subject_id,
         title: String(detail.title ?? ev.summary),
@@ -36,7 +61,10 @@ export function projectCandidates(store: EventStore): CandidateView[] {
         status: "suggested",
         refs,
         updated_at: ev.created_at,
-        cluster_key: detail.cluster_key ? String(detail.cluster_key) : undefined,
+        cluster_key: optionalText(detail.cluster_key),
+        ...(theme ? { theme } : {}),
+        ...(project ? { project } : {}),
+        ...(tags ? { tags } : {}),
       });
       continue;
     }

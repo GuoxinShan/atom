@@ -43,7 +43,7 @@ type Ref = {
 | type | subject | refs required? | detail (sketch) |
 |---|---|---|---|
 | `message_ingested` | message id | no (self) | raw fields, source adapter id, cursor |
-| `candidate_proposed` | candidate id | **yes (≥1)** | title, body, confidence, cluster_key |
+| `candidate_proposed` | candidate id | **yes (≥1)** | title, body, confidence, cluster_key, optional theme/project tags (display grouping) |
 | `decision_accepted` | candidate id | optional | note |
 | `decision_rejected` | candidate id | optional | reason |
 | `decision_merged` | surviving candidate id | optional | `merged_ids[]` |
@@ -69,6 +69,7 @@ Derived fields (examples):
 - `status`: `suggested` \| `accepted` \| `rejected` \| `merged`
 - `refs[]` union from propose + later attachments
 - `updated_at` = last related atom time
+- optional `theme` / `project` (or `tags.theme` / `tags.project`) for Desk grouping; `cluster_key` remains the same-request skip key
 
 Rebuildable anytime by replaying atoms for `subject_id`.
 
