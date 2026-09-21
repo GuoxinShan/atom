@@ -24,6 +24,7 @@ import {
   ingestFromSource,
   runExtract,
   runMergeSweep,
+  runTagBackfill,
   runPreferenceRsi,
   runGateDigest,
   GateDigestError,
@@ -184,6 +185,16 @@ export async function handleApi(
   if (method === "POST" && p === "/api/merge-sweep") {
     const body = await readJson(req);
     const result = await runMergeSweep(daemon.store, {
+      apply: body.apply === true,
+      repoRoot: daemon.repoRoot,
+    });
+    json(res, { ok: true, ...result });
+    return true;
+  }
+
+  if (method === "POST" && p === "/api/tag-backfill") {
+    const body = await readJson(req);
+    const result = await runTagBackfill(daemon.store, {
       apply: body.apply === true,
       repoRoot: daemon.repoRoot,
     });

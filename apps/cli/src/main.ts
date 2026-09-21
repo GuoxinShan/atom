@@ -27,6 +27,7 @@ Usage:
   pnpm atom pr-open <handoffOrCandidateId> --url <prUrl> [--branch ...] [--force]
   pnpm atom reject-noise
   pnpm atom merge-sweep [--apply]
+  pnpm atom tag-backfill [--apply]
   pnpm atom outbound-check [--title ...] [--body ... | --path <file>] [--kind digest]
   pnpm atom preference-rsi [--dry-run | --apply]
   pnpm atom gate-digest [--since 24h|7d|YYYY-MM-DD|ISO] [--json]
@@ -184,6 +185,29 @@ async function main() {
       }>;
     }>("POST", "/api/merge-sweep", { apply });
     printMergeSweep(data);
+    return;
+  }
+
+  if (cmd === "tag-backfill" || cmd === "tags-backfill") {
+    const apply = Boolean(flags.apply);
+    const data = await apiOk<{
+      apply: boolean;
+      considered: number;
+      tagged: number;
+      skipped: number;
+      failOpen: boolean;
+      layaAvailable: boolean;
+      reason?: string;
+      items: Array<{
+        id: string;
+        title: string;
+        theme?: string;
+        project?: string;
+        via: string;
+        reason: string;
+      }>;
+    }>("POST", "/api/tag-backfill", { apply });
+    printTagBackfill(data);
     return;
   }
 
@@ -585,6 +609,59 @@ function printMergeSweep(data: {
   }
   if (!data.apply) {
     console.log("(no writes — pass --apply to merge)");
+  }
+}
+
+function printTagBackfill(data: {
+  apply: boolean;
+  considered: number;
+  tagged: number;
+  skipped?: number;
+  failOpen?: boolean;
+  layaAvailable?: boolean;
+  reason?: string;
+  items: Array<{
+    id: string;
+    title: string;
+    theme?: string;
+    project?: string;
+    via: string;
+    reason: string;
+  }>;
+}) {
+  const mode = data.apply ? "apply" : "dry-run";
+  if (data.reason === "laya-disabled" && !data.tagged) {
+    console.log(`tag-backfill (${mode}): Laya disabled (LAYA_ENABLED=0) — nothing to do`);
+    return;
+  }
+  if ((data.reason === "laya-unavailable" || data.layaAvailable === false) && !data.tagged) {
+    console.log(
+      `tag-backfill (${mode}): Laya unavailable — fail-open (cards unchanged). Start Laya or check LAYA_URL.`
+    );
+    console.log(`open Needs-you items: ${data.considered}`);
+    return;
+  }
+  if (!data.tagged) {
+    console.log(
+      `OK tag-backfill (${mode}): open=${data.considered} skipped=${data.skipped ?? 0} nothing to tag`
+    );
+    return;
+  }
+  console.log(
+    `OK tag-backfill (${mode}): open=${data.considered} would_tag=${data.tagged}${
+      data.apply ? " wrote=yes" : " wrote=no"
+    }`
+  );
+  if (data.layaAvailable === false) {
+    console.log("Laya unavailable — untagged cards left unchanged; kebab/alias titles were remapped locally.");
+  }
+  for (const it of data.items ?? []) {
+    const proj = it.project ? ` project=${it.project}` : "";
+    console.log(`- ${it.id}  ${it.title}`);
+    console.log(`    theme=${it.theme ?? "-"} via=${it.via}${proj}`);
+  }
+  if (!data.apply) {
+    console.log("(no writes — pass --apply to persist Chinese allowlist tags)");
   }
 }
 

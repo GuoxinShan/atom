@@ -82,6 +82,7 @@ Use **`POST /api/run`** from the CLI. Keep **`POST /hooks/run`** for inbound web
 | `reject <id>` | `POST /api/reject` `{id, reason?}` |
 | `reject-noise` | `POST /api/reject-noise` |
 | `merge-sweep [--apply]` | `POST /api/merge-sweep` `{apply?}` (default dry-run) |
+| `tag-backfill [--apply]` | `POST /api/tag-backfill` `{apply?}` (default dry-run; suggested only) |
 | `outbound-check [--title …] [--body … \| --path]` | `POST /api/outbound-check` `{title?, body?, kind?}` (never sends) |
 | `preference-rsi [--dry-run \| --apply]` | `POST /api/preference-rsi` `{apply?}` (default dry-run; never sends) |
 | `gate-digest [--since …] [--json]` | `GET` or `POST /api/gate-digest` `{since?}` (read-only; default last 24h; never sends) |

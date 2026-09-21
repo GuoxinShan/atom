@@ -15,6 +15,7 @@ export * from "./pipeline/extract.js";
 export * from "./pipeline/laya-merge.js";
 export * from "./pipeline/laya-outbound.js";
 export * from "./pipeline/merge-sweep.js";
+export * from "./pipeline/tag-backfill.js";
 export * from "./pipeline/preference-rsi.js";
 export * from "./pipeline/gate-digest.js";
 export * from "./agents/preference-memory.js";

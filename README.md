@@ -50,6 +50,7 @@ It does not fall back to in-process `@atom/core`. Optional `ATOM_API_AUTO_START=
 | `pnpm atom reject <id>` | append `decision_rejected` |
 | `pnpm atom reject-noise` | reject suggested junk (`bot digest` / `收到✅` / log dumps) as `decision_rejected` reason `noise-heuristic` |
 | `pnpm atom merge-sweep [--apply]` | one-shot Laya fold of existing open Needs-you twins (dry-run default; `--apply` writes) |
+| `pnpm atom tag-backfill [--apply]` | one-shot Laya theme/project tags on existing suggested cards (dry-run default; `--apply` writes Chinese allowlist titles) |
 | `pnpm atom outbound-check [--title …] [--body … \| --path <file>] [--kind digest]` | Laya pre-post gate (allow/drop/hold); never sends |
 | `pnpm atom preference-rsi [--dry-run \| --apply]` | daily Desk-feedback loop: tune Laya floors / allowlists (dry-run default; `--apply` writes `data/preference-memory.json`) |
 | `pnpm atom gate-digest [--since 24h\|7d\|YYYY-MM-DD\|ISO] [--json]` | read-only Laya gate acceptance digest for the morning report (default last 24h; markdown stdout, JSON for Desk) |
@@ -108,6 +109,15 @@ After deploy, fold **existing** open Needs-you twins that predate the live extra
 pnpm atom serve                 # daemon must be up
 pnpm atom merge-sweep           # dry-run: print pairs, write nothing
 pnpm atom merge-sweep --apply   # write decision_merged on losers
+```
+
+After #26, retag **existing** open Needs-you cards that still sit in heuristic leftovers (`Schedule Mcp`, `AI推进·Stenography Lingee`, …) or 「其他」. Same `LAYA_URL` / timeout as extract; Laya must be up for untagged cards. Kebab aliases remap locally even if Laya is down.
+
+```bash
+pnpm atom serve                 # daemon must be up (or docker compose up -d --build)
+pnpm atom tag-backfill          # dry-run: print tags, write nothing
+pnpm atom tag-backfill --apply  # write candidate_tagged overlays
+# hard-refresh http://127.0.0.1:8787 — heuristic groups should shrink
 ```
 
 Before a human send (Desk / 干饭人), check outbound content. Same `LAYA_URL` / timeout; fail-open allow if Laya is down. **Does not post to Yunzhijia.**
