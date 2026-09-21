@@ -15,6 +15,7 @@ export type CronSchedulerHandle = {
 /**
  * Interval poller started with the Desk HTTP server.
  * Replaces launchd `com.guoxinshan.atom.morning-run` / `atom-morning-run.sh`.
+ * Serve itself is `docker compose up` or `pnpm serve` — not a login item.
  * Toggle via `data/triggers.json` (`kind: "cron"`). Set `ATOM_CRON=0` to disable.
  */
 export function startCronScheduler(daemon: Daemon): CronSchedulerHandle | null {

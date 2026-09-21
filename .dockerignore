@@ -1,0 +1,15 @@
+.git
+.github
+node_modules
+**/node_modules
+dist
+**/dist
+out
+**/*.log
+**/.DS_Store
+*.tgz
+.env
+.env.*
+data/*.sqlite
+data/*.sqlite-*
+data/preference-memory.json

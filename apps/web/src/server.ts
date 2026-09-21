@@ -10,6 +10,8 @@ import { file, json } from "./http.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "public");
 const port = Number(process.env.ATOM_WEB_PORT ?? 8787);
+/** Default loopback so `pnpm serve` stays local. Docker sets `0.0.0.0`. */
+const host = (process.env.ATOM_WEB_HOST ?? "127.0.0.1").trim() || "127.0.0.1";
 
 async function main() {
   const daemon = await createDaemon();
@@ -25,8 +27,9 @@ async function main() {
     }
   });
 
-  server.listen(port, "127.0.0.1", () => {
-    console.log(`ATOM desk http://127.0.0.1:${port}`);
+  server.listen(port, host, () => {
+    const browseHost = host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;
+    console.log(`ATOM desk http://${browseHost}:${port} (bind ${host})`);
     console.log(`db: ${process.env.ATOM_DB ?? defaultDbPath(daemon.repoRoot)}`);
     startCronScheduler(daemon);
   });

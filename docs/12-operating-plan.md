@@ -15,26 +15,29 @@ ATOM is a **cited demand inbox + human triage desk**, not a coding factory and n
 
 | When (Asia/Shanghai) | Who | What |
 |---|---|---|
-| Boot / login | launchd `com.guoxinshan.atom.serve` | `pnpm serve` stays up on Rock-Shan (Desk API + in-process poll) |
+| You start it | `docker compose up -d` (or `pnpm serve`) | Desk API + in-process poll on Rock-Shan. **Not** a login item / LaunchAgent; compose uses `restart: "no"`. |
 | Weekdays 08:00–20:00, every 15m | Desk daemon | Same pipeline as `POST /api/run` for `yzj-ai-advance` (configured groups ∪ ~8 recent private chats). Skip nights/weekends/overlap. |
 | After a morning tick | 干饭人 / you | `pnpm atom gate-digest` — paste the markdown if you want a gate-acceptance line in the group; JSON is `GET /api/gate-digest` |
 | Anytime | You | Open Desk → **Needs you** only (approve / reject / checklist ack) |
 | After triage | You | `pnpm atom preference-rsi` (dry-run) then `--apply` if the deltas look right |
 
-Toggle the poll in `data/triggers.json` (`id: poll-yzj-15m`). Restart serve after edits. `ATOM_CRON=0` disables the timer.
+Toggle the poll in `data/triggers.json` (`id: poll-yzj-15m`). Restart the container / serve after edits. `ATOM_CRON=0` disables the timer.
 
-**Dogfood (Mac):** pull, restart **only** `com.guoxinshan.atom.serve`, then disable/remove the old morning-run agent:
+**Dogfood (Mac):** no LaunchAgents. Start Desk yourself:
 
 ```bash
-launchctl kickstart -k gui/$(id -u)/com.guoxinshan.atom.serve
-launchctl bootout gui/$(id -u)/com.guoxinshan.atom.morning-run
-rm -f ~/Library/LaunchAgents/com.guoxinshan.atom.morning-run.plist
+docker compose up -d
+# open http://127.0.0.1:8787
+# Laya remains http://127.0.0.1:8790 on the Mac (LAYA_URL=http://host.docker.internal:8790 in compose)
+docker compose down
 ```
+
+Host `pnpm serve` is still valid. Do not reinstall `com.guoxinshan.atom.serve` or `com.guoxinshan.atom.morning-run`. Live 云之家 ingest from the Linux image needs a Linux `yzj-cli` (Mac CLI + Keychain do not cross Docker Desktop) — see README **Yunzhijia from Docker**.
 
 Rules:
 - Autonomous job may **only** ingest + extract + write digest projection.
 - Never auto-approve, never auto-handoff `--run`, never send 云之家 without confirm.
-- If serve is down, there is no timed pull (the timer lives in the daemon). Keep `com.guoxinshan.atom.serve` loaded; do not add a second DB writer path.
+- If serve is down, there is no timed pull (the timer lives in the daemon). Start compose / `pnpm serve` when you want the poll; do not add a second DB writer path.
 
 ## 3. After Accept (交付边界)
 
@@ -92,13 +95,13 @@ Week 1 engineering: score title + acceptance only; strip generic tooling mention
 ## 6. Two-week execution
 
 ### Week 1 — make dogfood boring
-1. launchd plist: keep `atom serve` alive. In-process 15m poll (`data/triggers.json` `poll-yzj-15m`). Remove `com.guoxinshan.atom.morning-run`.
+1. Docker compose (or `pnpm serve`) keeps `atom serve` alive when you start it. In-process 15m poll (`data/triggers.json` `poll-yzj-15m`). No LaunchAgents.
 2. Routing haystack fix (上文 §5)
 3. Desk empty state copy: “今天没有要你拍板的” + last run time
 4. Doc link from README → this plan
 
 ### Week 2 — only if Week 1 feels sticky
-1. Optional tighter hours / extra source in `data/triggers.json` (no second LaunchAgent)
+1. Optional tighter hours / extra source in `data/triggers.json` (no LaunchAgent)
 2. “Accept & handoff” (still no auto `--run`)
 3. Dedup UI for same-ref duplicates
 4. Wire one outbound sink to a **draft** (not send) for nightly digest confirm — `pnpm atom outbound-check` / `POST /api/outbound-check` first; Desk remains the send authority.

@@ -4,7 +4,7 @@
 |---|---|
 | Language | TypeScript, Node 22 |
 | Package manager | pnpm |
-| Run | `tsx` |
+| Run | `tsx` (`pnpm serve` or Docker compose; no LaunchAgent) |
 | DB | SQLite (`better-sqlite3` or `libsql`) |
 | Schedule | in-process interval on `pnpm serve` (`data/triggers.json`) |
 | LLM | OpenAI-compatible API + Zod structured output |
