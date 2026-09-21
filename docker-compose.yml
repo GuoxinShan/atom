@@ -1,0 +1,34 @@
+# ATOM Desk only. Laya stays in its own stack on the Mac
+# (`~/dev/laya-docker` → http://127.0.0.1:8790). Do not add a Laya service here.
+#
+# Manual start — this file does not use restart: always / unless-stopped,
+# which would bring Desk back when Docker Desktop launches at login.
+# No LaunchAgent / login item.
+#
+#   docker compose up -d          # start Desk on :8787
+#   docker compose down           # stop
+#   docker compose logs -f desk   # follow serve + poll-yzj-15m ticks
+services:
+  desk:
+    build: .
+    ports:
+      - "8787:8787"
+    environment:
+      ATOM_WEB_HOST: "0.0.0.0"
+      ATOM_WEB_PORT: "8787"
+      # Mac Docker Desktop: host.docker.internal → the Mac, where Laya listens.
+      LAYA_URL: "${LAYA_URL:-http://host.docker.internal:8790}"
+      LAYA_ENABLED: "${LAYA_ENABLED:-}"
+      TZ: Asia/Shanghai
+    extra_hosts:
+      # Linux Docker Engine: same hostname as Desktop. Does not expose host
+      # binaries (yzj-cli / grok); those are spawn() CLIs, not HTTP.
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./data:/app/data
+      - ./out:/app/out
+    restart: "no"
+    init: true
+    # Optional Linux yzj-cli / grok bind-mounts — see README "Yunzhijia from Docker".
+    # A macOS yzj-cli binary will not exec in this Linux image; Mac Keychain
+    # is not visible. Do not set network_mode: host hoping to reuse host CLIs.

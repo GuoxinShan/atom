@@ -28,7 +28,9 @@ pnpm atom serve          # alias of pnpm web
 # API:   http://127.0.0.1:8787/api/…
 ```
 
-`ATOM_WEB_PORT` changes the listen port. CLI defaults to `http://127.0.0.1:$ATOM_WEB_PORT` or override with `ATOM_API_BASE`.
+`ATOM_WEB_PORT` changes the listen port. `ATOM_WEB_HOST` changes the bind address (default `127.0.0.1` for `pnpm serve`; Docker compose sets `0.0.0.0`). CLI defaults to `http://127.0.0.1:$ATOM_WEB_PORT` or override with `ATOM_API_BASE`.
+
+Docker alternative (no LaunchAgent): `docker compose up -d` — same daemon, published `8787:8787`. See README **Docker (Desk)**.
 
 If the API is down, the CLI prints one line and exits — it does **not** import `@atom/core` and run in-process:
 
@@ -51,7 +53,7 @@ Human gates stay human. `/api/checklist-ack` requires `{ "ack": true }` and will
 
 ## Cron (in-process)
 
-`pnpm serve` / `com.guoxinshan.atom.serve` starts the 15-minute poll. Do not load `com.guoxinshan.atom.morning-run`.
+`pnpm serve` or `docker compose up` starts the 15-minute poll. Do not load LaunchAgents (`com.guoxinshan.atom.serve` / `com.guoxinshan.atom.morning-run`).
 
 ```bash
 # one-shot still works — daemon must already be up
