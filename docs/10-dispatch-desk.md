@@ -52,10 +52,10 @@ Home is **Needs you**, not a coordinator chat and not a three-column settled boa
 ```
 ┌────────────────────────────────────────┬──────────────────┐
 │ 需要你拍板 (Needs you) — default home  │ Matter detail    │
-│ · Suggested, folded by theme/project   │ + human CTAs     │
-│   (通过 / 拒绝 still per card)         │                  │
-│ · 规格待审 (批准规格 / 退回 / 派给 Lead)│                  │
-│ · Checklist ack (when any)             │                  │
+│ · Suggested, folded by theme/project   │ 【摘要】         │
+│   (通过 / 拒绝 still per card)         │ 【要你拍板】     │
+│ · 规格待审 (批准规格 / 退回 / 派给 Lead)│ 【可选动作】     │
+│ · Checklist ack (when any)             │ 短 / 长          │
 │ · Outbound confirm (when enabled)      │ ▸ Listening      │
 │                                        │ ▸ Lead           │
 │                                        │ ▸ Matters        │
@@ -64,6 +64,24 @@ Home is **Needs you**, not a coordinator chat and not a three-column settled boa
 │                                        │ ▸ Outbound       │
 └────────────────────────────────────────┴──────────────────┘
 ```
+
+## Brief interaction
+
+Needs-you cards, the opened theme group, and the matter detail share one contract. It is how Desk presents gates that already exist. It is not a new agent, routine, or chat.
+
+1. **【摘要】** — what changed, plus why this is on Needs you (cite + one short reason). The summary is already on screen. Desk does not ask whether you want to see it.
+2. **【要你拍板】** — the decision, urgency first within a theme group (higher confidence, then older `updated_at`; display only). Each option is a verb plus one line of consequence:
+   - **A 通过** — 记为已通过，草稿进「规格待审」。不外发、不开工。 / **B 拒绝** — 移出今天的队列。只记在本机。
+   - **A 批准规格** — 记为已批准。还不会写交接包，也不会外发。 / **B 退回修改** — 留在规格待审。
+   - **A 派给 Lead** — 确认后写出本机交接包。不编码、不发云之家。 / **B 退回修改** — 回到待审，不写交接包。
+   - **A 仍要我跟** — 重新放回 Needs you。只改本机。 / **B 保持关闭** — 留在系统已处理。
+3. **【可选动作】** — **回群同步** and **先记下**. Default is do not send. 回群同步 stays disabled (`即将推出 · 不会发送`) until an outbound send is actually wired. 先记下 writes a local note in this browser. Neither sends 云之家, and Desk never auto-sends 云之家.
+
+**Confirm** (`window.confirm`) runs only before **派给 Lead** and any future 发群. 通过, 拒绝, 批准规格, 退回修改, 确认清单, 仍要我跟, 保持关闭, and 先记下 apply on the first click.
+
+**短 / 长** on the matter detail swaps the same item between short (title + 【摘要】 + the two action sections) and long (full body and 验收标准, or the spec edit form) without leaving the item or reloading the queue.
+
+Empty Needs you stays **今天没有要你拍板的**.
 
 Accepted / Rejected are settled — they live under the **Matters** drawer, not the home queue.
 
@@ -81,7 +99,7 @@ Lead / Listening / providers / workspaces / outbound stay **collapsed drawers** 
 ## Primary verbs
 
 1. Approve / Reject (triage)
-2. 批准规格 / 退回修改 / 派给 Lead (spec review; handoff is confirm-gated)
+2. 批准规格 / 退回修改 / 派给 Lead (spec review; only handoff / 发群 is confirm-gated)
 3. Ask Lead (NL config + route explain)
 4. Open Matter (spec → handoff → checklist → pr)
 

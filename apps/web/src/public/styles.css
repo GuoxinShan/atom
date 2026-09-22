@@ -18,7 +18,7 @@
   --text-on-accent: #faf7f1;
   --radius: 8px;
   --radius-lg: 12px;
-  --rail-right: 280px;
+  --rail-right: 400px;
   --shadow-paper: 0 1px 0 rgba(44, 41, 36, 0.04);
   font-family: ui-sans-serif, "PingFang SC", Inter, "Segoe UI", "Helvetica Neue", "Noto Sans SC", system-ui, sans-serif;
   letter-spacing: -0.006em;
@@ -54,7 +54,7 @@ body {
 }
 .brand h1 span { color: var(--muted); font-weight: 450; }
 .nav { display: flex; flex-wrap: wrap; gap: 2px; min-width: 0; }
-.nav button, .composer button, .card-actions button, .cta {
+.nav button, .composer button, .card-actions button, .choice button, .optional-strip button, .brief-len button, .cta {
   background: transparent;
   color: var(--text);
   border: 1px solid var(--line);
@@ -80,23 +80,27 @@ body {
   color: var(--text);
   background: var(--panel);
 }
-.composer button.primary, .cta.primary, .card-actions button.primary,
+.composer button.primary, .cta.primary, .card-actions button.primary, .choice button.primary,
 .pref-actions button.primary, .rsi-actions button.primary, .chip-add button.primary {
   border-color: var(--accent);
   color: var(--text-on-accent);
   background: var(--accent);
   font-weight: 500;
 }
-.composer button.primary:hover, .cta.primary:hover, .card-actions button.primary:hover,
+.composer button.primary:hover, .cta.primary:hover, .card-actions button.primary:hover, .choice button.primary:hover,
 .pref-actions button.primary:hover, .rsi-actions button.primary:hover, .chip-add button.primary:hover {
   background: var(--accent-hover);
   border-color: var(--accent-hover);
   color: var(--text-on-accent);
 }
 .card-actions button[data-act="approve"],
+.choice button[data-act="approve"],
 .card-actions button[data-ack],
+.choice button[data-ack],
 .card-actions button[data-spec-approve],
-.card-actions button[data-handoff] {
+.choice button[data-spec-approve],
+.card-actions button[data-handoff],
+.choice button[data-handoff] {
   border-color: var(--line-strong);
   color: var(--text);
   background: var(--card);
@@ -105,16 +109,25 @@ body {
   padding: 6px 14px;
 }
 .card-actions button[data-act="approve"]:hover,
+.choice button[data-act="approve"]:hover,
 .card-actions button[data-ack]:hover,
+.choice button[data-ack]:hover,
 .card-actions button[data-spec-approve]:hover,
-.card-actions button[data-handoff]:hover {
+.choice button[data-spec-approve]:hover,
+.card-actions button[data-handoff]:hover,
+.choice button[data-handoff]:hover {
   border-color: var(--ink);
   color: var(--text);
   background: var(--bg-raised);
 }
 .card-actions button.ghost,
+.choice button.ghost,
 .card-actions button[data-act="reject"],
-.card-actions button[data-spec-return] {
+.choice button[data-act="reject"],
+.card-actions button[data-spec-return],
+.choice button[data-spec-return],
+.choice button[data-reopen],
+.choice button[data-keep-closed] {
   background: transparent;
   color: var(--muted);
   border-color: transparent;
@@ -122,8 +135,13 @@ body {
   padding: 6px 12px;
 }
 .card-actions button.ghost:hover,
+.choice button.ghost:hover,
 .card-actions button[data-act="reject"]:hover,
-.card-actions button[data-spec-return]:hover {
+.choice button[data-act="reject"]:hover,
+.card-actions button[data-spec-return]:hover,
+.choice button[data-spec-return]:hover,
+.choice button[data-reopen]:hover,
+.choice button[data-keep-closed]:hover {
   color: var(--text);
   border-color: var(--line);
   background: var(--panel);
@@ -455,6 +473,103 @@ body {
   border-color: color-mix(in srgb, var(--line) 75%, transparent);
 }
 .card-actions { display: flex; gap: 8px; margin-top: 12px; }
+.brief-label {
+  margin: 10px 0 4px;
+  font-size: 11px;
+  font-weight: 550;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.brief-sec:first-of-type .brief-label,
+.needs-card > .brief-sec:first-child .brief-label,
+.matter-detail .brief-sec:first-of-type .brief-label {
+  margin-top: 8px;
+}
+.brief-summary {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.needs-card .brief-summary,
+.processed-card .brief-summary {
+  color: var(--muted);
+}
+.brief-choices { display: grid; gap: 6px; }
+.choice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+}
+.choice > button { flex: 0 0 auto; }
+.choice-why {
+  flex: 1 1 14em;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.choice-key {
+  color: var(--text);
+  font-weight: 550;
+  margin-right: 4px;
+}
+.choice-why.quiet-line { flex: 1 1 100%; }
+.optional-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+}
+.optional-strip .coming,
+.optional-default {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.optional-default { margin-top: 6px; }
+.optional-strip button {
+  background: transparent;
+  color: var(--muted);
+  border-color: transparent;
+  min-height: 32px;
+}
+.optional-strip button:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--line);
+  background: var(--panel);
+}
+.optional-strip button:disabled,
+.optional-strip button[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.kicker-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.brief-len { display: flex; gap: 2px; }
+.brief-len button {
+  background: transparent;
+  color: var(--muted);
+  border-color: transparent;
+  border-radius: 6px;
+  padding: 2px 8px;
+  min-height: 0;
+}
+.brief-len button[aria-pressed="true"] {
+  color: var(--text);
+  border-color: var(--line);
+  background: var(--card);
+}
+.brief-long { margin-top: 4px; }
+.choice button[data-keep-closed][aria-pressed="true"] {
+  color: var(--text);
+  border-color: var(--line);
+}
 
 .pill {
   display: inline-block;
@@ -721,6 +836,9 @@ body {
 }
 .nav button:focus-visible,
 .card-actions button:focus-visible,
+.choice button:focus-visible,
+.optional-strip button:focus-visible,
+.brief-len button:focus-visible,
 .cta:focus-visible,
 .composer button:focus-visible,
 .copy-id:focus-visible,
