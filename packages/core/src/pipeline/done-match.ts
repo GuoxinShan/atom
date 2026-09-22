@@ -11,10 +11,12 @@
  * Cross-theme near-dups (速记 vs 日程/会议, 产品缺陷 vs 发布与发布流程) do not
  * `already_done` from history alone.
  *
- * Repo title/stem hits need workspace affinity or shared distinctive tokens.
- * Atom meta PRs (Desk / Done-gate / chore titles) are not evidence that
- * yzj / ai-advance product work is done, unless the candidate itself routes
- * to atom. Link/SHA hits stay. Fail-open.
+ * Repo title/stem hits need distinctive shared stems plus either a title/body
+ * similarity floor or workspace affinity. Failure words (失败) are generic.
+ * 云之家 counts as one phrase — interior bigrams 云之 / 之家 do not each
+ * freeload a stem. Atom meta PRs (Desk / Done-gate / chore titles) are not
+ * evidence that yzj / ai-advance product work is done, unless the candidate
+ * itself routes to atom. Link/SHA hits stay. Fail-open.
  */
 
 import {
@@ -22,7 +24,11 @@ import {
   sharedRefTokens,
   titleTopicOverlap,
   titleTopicTokens,
+  DEFAULT_LAYA_MERGE_TOPIC_MIN,
+  NEAR_DUP_BODY_MIN,
   NEAR_DUP_OVERRIDE_TITLE_MIN,
+  NEAR_DUP_SUPPORT_MIN,
+  NEAR_DUP_TEXT_MIN,
   NEAR_DUP_TITLE_MIN,
   type MergeText,
   type NearDuplicateScore,
@@ -44,7 +50,10 @@ import { isPersonalAsk } from "./irrelevant.js";
 export const DONE_TITLE_MIN = 0.36;
 /** Title overlap that may close when workspace keywords also agree. */
 export const DONE_TITLE_HINT_MIN = NEAR_DUP_TITLE_MIN;
-/** Shared CJK / long tokens that mean the same shipped work (bilingual titles). */
+/**
+ * Shared distinctive stems that may close bilingual titles, but only together
+ * with a title/body similarity floor or workspace affinity.
+ */
 export const DONE_STEM_STRONG_MIN = 3;
 /**
  * Mixed tagged/untagged history pairs need a stronger title floor than
@@ -112,7 +121,25 @@ const DONE_GENERIC_PHRASES = [
   "pr",
   "issue",
   "commit",
+  // Failure / status noise. Must not alone carry a strong stem match.
+  "失败",
+  "报错",
+  "出错",
+  "异常",
+  "错误",
+  "超时",
+  "告警",
+  "error",
+  "errors",
+  "fail",
+  "failed",
+  "failure",
+  "warn",
+  "warning",
 ] as const;
+
+/** Product names counted as one stem. Interior bigrams must not each match. */
+const DONE_WHOLE_PHRASES = ["云之家"] as const;
 
 function buildGenericStemSet(): Set<string> {
   const out = new Set<string>();
@@ -360,9 +387,90 @@ function sharedLinkHit(candBlob: string, item: ProgressItem): boolean {
   return false;
 }
 
+function occurrenceCoveredByPhrase(text: string, index: number, length: number, phrase: string): boolean {
+  let from = 0;
+  while (from <= index) {
+    const at = text.indexOf(phrase, from);
+    if (at < 0 || at > index) return false;
+    if (at + phrase.length >= index + length) return true;
+    from = at + 1;
+  }
+  return false;
+}
+
+function bigramOccursOutsidePhrase(text: string, bigram: string, phrase: string): boolean {
+  let from = 0;
+  while (from < text.length) {
+    const at = text.indexOf(bigram, from);
+    if (at < 0) return false;
+    if (!occurrenceCoveredByPhrase(text, at, bigram.length, phrase)) return true;
+    from = at + 1;
+  }
+  return false;
+}
+
+/**
+ * Topic tokens for Done matching. Same cuts as merge, except a whole phrase
+ * such as 云之家 stays one token — 云之 / 之家 do not each count when they
+ * only occur inside that phrase.
+ */
+export function doneTopicTokens(text: string): string[] {
+  const tokens = new Set(titleTopicTokens(text));
+  const lower = (text ?? "").toLowerCase();
+  for (const phrase of DONE_WHOLE_PHRASES) {
+    if (!lower.includes(phrase)) continue;
+    tokens.add(phrase);
+    for (let i = 0; i < phrase.length - 1; i++) {
+      const bg = phrase.slice(i, i + 2);
+      if (!bigramOccursOutsidePhrase(lower, bg, phrase)) tokens.delete(bg);
+    }
+  }
+  return [...tokens];
+}
+
+/** Jaccard of Done topic tokens. 1 when either side is empty (same as merge). */
+export function doneTopicOverlap(a: string, b: string): number {
+  const A = new Set(doneTopicTokens(a));
+  const B = new Set(doneTopicTokens(b));
+  if (A.size === 0 || B.size === 0) return 1;
+  let inter = 0;
+  for (const tok of A) {
+    if (B.has(tok)) inter += 1;
+  }
+  const union = A.size + B.size - inter;
+  return union === 0 ? 1 : inter / union;
+}
+
+function mergeBody(item: MergeText): string {
+  return (item.body || item.snippet || "").trim();
+}
+
+/**
+ * Near-duplicate score using phrase-aware tokens. Thresholds match
+ * `scoreNearDuplicate`; 云之家 must not inflate Jaccard via 云之 + 之家.
+ */
+function scoreDonePair(a: MergeText, b: MergeText): NearDuplicateScore {
+  const titleOverlap = doneTopicOverlap(a.title ?? "", b.title ?? "");
+  const rawBodyA = mergeBody(a);
+  const rawBodyB = mergeBody(b);
+  const bodyOverlap = rawBodyA && rawBodyB ? doneTopicOverlap(rawBodyA, rawBodyB) : 0;
+  const textOverlap = doneTopicOverlap(
+    `${a.title ?? ""} ${rawBodyA}`.trim(),
+    `${b.title ?? ""} ${rawBodyB}`.trim()
+  );
+  const sharedRefs = sharedRefTokens(a.refs, b.refs);
+  const nearDuplicate =
+    titleOverlap >= DEFAULT_LAYA_MERGE_TOPIC_MIN &&
+    (titleOverlap >= NEAR_DUP_TITLE_MIN ||
+      textOverlap >= NEAR_DUP_TEXT_MIN ||
+      (titleOverlap >= NEAR_DUP_SUPPORT_MIN && bodyOverlap >= NEAR_DUP_BODY_MIN) ||
+      (titleOverlap >= NEAR_DUP_SUPPORT_MIN && sharedRefs.length > 0));
+  return { titleOverlap, bodyOverlap, textOverlap, sharedRefs, nearDuplicate };
+}
+
 function strongSharedStems(a: string, b: string): string[] {
-  const A = new Set(titleTopicTokens(a));
-  const B = new Set(titleTopicTokens(b));
+  const A = new Set(doneTopicTokens(a));
+  const B = new Set(doneTopicTokens(b));
   const shared: string[] = [];
   for (const tok of A) {
     if (!B.has(tok) || tok.length < 2) continue;
@@ -393,19 +501,24 @@ function titleHit(
     body: cand.body ?? "",
     refs: cand.refs ?? [],
   };
-  const score = scoreNearDuplicate(text, itemText(item));
   const hinted = candidateAffinesWorkspace(cand, item.workspace_id, workspaces);
+  // Phrase-aware overlap: 云之家 is one token, so 云之 + 之家 cannot inflate a near-dup.
+  const score = scoreDonePair(text, itemText(item));
+  const overlap = Math.max(score.titleOverlap, score.textOverlap);
   // Atom meta PRs (Desk / Done-gate / chore) are not product-done evidence.
   if (item.workspace_id === "atom" && !hinted) {
-    return { ok: false, overlap: Math.max(score.titleOverlap, score.textOverlap), hinted: false };
+    return { ok: false, overlap, hinted: false };
   }
   // PR titles are often English while Desk cards stay Chinese — use title+body stem
   // overlap, not title-to-title only (merge's nearDuplicate requires titleOverlap ≥ 0.18).
-  const overlap = Math.max(score.titleOverlap, score.textOverlap);
   const stems = distinctiveSharedStems(blobOf(text), `${item.title} ${item.body ?? ""}`);
   const distinctive = stems.length >= 1;
   if (score.nearDuplicate && (hinted || distinctive)) return { ok: true, overlap, hinted };
-  if (stems.length >= DONE_STEM_STRONG_MIN) return { ok: true, overlap, hinted };
+  // Pure stem hits need real distinctive stems AND a similarity floor or the same workspace.
+  // 失败 + 云之家 (split into 云之 / 之家) must not close by count alone.
+  if (stems.length >= DONE_STEM_STRONG_MIN && (hinted || overlap >= DONE_TITLE_MIN)) {
+    return { ok: true, overlap, hinted };
+  }
   if (overlap >= DONE_TITLE_MIN && (hinted || distinctive)) return { ok: true, overlap, hinted };
   if (hinted && overlap >= DONE_TITLE_HINT_MIN) {
     return { ok: true, overlap, hinted };
