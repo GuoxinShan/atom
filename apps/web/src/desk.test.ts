@@ -124,6 +124,52 @@ describe("Desk shell", () => {
     assert.match(css, /empty-desk/);
     assert.doesNotMatch(css, /#6e7bf2/);
   });
+
+  it("renders the three-section brief and confirms only Lead handoff", () => {
+    const js = fs.readFileSync(path.join(here, "public/app.js"), "utf8");
+    const css = fs.readFileSync(path.join(here, "public/styles.css"), "utf8");
+    const html = fs.readFileSync(path.join(here, "public/index.html"), "utf8");
+    assert.match(js, /【摘要】/);
+    assert.match(js, /【要你拍板】/);
+    assert.match(js, /【可选动作】/);
+    assert.match(js, /回群同步/);
+    assert.match(js, /即将推出 · 不会发送/);
+    assert.match(js, /先记下/);
+    assert.match(js, /默认不外发。云之家不会自动发送。/);
+    assert.match(js, /data-brief-len="short"/);
+    assert.match(js, /data-brief-len="long"/);
+    assert.match(js, /data-outbound="group-sync"/);
+    assert.match(js, /disabled data-outbound="group-sync"/);
+    assert.match(js, /仍要我跟/);
+    assert.match(js, /保持关闭/);
+    assert.match(js, /记为已通过，草稿进「规格待审」。不外发、不开工。/);
+    assert.match(js, /确认后写出本机交接包。不编码、不发云之家。/);
+    assert.match(html, /【摘要】/);
+    assert.match(html, /今天没有要你拍板的|需要你拍板/);
+    assert.match(js, /今天没有要你拍板的/);
+    assert.match(css, /\.brief-label/);
+    assert.match(css, /\.brief-len/);
+    assert.match(css, /\.optional-strip button:disabled/);
+
+    const confirms = [...js.matchAll(/window\.confirm/g)];
+    assert.equal(confirms.length, 1);
+    const at = confirms[0]?.index ?? -1;
+    const around = js.slice(Math.max(0, at - 280), at + 80);
+    assert.match(around, /data-handoff/);
+    assert.match(around, /派给 Lead/);
+    assert.doesNotMatch(around, /data-spec-approve|data-reopen|data-note|data-act/);
+
+    const approveAt = js.indexOf('data-act="approve"');
+    const approveWindow = js.slice(approveAt, approveAt + 500);
+    assert.doesNotMatch(approveWindow, /window\.confirm/);
+    const specAt = js.indexOf("data-spec-approve");
+    assert.doesNotMatch(js.slice(specAt, specAt + 700), /window\.confirm/);
+    const reopenAt = js.indexOf("data-reopen");
+    assert.doesNotMatch(js.slice(reopenAt, reopenAt + 500), /window\.confirm/);
+    const noteAt = js.indexOf("data-note");
+    assert.doesNotMatch(js.slice(noteAt, noteAt + 400), /window\.confirm/);
+    assert.doesNotMatch(js, /fetch\([^)]*outbound|\/api\/yunzhijia|云之家.*send/i);
+  });
 });
 
 describe("Desk operator APIs", () => {

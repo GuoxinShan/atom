@@ -21,6 +21,10 @@ const state = {
   selectedKind: "candidate",
   handoffNote: "",
   ackNote: "",
+  briefLen: {},
+  specDrafts: {},
+  localNotes: {},
+  keptClosed: {},
 };
 
 const statusStrip = document.getElementById("status-strip");
@@ -376,7 +380,15 @@ function specForCandidate(candidateId) {
 }
 
 function reviewSpecs() {
-  return (state.specs || []).filter((s) => s.review_status && s.review_status !== "handed_off");
+  const rank = { approved: 0, returned: 1, pending: 2 };
+  return (state.specs || [])
+    .filter((s) => s.review_status && s.review_status !== "handed_off")
+    .slice()
+    .sort((a, b) => {
+      const d = (rank[a.review_status] ?? 9) - (rank[b.review_status] ?? 9);
+      if (d) return d;
+      return String(a.updated_at || "").localeCompare(String(b.updated_at || ""));
+    });
 }
 
 function specStage(spec) {
@@ -390,6 +402,119 @@ function specTrail(spec) {
   if (status === "approved") return "已通过 → spec 待审 → 已批准";
   if (status === "returned" || status === "pending") return "已通过 → spec 待审";
   return "已通过";
+}
+
+function loadSessionMap(key) {
+  try {
+    const raw = sessionStorage.getItem(key);
+    const parsed = raw ? JSON.parse(raw) : {};
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+  } catch {
+    /* session storage is optional */
+  }
+  return {};
+}
+
+function saveSessionMap(key, value) {
+  try {
+    sessionStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+state.localNotes = loadSessionMap("atom-desk-notes");
+state.keptClosed = loadSessionMap("atom-desk-kept-closed");
+
+function clipText(text, max) {
+  const s = String(text ?? "")
+    .trim()
+    .replace(/\s+/g, " ");
+  if (!s) return "";
+  if (s.length <= max) return s;
+  return `${s.slice(0, max)}…`;
+}
+
+function sortByUrgency(cards) {
+  return cards.slice().sort((a, b) => {
+    const ca = typeof a?.confidence === "number" ? a.confidence : 0;
+    const cb = typeof b?.confidence === "number" ? b.confidence : 0;
+    if (cb !== ca) return cb - ca;
+    return String(a?.updated_at || "").localeCompare(String(b?.updated_at || ""));
+  });
+}
+
+function whyNeedsYou({ sources = [], situation }) {
+  const from = sources.length ? `来自${sources.join("、")}。` : "";
+  return `${from}${situation}`;
+}
+
+function briefSummarySection(summary, extra = "") {
+  return `<section class="brief-sec" data-brief="summary">
+      <h4 class="brief-label">【摘要】</h4>
+      <p class="brief-summary">${escapeHtml(summary)}</p>
+      ${extra}
+    </section>`;
+}
+
+function briefDecideSection(choicesHtml) {
+  return `<section class="brief-sec" data-brief="decide">
+      <h4 class="brief-label">【要你拍板】</h4>
+      <div class="brief-choices">${choicesHtml}</div>
+    </section>`;
+}
+
+function choiceRow(buttonHtml, key, why) {
+  return `<div class="choice">${buttonHtml}<p class="choice-why"><span class="choice-key">${key}</span> ${escapeHtml(
+    why
+  )}</p></div>`;
+}
+
+function optionalActionsHtml(id) {
+  const noted = Boolean(id && state.localNotes[id]);
+  return `<div class="optional-strip">
+      <button type="button" disabled data-outbound="group-sync" aria-disabled="true">回群同步</button>
+      <span class="coming">即将推出 · 不会发送</span>
+      <button type="button" data-note="${escapeHtml(id || "")}">${noted ? "已记下" : "先记下"}</button>
+    </div>
+    <p class="optional-default">${
+      noted ? "已记下 · 只在本机，未外发。" : "默认不外发。云之家不会自动发送。"
+    }</p>`;
+}
+
+function briefOptionalSection(id) {
+  return `<section class="brief-sec" data-brief="optional">
+      <h4 class="brief-label">【可选动作】</h4>
+      ${optionalActionsHtml(id)}
+    </section>`;
+}
+
+function lenToggle(id, len) {
+  const long = len === "long";
+  return `<div class="brief-len" role="group" aria-label="同一事项的短版或长版">
+      <button type="button" data-brief-len="short" data-brief-for="${escapeHtml(id)}" aria-pressed="${
+        long ? "false" : "true"
+      }">短</button>
+      <button type="button" data-brief-len="long" data-brief-for="${escapeHtml(id)}" aria-pressed="${
+        long ? "true" : "false"
+      }">长</button>
+    </div>`;
+}
+
+function rememberNote(id) {
+  if (!id) return;
+  state.localNotes[id] = new Date().toISOString();
+  saveSessionMap("atom-desk-notes", state.localNotes);
+}
+
+function rememberKept(id) {
+  if (!id) return;
+  state.keptClosed[id] = new Date().toISOString();
+  saveSessionMap("atom-desk-kept-closed", state.keptClosed);
+}
+
+function settledLine() {
+  return `<p class="choice-why quiet-line">这一张没有待拍的。</p>`;
 }
 
 function buildMatters() {
@@ -489,6 +614,113 @@ function checkItemLabel(item) {
   return firstHuman(item.label, CHECK_KEY_LABELS[item.key], item.key) || "清单项";
 }
 
+function suggestedChoices(id) {
+  const eid = escapeHtml(id);
+  return (
+    choiceRow(
+      `<button type="button" data-act="approve" data-id="${eid}">通过</button>`,
+      "A",
+      "记为已通过，草稿进「规格待审」。不外发、不开工。"
+    ) +
+    choiceRow(
+      `<button type="button" data-act="reject" data-id="${eid}">拒绝</button>`,
+      "B",
+      "移出今天的队列。只记在本机。"
+    )
+  );
+}
+
+function specChoices(spec) {
+  const id = escapeHtml(spec.id);
+  if (spec.review_status === "approved") {
+    return (
+      choiceRow(
+        `<button type="button" class="primary" data-handoff="${id}">派给 Lead</button>`,
+        "A",
+        "确认后写出本机交接包。不编码、不发云之家。"
+      ) +
+      choiceRow(
+        `<button type="button" class="ghost" data-spec-return="${id}">退回修改</button>`,
+        "B",
+        "回到待审，不写交接包。"
+      )
+    );
+  }
+  return (
+    choiceRow(
+      `<button type="button" class="primary" data-spec-approve="${id}">批准规格</button>`,
+      "A",
+      "记为已批准。还不会写交接包，也不会外发。"
+    ) +
+    choiceRow(
+      `<button type="button" class="ghost" data-spec-return="${id}">退回修改</button>`,
+      "B",
+      "留在规格待审，改完再批。"
+    )
+  );
+}
+
+function ackChoice(id) {
+  return choiceRow(
+    `<button type="button" data-ack="${escapeHtml(id)}">确认</button>`,
+    "A",
+    "记下人工确认。不外发，也不代点。"
+  );
+}
+
+function reopenChoices(id) {
+  const kept = Boolean(state.keptClosed[id]);
+  return (
+    choiceRow(
+      `<button type="button" class="ghost" data-reopen="${escapeHtml(id)}">仍要我跟</button>`,
+      "A",
+      "重新放回 Needs you。只改本机，不外发。"
+    ) +
+    choiceRow(
+      `<button type="button" data-keep-closed="${escapeHtml(id)}" aria-pressed="${kept ? "true" : "false"}">${
+        kept ? "已保持关闭" : "保持关闭"
+      }</button>`,
+      "B",
+      "留在系统已处理。不用再点。"
+    )
+  );
+}
+
+function longSpecHtml({ editable, specId, title, body, criteriaText, criteria }) {
+  if (editable) {
+    const draft = state.specDrafts[specId] || {};
+    const draftTitle = draft.title ?? title;
+    const draftBody = draft.body ?? body;
+    const draftCriteria = Array.isArray(draft.acceptance_criteria)
+      ? draft.acceptance_criteria.join("\n")
+      : criteriaText;
+    return `<form class="spec-edit brief-long" id="spec-edit-form" data-spec-id="${escapeHtml(specId)}">
+        <label for="spec-title">标题</label>
+        <input id="spec-title" name="title" maxlength="240" value="${escapeHtml(draftTitle)}" />
+        <label for="spec-body">正文</label>
+        <textarea id="spec-body" name="body" rows="5">${escapeHtml(draftBody)}</textarea>
+        <label for="spec-criteria">验收标准（一行一条）</label>
+        <textarea id="spec-criteria" name="criteria" rows="4">${escapeHtml(draftCriteria)}</textarea>
+      </form>`;
+  }
+  const criteriaHtml = criteria?.length
+    ? `<h2 class="subhead">验收标准</h2><div class="body">${criteria.map((c) => escapeHtml(c)).join("\n")}</div>`
+    : "";
+  const bodyHtml = String(body || "").trim()
+    ? `<p class="body">${escapeHtml(body)}</p>`
+    : `<p class="brief-summary">没有更长的正文。</p>`;
+  return `<div class="brief-long">${bodyHtml}${criteriaHtml}</div>`;
+}
+
+function detailFrame({ kicker, briefId, len, title, bodyHtml }) {
+  return `<div class="detail-kicker">
+      <h2>${escapeHtml(kicker)}</h2>
+      <div class="kicker-tools">${lenToggle(briefId, len)}${copyIdButton(briefId)}</div>
+    </div>
+    <h3>${escapeHtml(title)}</h3>
+    ${bodyHtml}`;
+}
+
 function renderDetail() {
   const root = document.getElementById("matter-detail");
   const sel = findSelected();
@@ -504,121 +736,111 @@ function renderDetail() {
     const items = chk.items || [];
     const listHtml = items.length
       ? `<ul class="check-list">${items
-          .map(
-            (i) =>
-              `<li class="${i.done ? "done" : ""}">${escapeHtml(checkItemLabel(i))}</li>`
-          )
+          .map((i) => `<li class="${i.done ? "done" : ""}">${escapeHtml(checkItemLabel(i))}</li>`)
           .join("")}</ul>`
       : "";
     const canAck = chk.awaitingHumanAck && !chk.passed;
     const linked = state.candidates.find((c) => c.id === chk.candidateId);
-    const when = relativeTime(linked?.updated_at);
-    root.innerHTML = `
-      <div class="detail-kicker">
-        <h2>确认清单</h2>
-        ${copyIdButton(chk.subjectId)}
-      </div>
-      <h3>${escapeHtml(firstHuman(chk.title, linked?.title) || "确认清单")}</h3>
-      ${metaLine({
-        sources: citeLabels(linked?.refs),
-        status: chk.passed ? "accepted" : "suggested",
-        when,
-        extra: [chk.awaitingHumanAck && !chk.passed ? "等人确认" : ""],
-      })}
-      ${listHtml}
-      ${
-        canAck
-          ? `<button type="button" class="cta primary" data-ack="${escapeHtml(chk.subjectId)}">Ack human gate</button>`
-          : `<p class="empty">${chk.passed ? "清单已通过。" : "其余项还在 CLI 侧完成。"}</p>`
-      }
-      ${state.ackNote ? `<pre class="handoff-out">${escapeHtml(state.ackNote)}</pre>` : ""}
-    `;
+    const briefId = chk.subjectId;
+    const len = state.briefLen[briefId] === "long" ? "long" : "short";
+    const sources = citeLabels(linked?.refs);
+    const summary = whyNeedsYou({
+      sources,
+      situation: canAck
+        ? "其余项已完成，等你确认。不会自动代点。"
+        : chk.passed
+          ? "清单已通过。"
+          : "其余项还在 CLI 侧完成。",
+    });
+    const longHtml =
+      len === "long"
+        ? `<div class="brief-long">${listHtml || `<p class="brief-summary">没有更长的清单。</p>`}</div>`
+        : "";
+    root.innerHTML = detailFrame({
+      kicker: "确认清单",
+      briefId,
+      len,
+      title: firstHuman(chk.title, linked?.title) || "确认清单",
+      bodyHtml: `
+        ${briefSummarySection(
+          summary,
+          metaLine({
+            sources,
+            status: chk.passed ? "accepted" : "suggested",
+            when: relativeTime(linked?.updated_at),
+            extra: [canAck ? "等人确认" : ""],
+          })
+        )}
+        ${longHtml}
+        ${briefDecideSection(canAck ? ackChoice(briefId) : settledLine())}
+        ${briefOptionalSection(briefId)}
+        ${state.ackNote ? `<pre class="handoff-out">${escapeHtml(state.ackNote)}</pre>` : ""}
+      `,
+    });
     return;
   }
   const spec = sel.spec;
   const title = firstHuman(spec?.title, sel.cand?.title) || "未命名事项";
   const body = spec?.body || sel.cand?.body || "";
   const refs = spec?.refs || sel.cand?.refs || [];
+  const sources = citeLabels(refs);
   const candStatus = sel.cand?.status || "";
   const review = spec?.review_status || "";
   const handed = review === "handed_off";
   const approved = review === "approved";
   const reviewing = Boolean(spec) && !handed;
   const specId = spec?.id || "";
-  const citeCount = (refs || []).length;
-  const citeHint = citeCount
-    ? `<p class="cite-hint">${
-        sources.length
-          ? `来自 ${escapeHtml(sources.join("、"))} · ${citeCount} 条引用`
-          : `${citeCount} 条引用`
-      }</p>`
-    : "";
-  const criteriaText = (spec?.acceptance_criteria || []).join("\n");
+  const briefId = specId || sel.candidateId || sel.id;
+  const len = state.briefLen[briefId] === "long" ? "long" : "short";
+  const criteria = spec?.acceptance_criteria || [];
+  const criteriaText = criteria.join("\n");
   const kicker = reviewing ? (approved ? "已批准" : "规格待审") : candStatus === "suggested" ? "待拍板" : "事项";
   const editable = reviewing && !handed;
-  const bodyHtml = editable
-    ? `<form class="spec-edit" id="spec-edit-form" data-spec-id="${escapeHtml(specId)}">
-        <label for="spec-title">标题</label>
-        <input id="spec-title" name="title" maxlength="240" value="${escapeHtml(title)}" />
-        <label for="spec-body">正文</label>
-        <textarea id="spec-body" name="body" rows="5">${escapeHtml(body)}</textarea>
-        <label for="spec-criteria">验收标准（一行一条）</label>
-        <textarea id="spec-criteria" name="criteria" rows="4">${escapeHtml(criteriaText)}</textarea>
-      </form>`
-    : `<h3>${escapeHtml(title)}</h3>
-       <p class="body">${escapeHtml(body)}</p>
-       ${
-         spec?.acceptance_criteria?.length
-           ? `<h2 class="subhead">验收标准</h2><div class="body">${spec.acceptance_criteria
-               .map((c) => escapeHtml(c))
-               .join("\n")}</div>`
-           : ""
-       }`;
-  const actions = [];
-  if (candStatus === "suggested") {
-    actions.push(`<div class="card-actions">
-            <button type="button" data-act="approve" data-id="${escapeHtml(sel.candidateId)}">通过</button>
-            <button type="button" data-act="reject" data-id="${escapeHtml(sel.candidateId)}">拒绝</button>
-          </div>`);
-  }
-  if (editable) {
-    actions.push(`<div class="card-actions spec-review-actions">
-            <button type="button" class="primary" data-spec-approve="${escapeHtml(specId)}">批准规格</button>
-            <button type="button" class="ghost" data-spec-return="${escapeHtml(specId)}">退回修改</button>
-          </div>`);
-    if (approved) {
-      actions.push(
-        `<button type="button" class="cta primary" data-handoff="${escapeHtml(specId)}">派给 Lead</button>
-         <p class="cite-hint">派给 Lead 会写出本机交接包，不会开始编码，也不会发云之家。</p>`
-      );
-    } else {
-      actions.push(`<p class="cite-hint">先批准规格，再派给 Lead。通过需求不会自动开工。</p>`);
-    }
-  }
-  if (handed) {
-    actions.push(
-      `<p class="cite-hint">已派 Lead。${
+  let situation = "打开这张即可拍板。";
+  if (candStatus === "suggested" && !reviewing) situation = "在 Needs you，因为这条还没拍板。";
+  else if (handed) situation = "已派 Lead。交接包在本机，没有开始编码，也没有发云之家。";
+  else if (approved) situation = "规格已批准。派给 Lead 要再确认一次，现在还没写交接包。";
+  else if (reviewing) situation = "已通过。规格还在待审，因为还没批准或退回。";
+  else if (candStatus === "rejected") situation = "已拒绝，不在今天的队列里。";
+  else if (candStatus === "accepted") situation = "已通过。";
+  const summary = [clipText(body, 80), whyNeedsYou({ sources, situation })].filter(Boolean).join(" ");
+  const choices =
+    candStatus === "suggested" && !reviewing
+      ? suggestedChoices(sel.candidateId)
+      : reviewing && spec
+        ? specChoices(spec)
+        : settledLine();
+  const longHtml =
+    len === "long"
+      ? longSpecHtml({ editable, specId, title, body, criteriaText, criteria })
+      : "";
+  const handedNote = handed
+    ? `<p class="cite-hint">已派 Lead。${
         spec?.handoff_path ? `包：${escapeHtml(basenamePath(spec.handoff_path))}` : ""
       }${spec?.ran ? " · 已 --run" : " · 未启动编码"}。</p>`
-    );
-  }
-  root.innerHTML = `
-    <div class="detail-kicker">
-      <h2>${escapeHtml(kicker)}</h2>
-      ${copyIdButton(specId || sel.candidateId || sel.id)}
-    </div>
-    ${editable ? "" : ""}
-    ${metaLine({
-      sources,
-      status: review || candStatus,
-      extra: spec ? [specTrail(spec)] : [],
-      when: relativeTime(spec?.updated_at || sel.cand?.updated_at),
-    })}
-    ${bodyHtml}
-    ${citeHint}
-    ${actions.join("")}
-    ${state.handoffNote ? `<pre class="handoff-out">${escapeHtml(state.handoffNote)}</pre>` : ""}
-  `;
+    : "";
+  root.innerHTML = detailFrame({
+    kicker,
+    briefId,
+    len,
+    title,
+    bodyHtml: `
+      ${briefSummarySection(
+        summary,
+        metaLine({
+          sources,
+          status: review || candStatus,
+          extra: spec ? [specTrail(spec)] : [],
+          when: relativeTime(spec?.updated_at || sel.cand?.updated_at),
+        })
+      )}
+      ${longHtml}
+      ${briefDecideSection(choices)}
+      ${briefOptionalSection(briefId)}
+      ${handedNote}
+      ${state.handoffNote ? `<pre class="handoff-out">${escapeHtml(state.handoffNote)}</pre>` : ""}
+    `,
+  });
 }
 
 function awaitingChecklists() {
@@ -664,29 +886,34 @@ function renderSpecReviewCard(spec) {
   card.className = `item needs-card spec-review-card${selected ? " selected" : ""}`;
   card.dataset.select = spec.id;
   const title = firstHuman(spec.title) || "未命名规格";
-  const summary = (spec.body || "").trim();
+  const sources = citeLabels(spec.refs);
   const approved = spec.review_status === "approved";
-  const status = spec.review_status;
+  const summary = [
+    clipText(spec.body, 80),
+    whyNeedsYou({
+      sources,
+      situation: approved
+        ? "规格已批准。派给 Lead 要再确认一次，现在还没写交接包。"
+        : "已通过。规格还在待审，因为还没批准或退回。",
+    }),
+  ]
+    .filter(Boolean)
+    .join(" ");
   card.innerHTML = `
         <p class="spec-kicker">${approved ? "已批准 · 可派 Lead" : "规格待审"}</p>
         <h3>${escapeHtml(title)}</h3>
-        ${summary ? `<p class="card-summary">${escapeHtml(summary.slice(0, 220))}</p>` : ""}
-        ${metaLine({
-          sources: citeLabels(spec.refs),
-          status,
-          extra: [specTrail(spec)],
-          when: relativeTime(spec.updated_at),
-          quiet: true,
-        })}
-        <div class="card-actions">
-          ${
-            approved
-              ? `<button type="button" class="primary" data-handoff="${escapeHtml(spec.id)}">派给 Lead</button>
-                 <button type="button" class="ghost" data-spec-return="${escapeHtml(spec.id)}">退回修改</button>`
-              : `<button type="button" class="primary" data-spec-approve="${escapeHtml(spec.id)}">批准规格</button>
-                 <button type="button" class="ghost" data-spec-return="${escapeHtml(spec.id)}">退回修改</button>`
-          }
-        </div>
+        ${briefSummarySection(
+          summary,
+          metaLine({
+            sources,
+            status: spec.review_status,
+            extra: [specTrail(spec)],
+            when: relativeTime(spec.updated_at),
+            quiet: true,
+          })
+        )}
+        ${briefDecideSection(specChoices(spec))}
+        ${briefOptionalSection(spec.id)}
       `;
   return card;
 }
@@ -699,20 +926,26 @@ function renderSuggestedCard(c) {
   card.className = `item needs-card${selected ? " selected" : ""}`;
   card.dataset.select = c.id;
   const title = firstHuman(c.title) || "未命名事项";
-  const summary = (c.body || "").trim();
+  const sources = citeLabels(c.refs);
+  const summary = [
+    clipText(c.body, 80),
+    whyNeedsYou({ sources, situation: "在 Needs you，因为这条还没拍板。" }),
+  ]
+    .filter(Boolean)
+    .join(" ");
   card.innerHTML = `
         <h3>${escapeHtml(title)}</h3>
-        ${summary ? `<p class="card-summary">${escapeHtml(summary.slice(0, 220))}</p>` : ""}
-        ${metaLine({
-          sources: citeLabels(c.refs),
-          status: c.status,
-          when: relativeTime(c.updated_at),
-          quiet: true,
-        })}
-        <div class="card-actions">
-          <button type="button" data-act="approve" data-id="${escapeHtml(c.id)}">通过</button>
-          <button type="button" data-act="reject" data-id="${escapeHtml(c.id)}">拒绝</button>
-        </div>
+        ${briefSummarySection(
+          summary,
+          metaLine({
+            sources,
+            status: c.status,
+            when: relativeTime(c.updated_at),
+            quiet: true,
+          })
+        )}
+        ${briefDecideSection(suggestedChoices(c.id))}
+        ${briefOptionalSection(c.id)}
       `;
   return card;
 }
@@ -782,7 +1015,7 @@ function renderQueue() {
       Array.isArray(state.groups) && state.groups.length ? state.groups : fallbackNeedsGroups(suggested);
     const seen = new Set();
     for (const g of groups) {
-      const cards = (g.candidate_ids || []).map((id) => byId[id]).filter(Boolean);
+      const cards = sortByUrgency((g.candidate_ids || []).map((id) => byId[id]).filter(Boolean));
       if (!cards.length) continue;
       for (const c of cards) seen.add(c.id);
       const wrap = document.createElement("details");
@@ -803,7 +1036,7 @@ function renderQueue() {
       wrap.dataset.groupKind = "heuristic";
       wrap.open = isGroupOpen("heuristic:other");
       wrap.innerHTML = groupSummaryHtml("其他", leftovers.length);
-      for (const c of leftovers) wrap.appendChild(renderSuggestedCard(c));
+      for (const c of sortByUrgency(leftovers)) wrap.appendChild(renderSuggestedCard(c));
       section.appendChild(wrap);
     }
     queue.appendChild(section);
@@ -813,7 +1046,7 @@ function renderQueue() {
     const section = document.createElement("section");
     section.className = "needs-board spec-review-board";
     section.innerHTML = `<h2 class="needs-board-label">规格待审 <span>${reviews.length}</span></h2>
-      <p class="spec-review-hint">已通过的需求草稿。不是新卡片。看过标题、正文和验收标准后再批准，然后派给 Lead。</p>`;
+      <p class="spec-review-hint">已通过的草稿。先看【摘要】，再拍板。派给 Lead 会再确认一次，不会自动发云之家。</p>`;
     for (const spec of reviews) section.appendChild(renderSpecReviewCard(spec));
     queue.appendChild(section);
   }
@@ -828,18 +1061,20 @@ function renderQueue() {
       card.className = `item needs-card${selected ? " selected" : ""}`;
       card.dataset.selectChecklist = chk.subjectId;
       const linked = state.candidates.find((c) => c.id === chk.candidateId);
+      const sources = citeLabels(linked?.refs);
       card.innerHTML = `
         <h3>${escapeHtml(firstHuman(chk.title, linked?.title) || "确认清单")}</h3>
-        <p class="card-summary">其余项已完成，等你确认。ATOM 不会自动代点。</p>
-        ${metaLine({
-          sources: citeLabels(linked?.refs),
-          extra: ["等人确认"],
-          when: relativeTime(linked?.updated_at),
-          quiet: true,
-        })}
-        <div class="card-actions">
-          <button type="button" data-ack="${escapeHtml(chk.subjectId)}">Ack</button>
-        </div>
+        ${briefSummarySection(
+          whyNeedsYou({ sources, situation: "其余项已完成，等你确认。不会自动代点。" }),
+          metaLine({
+            sources,
+            extra: ["等人确认"],
+            when: relativeTime(linked?.updated_at),
+            quiet: true,
+          })
+        )}
+        ${briefDecideSection(ackChoice(chk.subjectId))}
+        ${briefOptionalSection(chk.subjectId)}
       `;
       section.appendChild(card);
     }
@@ -960,7 +1195,10 @@ async function actOnCandidate(act, id) {
 
 function readSpecPatch(specId) {
   const form = document.getElementById("spec-edit-form");
-  if (!form || (specId && form.dataset.specId && form.dataset.specId !== specId)) return {};
+  if (!form || (specId && form.dataset.specId && form.dataset.specId !== specId)) {
+    if (specId && state.specDrafts[specId]) return state.specDrafts[specId];
+    return {};
+  }
   const title = document.getElementById("spec-title")?.value;
   const body = document.getElementById("spec-body")?.value;
   const criteriaRaw = document.getElementById("spec-criteria")?.value;
@@ -971,11 +1209,54 @@ function readSpecPatch(specId) {
           .map((s) => s.trim())
           .filter(Boolean)
       : undefined;
-  return {
+  const patch = {
     title: typeof title === "string" ? title : undefined,
     body: typeof body === "string" ? body : undefined,
     acceptance_criteria: criteria,
   };
+  if (specId) state.specDrafts[specId] = patch;
+  return patch;
+}
+
+function onBriefChromeClick(e) {
+  const lenBtn = e.target.closest("[data-brief-len]");
+  if (lenBtn) {
+    e.stopPropagation();
+    e.preventDefault();
+    const id = lenBtn.dataset.briefFor || state.selectedId;
+    if (id) {
+      const patch = readSpecPatch(id);
+      if (patch && (patch.title || patch.body || patch.acceptance_criteria?.length)) {
+        state.specDrafts[id] = patch;
+      }
+      state.briefLen[id] = lenBtn.dataset.briefLen === "long" ? "long" : "short";
+    }
+    renderDetail();
+    return true;
+  }
+  const outboundBtn = e.target.closest("[data-outbound]");
+  if (outboundBtn) {
+    e.stopPropagation();
+    e.preventDefault();
+    return true;
+  }
+  const noteBtn = e.target.closest("[data-note]");
+  if (noteBtn && !noteBtn.disabled) {
+    e.stopPropagation();
+    rememberNote(noteBtn.dataset.note);
+    renderQueue();
+    renderDetail();
+    if (state.page === "processed") renderProcessed();
+    return true;
+  }
+  const keepBtn = e.target.closest("[data-keep-closed]");
+  if (keepBtn && !keepBtn.disabled) {
+    e.stopPropagation();
+    rememberKept(keepBtn.dataset.keepClosed);
+    renderProcessed();
+    return true;
+  }
+  return false;
 }
 
 async function copyId(id, btn) {
@@ -1007,6 +1288,7 @@ queue.addEventListener("toggle", (e) => {
 });
 
 document.getElementById("page-needs-you").addEventListener("click", async (e) => {
+  if (onBriefChromeClick(e)) return;
   const copyBtn = e.target.closest("button[data-copy-id]");
   if (copyBtn) {
     e.stopPropagation();
@@ -1077,6 +1359,7 @@ document.getElementById("page-needs-you").addEventListener("click", async (e) =>
   const handoffBtn = e.target.closest("[data-handoff]");
   if (handoffBtn && !handoffBtn.disabled) {
     e.stopPropagation();
+    // Confirm gate is only for 派给 Lead and any future 发群. Local decisions do not confirm.
     const ok = window.confirm("确认派给 Lead？只会写出本机交接包，不会开始编码，也不会发云之家。");
     if (!ok) return;
     handoffBtn.disabled = true;
@@ -1323,18 +1606,22 @@ function renderProcessed() {
   const doneCards = done
     .map((c) => {
       const reason = firstHuman(c.closed_reason) || "已在仓库/历史进度关闭";
+      const sources = citeLabels(c.refs);
       return `<article class="item processed-card" data-done-id="${escapeHtml(c.id)}">
         <h3>${escapeHtml(firstHuman(c.title) || "未命名事项")}</h3>
-        <p class="card-summary">${escapeHtml(reason)}</p>
-        ${metaLine({
-          sources: citeLabels(c.refs),
-          extra: ["自动关闭"],
-          when: relativeTime(c.updated_at),
-          quiet: true,
-        })}
-        <div class="card-actions">
-          <button type="button" class="ghost" data-reopen="${escapeHtml(c.id)}">仍要我跟</button>
-        </div>
+        ${briefSummarySection(
+          [clipText(c.body, 80), whyNeedsYou({ sources, situation: `${reason}。不在 Needs you。` })]
+            .filter(Boolean)
+            .join(" "),
+          metaLine({
+            sources,
+            extra: ["自动关闭"],
+            when: relativeTime(c.updated_at),
+            quiet: true,
+          })
+        )}
+        ${briefDecideSection(reopenChoices(c.id))}
+        ${briefOptionalSection(c.id)}
       </article>`;
     })
     .join("");
@@ -1672,7 +1959,15 @@ document.getElementById("page-preferences").addEventListener("submit", async (e)
   await patchPreference({ blocklist_add: [value] });
 });
 
+document.getElementById("page-needs-you").addEventListener("input", (e) => {
+  const form = e.target.closest("#spec-edit-form");
+  if (!form) return;
+  const id = form.dataset.specId;
+  if (id) readSpecPatch(id);
+});
+
 document.getElementById("page-processed")?.addEventListener("click", async (e) => {
+  if (onBriefChromeClick(e)) return;
   const btn = e.target.closest("button[data-reopen]");
   if (!btn || btn.disabled) return;
   btn.disabled = true;
