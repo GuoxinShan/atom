@@ -30,6 +30,7 @@ Usage:
   pnpm atom merge-sweep [--apply]
   pnpm atom tag-backfill [--apply]
   pnpm atom progress-scan [--apply]
+  pnpm atom progress-scan --loop   # host helper for Docker Desk (watch data/ + 15m)
   pnpm atom done-sweep [--apply]
   pnpm atom reopen <candidateId>
   pnpm atom outbound-check [--title ...] [--body ... | --path <file>] [--kind digest]
@@ -217,9 +218,27 @@ async function main() {
   }
 
   if (cmd === "progress-scan") {
+    const { runProgressScan, startProgressScanHost } = await import("@atom/core");
+    if (flags.loop) {
+      // Host helper: Docker cron writes data/progress-scan.request.json on the
+      // mounted volume; this process scans Mac git and writes the snapshot.
+      const root = resolveRepoRoot();
+      const handle = startProgressScanHost(root);
+      console.log(
+        `progress-scan helper running (repo=${root}). Watches data/progress-scan.request.json; optional http://127.0.0.1:${handle.port ?? 8788}/progress-scan. Ctrl-C to stop.`
+      );
+      await new Promise<void>((resolve) => {
+        const stop = () => {
+          handle.stop();
+          resolve();
+        };
+        process.once("SIGINT", stop);
+        process.once("SIGTERM", stop);
+      });
+      return;
+    }
     // Host-local: Docker Desk cannot see Mac git paths. Writes the mounted
     // data/progress-snapshot.json. Optional --apply then hits Desk done-sweep.
-    const { runProgressScan } = await import("@atom/core");
     const result = await runProgressScan(resolveRepoRoot());
     console.log(
       `OK progress-scan wrote=${result.path} available=${result.available} fail_open=${result.failOpen} items=${result.items}`
@@ -752,7 +771,7 @@ function printDoneSweep(data: {
   const mode = data.apply ? "apply" : "dry-run";
   if (data.snapshotMissing) {
     console.log(
-      `done-sweep (${mode}): no data/progress-snapshot.json — fail-open for repo evidence. On the Mac: pnpm atom progress-scan`
+      `done-sweep (${mode}): no data/progress-snapshot.json — fail-open for repo evidence. Start scripts/desk-up.sh or on the Mac: pnpm atom progress-scan`
     );
   }
   if (!data.closed) {

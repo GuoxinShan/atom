@@ -131,7 +131,7 @@ export function runColdStart(repoRoot: string): ColdStartReport {
       : "missing — Done gate fail-opens repo matching (history still applies)",
     fix: exists(snapPath)
       ? undefined
-      : "On the Mac (not docker exec): pnpm atom progress-scan  # writes data/progress-snapshot.json",
+      : "Start Desk with scripts/desk-up.sh (compose + host progress-scan helper), or on the Mac: pnpm atom progress-scan",
   });
 
   const ready = checks.every((c) => c.status !== "fail");
@@ -171,6 +171,7 @@ export function ensureColdStartFiles(repoRoot: string): string[] {
               tz: "Asia/Shanghai",
               includeRecentDms: true,
               recentDmLimit: 8,
+              progressScan: true,
             },
           },
         ],

@@ -22,6 +22,7 @@ const POLL: CronPollConfig = {
   tz: "Asia/Shanghai",
   includeRecentDms: true,
   recentDmLimit: 8,
+  progressScan: true,
 };
 
 describe("cron schedule window (Asia/Shanghai)", () => {
@@ -175,6 +176,14 @@ describe("cron trigger config", () => {
     assert.equal(parsed?.source, "yzj-ai-advance");
     assert.deepEqual(parsed?.hoursLocal, [8, 20]);
     assert.equal(parsed?.includeRecentDms, true);
+    assert.equal(parsed?.progressScan, true);
+
+    const off = parseCronPollConfig({
+      ...row,
+      id: "cron-no-scan",
+      config: { ...row.config, progressScan: false },
+    });
+    assert.equal(off?.progressScan, false);
 
     const fromFile = cronPollConfigsFromJson({
       triggers: [

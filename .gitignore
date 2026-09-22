@@ -4,6 +4,8 @@ data/*.sqlite
 data/*.sqlite-*
 data/preference-memory.json
 data/progress-snapshot.json
+data/progress-scan.request.json
+data/progress-scan.ack.json
 out/**
 !out/.gitkeep
 .DS_Store

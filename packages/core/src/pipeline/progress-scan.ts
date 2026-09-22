@@ -3,8 +3,9 @@
  *
  * Reads `atom` / `yzj` / `ai-advance` from `data/workspaces.json` (paths already
  * there — do not invent new ones). Writes `data/progress-snapshot.json` for the
- * Done gate. Docker Desk cannot see host git, so Rock-Shan runs this on the Mac
- * (`pnpm atom progress-scan`), not `docker compose exec`.
+ * Done gate. Docker Desk cannot see host git — the 15-minute cron asks the Mac
+ * helper (`pnpm atom progress-scan --loop` / `scripts/desk-up.sh`) to scan.
+ * One-shot: `pnpm atom progress-scan` on the Mac, not `docker compose exec`.
  *
  * Signals (bounded): merged PRs + closed issues via `gh` when authenticated,
  * else `git log` on main|master. Path missing / not a git repo / command fail

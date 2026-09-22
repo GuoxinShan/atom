@@ -26,7 +26,7 @@ pnpm atom candidates   # GET /api/candidates
 
 Digest lands in `out/digest-YYYY-MM-DD.md`. SQLite at `data/atom.sqlite`.
 
-Daily: use **Desk**. Timed ingest runs **inside** serve (15-minute weekday poll, Asia/Shanghai 08:00–20:00). Curl still works if you want a one-shot. Start serve with `docker compose up -d` (see [Docker](#docker-desk)) or `pnpm atom serve` — **not** a LaunchAgent / login item.
+Daily: use **Desk**. Timed ingest runs **inside** serve (15-minute weekday poll, Asia/Shanghai 08:00–20:00, **including progress-scan**). Curl still works if you want a one-shot. Start with `pnpm desk` (compose + Mac progress-scan helper) or `docker compose up -d` / `pnpm atom serve` — **not** a LaunchAgent / login item.
 
 If the API is down, the CLI exits with:
 
@@ -51,7 +51,9 @@ It does not fall back to in-process `@atom/core`. Optional `ATOM_API_AUTO_START=
 | `pnpm atom reject-noise` | reject suggested junk (`bot digest` / `收到✅` / log dumps) as `decision_rejected` reason `noise-heuristic` |
 | `pnpm atom merge-sweep [--apply]` | one-shot Laya fold of existing open Needs-you twins (dry-run default; `--apply` writes) |
 | `pnpm atom tag-backfill [--apply]` | one-shot Laya theme/project tags on existing suggested cards (dry-run default; `--apply` writes Chinese allowlist titles) |
-| `pnpm atom progress-scan [--apply]` | **host-local** git/`gh` scan of `atom`/`yzj`/`ai-advance` → `data/progress-snapshot.json`. Docker Desk cannot see Mac paths — run this on the Mac, not `docker compose exec`. `--apply` then `POST /api/done-sweep` if Desk is up |
+| `pnpm desk` / `pnpm desk:down` | **dogfood start**: host `progress-scan --loop` + `docker compose up -d`. Scan stays on the Mac; Desk cron consumes `data/progress-snapshot.json` |
+| `pnpm atom progress-scan [--apply]` | **host-local** git/`gh` scan of `atom`/`yzj`/`ai-advance` → `data/progress-snapshot.json`. One-shot; `--apply` then `POST /api/done-sweep` if Desk is up. Do not `docker compose exec` this |
+| `pnpm atom progress-scan --loop` | Mac helper: watch `data/progress-scan.request.json` + same 15m weekday window. Pair with compose (or use `pnpm desk`) |
 | `pnpm atom done-sweep [--apply]` | close open Needs-you cards that match snapshot + Desk history (`already_done`). Dry-run default |
 | `pnpm atom reopen <id>` | 「仍要我跟」 — put an auto-closed already_done card back on Needs-you |
 | `pnpm atom outbound-check [--title …] [--body … \| --path <file>] [--kind digest]` | Laya pre-post gate (allow/drop/hold); never sends |
@@ -82,7 +84,7 @@ Light paper inbox (warm cream + calm ink). Listen → propose → approve → ro
 
 ### Cron / webhooks
 
-Serve starts an in-process 15-minute poll (`data/triggers.json` → `poll-yzj-15m`) that runs the same pipeline as `POST /api/run` for `yzj-ai-advance`, plus up to 8 recent Yunzhijia private chats, on **weekdays Asia/Shanghai 08:00–20:00**. Overlap is skipped; one log line per tick (`ok` / `skip` / `fail`). Disable the row or set `ATOM_CRON=0`. Do **not** reinstall LaunchAgents (`com.guoxinshan.atom.serve` / `com.guoxinshan.atom.morning-run`) or login items.
+Serve starts an in-process 15-minute poll (`data/triggers.json` → `poll-yzj-15m`) that refreshes the progress snapshot, then runs the same pipeline as `POST /api/run` for `yzj-ai-advance`, plus up to 8 recent Yunzhijia private chats, on **weekdays Asia/Shanghai 08:00–20:00**. Overlap is skipped; one log line per tick (`ok` / `skip` / `fail`) plus a `progress via=…` line. Scan failure is **fail-open** (last snapshot, poll/extract continue). Disable the row or set `ATOM_CRON=0`. Set `progressScan: false` on the trigger (or `ATOM_PROGRESS_SCAN=0`) to skip the refresh. Do **not** reinstall LaunchAgents (`com.guoxinshan.atom.serve` / `com.guoxinshan.atom.morning-run`) or login items.
 
 One-shot still:
 
@@ -127,27 +129,30 @@ pnpm atom tag-backfill --apply  # write candidate_tagged overlays
 
 Needs-you must not resurface work you already shipped. Progress sources are the existing `data/workspaces.json` entries **`atom`**, **`yzj`**, **`ai-advance`** (paths already there).
 
-**Dogfood (Rock-Shan / Docker):** the Desk image does not contain those host checkouts. Refresh the snapshot **on the Mac**, then rebuild/refresh Desk:
+**Dogfood (Rock-Shan / Docker):** git checkouts stay on the Mac. Start Desk with the helper so the 15-minute cron keeps `data/progress-snapshot.json` fresh — no hand-run `progress-scan`:
 
 ```bash
-# 1) On the Mac checkout (not docker compose exec) — git + optional gh auth
-pnpm atom progress-scan
-# writes data/progress-snapshot.json (compose already mounts ./data)
+# One path: Mac helper + compose. Helper watches data/progress-scan.request.json
+# (compose already mounts ./data) and scans atom/yzj/ai-advance with host git/gh.
+pnpm desk                  # scripts/desk-up.sh
+# open http://127.0.0.1:8787
 
-# 2) Close cards that already match (Desk daemon must be up)
-pnpm atom done-sweep           # dry-run
-pnpm atom done-sweep --apply   # or: pnpm atom progress-scan --apply
-# next extract / poll-yzj-15m also runs the Done gate
+# After rebuild, wait ≤15m (or watch logs for the first in-window tick):
+docker compose logs -f desk | grep progress
+stat -f '%Sm' data/progress-snapshot.json   # mtime should move
+# Needs-you still uses #31/#32 Done matching. Hard-refresh Desk.
+# 「仍要我跟」 reopens a false already_done.
 
-# 3) If you pulled this branch:
+# Two terminals instead of pnpm desk:
+pnpm atom progress-scan --loop
 docker compose up -d --build
-# hard-refresh http://127.0.0.1:8787
-# 速记 / MCP items that already landed as merged PRs / commits / prior
-# accept-reject-merge should leave 需要你拍板, or sit under 系统已处理
-# with 「已在仓库/历史进度关闭」. 「仍要我跟」 reopens that card.
+
+# One-shot still works (not required on the 15m path):
+pnpm atom progress-scan
+pnpm atom done-sweep --apply
 ```
 
-Do **not** `docker compose exec desk pnpm atom progress-scan` as the dogfood path — those `/Users/kingdee/dev/…` paths are not in the image. If a scan fails or git is invisible, the gate **fail-opens** (card stays in Needs-you). Optional compose volume mounts for the three workspace paths are commented in `docker-compose.yml` (v1 still prefers the snapshot file).
+Do **not** `docker compose exec desk pnpm atom progress-scan` as the dogfood path — those `/Users/kingdee/dev/…` paths are not in the image. If the helper is down or a scan fails, the gate **fail-opens** (card stays in Needs-you; last snapshot is kept). Optional compose volume mounts for the three workspace paths are commented in `docker-compose.yml` (not required).
 
 Before a human send (Desk / 干饭人), check outbound content. Same `LAYA_URL` / timeout; fail-open allow if Laya is down. **Does not post to Yunzhijia.**
 
@@ -182,10 +187,11 @@ pnpm atom gate-digest --json       # same payload Desk gets
 Desk compose is **manual**. `restart: "no"` so Docker Desktop coming up at login does **not** start ATOM. Laya is a separate container on the Mac (`~/dev/laya-docker`); this repo’s compose does not swallow it.
 
 ```bash
-docker compose up -d          # build + start Desk on :8787
+pnpm desk                     # compose + Mac progress-scan helper
+# or: docker compose up -d    # Desk only; snapshot stays stale without the helper
 # open http://127.0.0.1:8787  (hard-refresh so Needs you shows theme/project groups)
-docker compose logs -f desk   # serve + [cron:poll-yzj-15m] ticks
-docker compose down           # stop (data/, out/, and yzj/grok login volumes stay)
+docker compose logs -f desk   # serve + [cron:poll-yzj-15m] ticks + progress via=
+pnpm desk:down                # stop helper + compose (data/, out/, login volumes stay)
 ```
 
 `pnpm atom serve` / `pnpm web` on the host is unchanged (still binds `127.0.0.1` unless you set `ATOM_WEB_HOST`). Host CLI talks to Docker Desk the same way: `ATOM_API_BASE=http://127.0.0.1:8787 pnpm atom …`.
@@ -270,7 +276,8 @@ fixtures/          # demo messages.jsonl
 data/sources.json  # SourceRegistry config
 out/               # digests (gitignored)
 Dockerfile         # Desk image (`pnpm serve` + Linux yzj-cli / grok)
-docker-compose.yml # Desk only (manual up; Laya stays on the host; yzj/grok volumes)
+docker-compose.yml # Desk only (manual up; Laya stays on the host; yzj/grok volumes; progress-scan helper is host-side)
+scripts/desk-up.sh # dogfood: host progress-scan --loop + compose
 docs/              # contracts (see 02-atom-contract, 06-extensibility, 11-single-api)
 ```
 

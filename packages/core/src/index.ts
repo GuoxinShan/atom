@@ -28,6 +28,8 @@ export * from "./pipeline/handoff.js";
 export * from "./pipeline/checklist.js";
 export * from "./pipeline/progress-snapshot.js";
 export * from "./pipeline/progress-scan.js";
+export * from "./pipeline/progress-refresh.js";
+export * from "./pipeline/progress-scan-host.js";
 export * from "./pipeline/done-match.js";
 export * from "./pipeline/done-gate.js";
 export * from "./agents/grok-coding.js";
