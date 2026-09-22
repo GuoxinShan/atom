@@ -85,17 +85,17 @@ Reading order: **title → source chip → 【摘要】 → 【要你拍板】 �
 
 **拒绝 teaches the queue.** A local 拒绝 (or an explicit reason 跟我无关) writes one source+theme scope into `data/preference-memory.json` immediately — same Yunzhijia group plus the theme class (for example 发布与发布流程) or a distinctive title stem. The next extract diverts a strong overlap off Needs you onto **系统已处理** as 「同类已标无关」 (not theme-tagged back onto the home queue). Same group with only a weak hint (bare 「发布」) stays suggested. A personal ask (单国鑫 / 请你 / 需要你, including a high-confidence one) is never diverted. RSI apply keeps these scopes; it does not retrain Laya. No 云之家 send.
 
-**来源静音.** **静音此来源** asks once, then writes that whole Yunzhijia group into `muted_sources` on the same preference file. New non-personal cards from the group stay off Needs you and show on **系统已处理** as 「来源已静音」. **我的偏好** lists the mute; **取消静音** lets the next extract surface that group again and does not reopen cards already closed. A personal ask from a muted group still stays on Needs you. No 云之家 send.
+**来源静音.** **静音此来源** writes that whole Yunzhijia group into `muted_sources` on the same preference file on the first click, then shows `已静音「群名」`. New non-personal cards from the group stay off Needs you and show on **系统已处理** as 「来源已静音」. **我的偏好** lists the mute; **取消静音** shows `已取消静音`, lets the next extract surface that group again, and does not reopen cards already closed. A personal ask from a muted group still stays on Needs you. No 云之家 send.
 
-**Confirm** (`window.confirm`) runs before **派给 Lead**, before **静音此来源**, and any future 发群. 通过, 拒绝, 批准规格, 退回修改, 确认清单, 仍要我跟, 保持关闭, 取消静音, and 先记下 apply on the first click.
+**Confirm** (`window.confirm`) runs before **派给 Lead** and any future 发群. 通过, 拒绝, 静音此来源, 批准规格, 退回修改, 确认清单, 仍要我跟, 保持关闭, 取消静音, and 先记下 apply on the first click. 拒绝 / 跟我无关 shows `已记下，同类少露` — no second confirm.
+
+**晨报.** When loaded suggested cards are on screen, one line under the title reads `今日 N 条待拍板 · 来自 K 个群` (N = those cards, K = distinct group ids on them). 规格待审 / 确认清单 keep their own counts. Empty Needs you stays **今天没有要你拍板的**. If muted sources or 拒绝 from the last day are already loaded, one short secondary line states that count; otherwise the calm note that an empty queue is normal.
 
 **短 / 长** on the matter detail swaps the same item between short (title + source chip + 【摘要】 + the two action sections) and long (【原文】, then full body and 验收标准, or the spec edit form) without leaving the item or reloading the queue. 【原文】 says it only opens a view and does not send.
 
-Empty Needs you stays **今天没有要你拍板的**.
-
 Accepted / Rejected are settled — they live under the **Matters** drawer, not the home queue.
 
-When Needs you has zero suggested and zero `awaitingHumanAck`, Desk shows calm copy: **今天没有要你拍板的**, plus that an empty queue is normal and new cards appear when watched groups have new topics. Last `atom run` time, preference floors, and cheap Desk/Laya health live on a one-line **status strip** (`GET /api/status`) — no invented clocks.
+When Needs you has zero suggested, zero spec review, and zero `awaitingHumanAck`, Desk shows calm copy: **今天没有要你拍板的**. The secondary line is the muted-source / last-day 拒绝 count when those are loaded, and otherwise that an empty queue is normal and new cards appear when watched groups have new topics. Last `atom run` time, preference floors, and cheap Desk/Laya health live on a one-line **status strip** (`GET /api/status`) — no invented clocks.
 
 Top nav (Chinese labels, English page keys):
 

@@ -636,6 +636,19 @@ function settledLine() {
   return `<p class="choice-why quiet-line">这一张没有待拍的。</p>`;
 }
 
+let toastTimer = 0;
+function showToast(text) {
+  const el = document.getElementById("desk-toast");
+  const note = String(text ?? "").trim();
+  if (!el || !note) return;
+  el.textContent = note;
+  el.classList.add("show");
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => {
+    el.classList.remove("show");
+  }, 2600);
+}
+
 function buildMatters() {
   const accepted = state.candidates.filter((c) => c.status === "accepted");
   const rows = [];
@@ -866,10 +879,6 @@ async function onMuteSourceClick(e) {
   const source = String(btn.dataset.muteSource || "").trim();
   const label = String(btn.dataset.muteLabel || source || "这个群");
   if (!source) return true;
-  const ok = window.confirm(
-    `静音此来源「${label}」？之后这个群的新卡片默认不再进需要你拍板。只改本机，不会发云之家。`
-  );
-  if (!ok) return true;
   btn.disabled = true;
   try {
     const res = await fetch("/api/source-mute", {
@@ -881,6 +890,7 @@ async function onMuteSourceClick(e) {
       btn.disabled = false;
       return true;
     }
+    showToast(`已静音「${label}」`);
     await loadDesk();
   } catch {
     btn.disabled = false;
@@ -1128,6 +1138,57 @@ function renderSuggestedCard(c) {
   return card;
 }
 
+function distinctSourceGroups(cards) {
+  const seen = new Set();
+  for (const c of cards || []) {
+    for (const entry of citeEntries(c.refs || [])) {
+      const id = String(entry.groupId || "").trim();
+      if (!id || id === "unknown") continue;
+      seen.add(id);
+    }
+  }
+  return seen.size;
+}
+
+function morningLine(suggested, reviews, acks) {
+  const n = suggested.length;
+  if (n) {
+    const k = distinctSourceGroups(suggested);
+    return k > 0 ? `今日 ${n} 条待拍板 · 来自 ${k} 个群` : `今日 ${n} 条待拍板`;
+  }
+  const bits = [];
+  if (reviews.length) bits.push(`规格待审 ${reviews.length} 条`);
+  if (acks.length) bits.push(`确认清单 ${acks.length} 条`);
+  return bits.join(" · ");
+}
+
+function mutedSourceCount() {
+  const rows = state.preference?.memory?.muted_sources;
+  return Array.isArray(rows) ? rows.length : 0;
+}
+
+function recentRejectCount() {
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+  let recent = 0;
+  for (const c of state.candidates) {
+    if (c.status !== "rejected" || c.reject_reason !== "not_mine") continue;
+    const t = Date.parse(c.updated_at || "");
+    if (Number.isFinite(t) && t < cutoff) continue;
+    recent += 1;
+  }
+  return recent;
+}
+
+function emptyDeskMeta() {
+  const muted = mutedSourceCount();
+  const recent = recentRejectCount();
+  const bits = [];
+  if (muted) bits.push(`已静音 ${muted} 个来源`);
+  if (recent) bits.push(`近一天记下 ${recent} 条`);
+  if (bits.length) return bits.join(" · ");
+  return "队列空着是正常的。新卡片来自你盯着的群里出现的新话题。";
+}
+
 function fallbackNeedsGroups(suggested) {
   const buckets = new Map();
   for (const c of suggested) {
@@ -1165,11 +1226,17 @@ function renderQueue() {
   const reviews = reviewSpecs();
   const acks = awaitingChecklists();
   const outbound = 0;
+  const line = morningLine(suggested, reviews, acks);
+  const morning = document.getElementById("morning-line");
+  if (morning) {
+    morning.textContent = line;
+    morning.hidden = !line;
+  }
   const counts = document.getElementById("gate-counts");
   if (counts) {
-    const bits = [`${suggested.length} 待拍板`];
-    if (reviews.length) bits.push(`${reviews.length} 规格待审`);
-    if (acks.length) bits.push(`${acks.length} 清单`);
+    const bits = [];
+    if (suggested.length && reviews.length) bits.push(`${reviews.length} 规格待审`);
+    if (suggested.length && acks.length) bits.push(`${acks.length} 清单`);
     if (outbound) bits.push(`${outbound} outbound`);
     counts.textContent = bits.join(" · ");
   }
@@ -1179,7 +1246,7 @@ function renderQueue() {
     queue.innerHTML = `
       <div class="empty-desk">
         <p class="clear">今天没有要你拍板的</p>
-        <p class="clear-meta">队列空着是正常的。新卡片来自你盯着的群里出现的新话题。</p>
+        <p class="clear-meta">${escapeHtml(emptyDeskMeta())}</p>
       </div>
     `;
     return;
@@ -1360,6 +1427,8 @@ async function actOnCandidate(act, id) {
     body: JSON.stringify({ id }),
   });
   const data = await res.json().catch(() => ({}));
+  if (!res.ok) return;
+  if (act === "reject") showToast("已记下，同类少露");
   if (act === "approve" && data.specId) {
     state.selectedId = data.specId;
     state.selectedKind = "spec";
@@ -1538,7 +1607,6 @@ document.getElementById("page-needs-you").addEventListener("click", async (e) =>
   const handoffBtn = e.target.closest("[data-handoff]");
   if (handoffBtn && !handoffBtn.disabled) {
     e.stopPropagation();
-    // Confirm before writing the local Lead pack. 静音此来源 confirms in onMuteSourceClick.
     const ok = window.confirm("确认派给 Lead？只会写出本机交接包，不会开始编码，也不会发云之家。");
     if (!ok) return;
     handoffBtn.disabled = true;
@@ -1651,7 +1719,7 @@ document.getElementById("lead-form").addEventListener("submit", async (e) => {
 
 async function loadDesk() {
   seedTranscript();
-  const [cands, specs, sources, triggersRes, workspaces, agents, subs, checks, runtime] =
+  const [cands, specs, sources, triggersRes, workspaces, agents, subs, checks, runtime, pref] =
     await Promise.all([
       fetchJson("/api/candidates", { candidates: [] }),
       fetchJson("/api/specs", { specs: [] }),
@@ -1664,7 +1732,9 @@ async function loadDesk() {
       fetchJson("/api/subscriptions", { subscriptions: [] }),
       fetchJson("/api/checklists", { checklists: [], awaitingHumanAck: [] }),
       fetchJson("/api/meta", {}),
+      fetchJson("/api/preference-memory", null),
     ]);
+  if (pref && pref.memory) state.preference = pref;
   state.candidates = cands.candidates || [];
   state.groups = Array.isArray(cands.groups) ? cands.groups : [];
   state.specs = specs.specs || [];
@@ -2159,8 +2229,9 @@ document.getElementById("page-preferences").addEventListener("click", async (e) 
         renderPreferences();
         return;
       }
-      state.prefNote = data.changed ? "已取消静音。之后这个群的新卡片可以再进需要你拍板。" : "这个来源本来就没静音";
+      state.prefNote = data.changed ? "已取消静音" : "这个来源本来就没静音";
       state.prefNoteFail = false;
+      if (data.changed) showToast("已取消静音");
       await loadPreferences();
     } catch (err) {
       state.prefNote = String(err);
