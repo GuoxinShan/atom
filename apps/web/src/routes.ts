@@ -257,6 +257,24 @@ export async function handleApi(
     return true;
   }
 
+  if (method === "GET" && p === "/api/progress-snapshot") {
+    const snapshot = loadProgressSnapshot(daemon.repoRoot);
+    if (!snapshot) {
+      json(res, {
+        ok: true,
+        snapshot: null,
+        progress: progressStatus(daemon.repoRoot),
+      });
+      return true;
+    }
+    json(res, {
+      ok: true,
+      snapshot,
+      progress: progressStatus(daemon.repoRoot),
+    });
+    return true;
+  }
+
   if (method === "POST" && p === "/api/progress-scan") {
     const refresh = await refreshProgressSnapshot(daemon.repoRoot, { source: "api" });
     const snapshot = loadProgressSnapshot(daemon.repoRoot);

@@ -25,61 +25,90 @@
       </header>
 
       <section id="page-needs-you" class="page desk active">
-        <main class="center">
-          <header class="needs-head">
-            <div>
-              <h2>需要你拍板</h2>
-              <p class="morning-line" id="morning-line" hidden></p>
-              <p class="hint tiny">只放需要人决定的卡片。新需求按主题/项目折叠（通过 / 拒绝）。一张卡片的顺序是标题、来源、【摘要】、【要你拍板】、【可选动作】。来源在标题下，点开是原文，不外发。通过后的草稿在下面「规格待审」，不是新卡片。</p>
-            </div>
-            <div class="gate-counts" id="gate-counts"></div>
-          </header>
-          <div class="queue" id="needs-queue"></div>
+        <main class="center home-center">
+          <div class="home-scroll" id="home-scroll">
+            <section class="home-section" id="section-needs-you" aria-labelledby="needs-you-title">
+              <header class="needs-head home-section-head">
+                <div>
+                  <h2 id="needs-you-title">要你拍板</h2>
+                  <p class="morning-line" id="morning-line" hidden></p>
+                  <p class="hint tiny">只放需要人决定的卡片。新需求按主题/项目折叠（通过 / 拒绝）。一张卡片的顺序是标题、来源、【摘要】、【要你拍板】、【可选动作】。来源在标题下，点开是原文，不外发。通过后的草稿进下面「卡点」，不是新拍板卡。</p>
+                </div>
+                <div class="gate-counts" id="gate-counts"></div>
+              </header>
+              <div class="queue" id="needs-queue"></div>
+            </section>
+
+            <section class="home-section" id="section-blockers" aria-labelledby="blockers-title">
+              <header class="home-section-head">
+                <div>
+                  <h2 id="blockers-title">卡点</h2>
+                  <p class="hint tiny">不在拍板队列里、但仍卡着你的：规格待审、已批准待派 Lead、近一天自动关闭可重开。不发云之家。</p>
+                </div>
+                <div class="gate-counts" id="blocker-counts"></div>
+              </header>
+              <div class="blocker-list" id="blocker-list"></div>
+            </section>
+
+            <section class="home-section" id="section-progress" aria-labelledby="progress-title">
+              <header class="home-section-head">
+                <div>
+                  <h2 id="progress-title">进度摘要</h2>
+                  <p class="hint tiny">来自已有进度快照。只写近况，不编造提交。</p>
+                </div>
+                <div class="gate-counts" id="progress-counts"></div>
+              </header>
+              <div class="progress-summary" id="progress-summary"></div>
+            </section>
+          </div>
         </main>
 
         <aside class="rail right">
           <div id="matter-detail" class="matter-detail"></div>
-          <div class="drawers">
-            <details>
-              <summary>Listening</summary>
-              <p class="hint tiny">Sources and triggers. Ask Lead to change them.</p>
-              <div id="sources-list" class="stack"></div>
-              <h3 class="subhead">Triggers</h3>
-              <div id="triggers-list" class="stack"></div>
-            </details>
-            <details>
-              <summary>Lead</summary>
-              <p class="hint tiny">Config and route — Lead does not write production code here.</p>
-              <div class="lead-chat">
-                <div id="lead-transcript" class="transcript"></div>
-                <form id="lead-form" class="composer">
-                  <input
-                    id="lead-input"
-                    autocomplete="off"
-                    placeholder="Ask Lead: 有哪些源 / 打开 AI推进 群"
-                  />
-                  <button type="submit" class="primary" id="lead-send">Send</button>
-                </form>
-              </div>
-            </details>
-            <details>
-              <summary>Matters</summary>
-              <p class="hint tiny">已通过 / 已拒绝，以及已派 Lead 的规格。待审规格在首页「规格待审」。</p>
-              <div id="matters-list" class="stack"></div>
-            </details>
-            <details>
-              <summary>Workspaces</summary>
-              <div id="ws-list" class="stack compact"></div>
-            </details>
-            <details>
-              <summary>Agents</summary>
-              <div id="agents-list" class="stack compact"></div>
-            </details>
-            <details>
-              <summary>Outbound</summary>
-              <div id="subs-list" class="stack compact"></div>
-            </details>
-          </div>
+          <details class="drawer-pack" id="drawer-pack">
+            <summary class="drawer-pack-summary">事项 · Listening / Lead / Matters…</summary>
+            <div class="drawers">
+              <details>
+                <summary>Listening</summary>
+                <p class="hint tiny">Sources and triggers. Ask Lead to change them.</p>
+                <div id="sources-list" class="stack"></div>
+                <h3 class="subhead">Triggers</h3>
+                <div id="triggers-list" class="stack"></div>
+              </details>
+              <details>
+                <summary>Lead</summary>
+                <p class="hint tiny">Config and route — Lead does not write production code here.</p>
+                <div class="lead-chat">
+                  <div id="lead-transcript" class="transcript"></div>
+                  <form id="lead-form" class="composer">
+                    <input
+                      id="lead-input"
+                      autocomplete="off"
+                      placeholder="Ask Lead: 有哪些源 / 打开 AI推进 群"
+                    />
+                    <button type="submit" class="primary" id="lead-send">Send</button>
+                  </form>
+                </div>
+              </details>
+              <details>
+                <summary>Matters</summary>
+                <p class="hint tiny">已通过 / 已拒绝，以及已派 Lead 的规格。待审规格在首页「卡点」。</p>
+                <div id="matters-list" class="stack"></div>
+              </details>
+              <details>
+                <summary>Workspaces</summary>
+                <div id="ws-list" class="stack compact"></div>
+              </details>
+              <details>
+                <summary>Agents</summary>
+                <div id="agents-list" class="stack compact"></div>
+              </details>
+              <details>
+                <summary>Outbound</summary>
+                <div id="subs-list" class="stack compact"></div>
+              </details>
+            </div>
+          </details>
         </aside>
       </section>
 

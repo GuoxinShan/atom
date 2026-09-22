@@ -6,6 +6,8 @@ const state = {
   groups: [],
   groupOpen: {},
   alreadyDone: [],
+  progressSnapshot: null,
+  workspaces: [],
   specs: [],
   checklists: [],
   sources: [],
@@ -26,6 +28,12 @@ const state = {
   specDrafts: {},
   localNotes: {},
   keptClosed: {},
+};
+
+const WORKSPACE_LABELS = {
+  atom: "ATOM",
+  yzj: "云之家",
+  "ai-advance": "AI推进",
 };
 
 const statusStrip = document.getElementById("status-strip");
@@ -691,7 +699,7 @@ function renderMatters() {
   const accepted = buildMatters();
   const rejected = state.candidates.filter((c) => c.status === "rejected");
   if (!accepted.length && !rejected.length) {
-    root.innerHTML = '<p class="hint tiny">通过或拒绝后的事项在这里。待审规格在首页「规格待审」。</p>';
+    root.innerHTML = '<p class="hint tiny">通过或拒绝后的事项在这里。待审规格在首页「卡点」。</p>';
     return;
   }
   for (const m of accepted) {
@@ -1150,16 +1158,59 @@ function distinctSourceGroups(cards) {
   return seen.size;
 }
 
-function morningLine(suggested, reviews, acks) {
+function morningLine(suggested) {
   const n = suggested.length;
-  if (n) {
-    const k = distinctSourceGroups(suggested);
-    return k > 0 ? `今日 ${n} 条待拍板 · 来自 ${k} 个群` : `今日 ${n} 条待拍板`;
-  }
-  const bits = [];
-  if (reviews.length) bits.push(`规格待审 ${reviews.length} 条`);
-  if (acks.length) bits.push(`确认清单 ${acks.length} 条`);
-  return bits.join(" · ");
+  if (!n) return "";
+  const k = distinctSourceGroups(suggested);
+  return k > 0 ? `今日 ${n} 条待拍板 · 来自 ${k} 个群` : `今日 ${n} 条待拍板`;
+}
+
+function recentAlreadyDone(limitDays = 1) {
+  const cutoff = Date.now() - limitDays * 24 * 60 * 60 * 1000;
+  return (state.candidates || [])
+    .filter((c) => {
+      if (c.status !== "rejected") return false;
+      if (c.disposition !== "already_done" && c.reject_reason !== "already_done") return false;
+      const t = Date.parse(c.updated_at || "");
+      if (Number.isFinite(t) && t < cutoff) return false;
+      return true;
+    })
+    .slice()
+    .sort((a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
+}
+
+function workspaceLabel(id) {
+  if (!id) return "";
+  const fromList = (state.workspaces || []).find((w) => w.id === id);
+  return (
+    firstHuman(fromList?.name, fromList?.label, fromList?.title, fromList?.displayName) ||
+    WORKSPACE_LABELS[id] ||
+    SOURCE_LABELS[id] ||
+    firstHuman(id) ||
+    shortSlug(id)
+  );
+}
+
+function progressItemLine(item) {
+  const title = firstHuman(item?.title) || "进展";
+  const when = relativeTime(item?.at);
+  const kind =
+    item?.kind === "pr"
+      ? item.number != null
+        ? `PR #${item.number}`
+        : "PR"
+      : item?.kind === "commit"
+        ? "提交"
+        : item?.kind === "issue"
+          ? item.number != null
+            ? `Issue #${item.number}`
+            : "Issue"
+          : item?.kind === "yzj"
+            ? "云之家"
+            : "";
+  const bits = [kind, title].filter(Boolean);
+  const head = bits.join(" · ");
+  return when ? `${head}（${when}）` : head;
 }
 
 function mutedSourceCount() {
@@ -1221,12 +1272,8 @@ function fallbackNeedsGroups(suggested) {
   return [...buckets.values()];
 }
 
-function renderQueue() {
-  const suggested = state.candidates.filter((c) => c.status === "suggested");
-  const reviews = reviewSpecs();
-  const acks = awaitingChecklists();
-  const outbound = 0;
-  const line = morningLine(suggested, reviews, acks);
+function renderNeedsYouSection(suggested, acks) {
+  const line = morningLine(suggested);
   const morning = document.getElementById("morning-line");
   if (morning) {
     morning.textContent = line;
@@ -1235,14 +1282,12 @@ function renderQueue() {
   const counts = document.getElementById("gate-counts");
   if (counts) {
     const bits = [];
-    if (suggested.length && reviews.length) bits.push(`${reviews.length} 规格待审`);
     if (suggested.length && acks.length) bits.push(`${acks.length} 清单`);
-    if (outbound) bits.push(`${outbound} outbound`);
     counts.textContent = bits.join(" · ");
   }
   queue.innerHTML = "";
 
-  if (!suggested.length && !reviews.length && !acks.length && !outbound) {
+  if (!suggested.length && !acks.length) {
     queue.innerHTML = `
       <div class="empty-desk">
         <p class="clear">今天没有要你拍板的</p>
@@ -1287,15 +1332,6 @@ function renderQueue() {
     queue.appendChild(section);
   }
 
-  if (reviews.length) {
-    const section = document.createElement("section");
-    section.className = "needs-board spec-review-board";
-    section.innerHTML = `<h2 class="needs-board-label">规格待审 <span>${reviews.length}</span></h2>
-      <p class="spec-review-hint">已通过的草稿。先看【摘要】，再拍板。派给 Lead 会再确认一次，不会自动发云之家。</p>`;
-    for (const spec of reviews) section.appendChild(renderSpecReviewCard(spec));
-    queue.appendChild(section);
-  }
-
   if (acks.length) {
     const section = document.createElement("section");
     section.className = "needs-board";
@@ -1324,6 +1360,195 @@ function renderQueue() {
     }
     queue.appendChild(section);
   }
+}
+
+function blockerWhy(kind, status) {
+  if (kind === "spec_review") return "规格待审 — 还没批准或退回。";
+  if (kind === "spec_handoff") return "已批准 — 等你显式派给 Lead。";
+  if (kind === "already_done") {
+    return firstHuman(status) || "已在仓库/历史进度关闭 — 可重开跟进。";
+  }
+  return "卡着，需要看一眼。";
+}
+
+function renderBlockerRow({ id, selectId, title, why, actionHtml, selected }) {
+  const row = document.createElement("article");
+  row.className = `blocker-row${selected ? " selected" : ""}`;
+  if (selectId) row.dataset.select = selectId;
+  row.innerHTML = `
+    <div class="blocker-main">
+      <h3>${escapeHtml(title)}</h3>
+      <p class="blocker-why">${escapeHtml(why)}</p>
+    </div>
+    <div class="blocker-actions">${actionHtml}</div>
+  `;
+  return row;
+}
+
+function specBlockerAction(spec) {
+  const id = escapeHtml(spec.id);
+  if (spec.review_status === "approved") {
+    return `<button type="button" class="primary" data-handoff="${id}">派给 Lead</button>
+      <button type="button" class="ghost" data-select-open="${id}">打开长详</button>`;
+  }
+  return `<button type="button" class="primary" data-spec-approve="${id}">批准规格</button>
+    <button type="button" class="ghost" data-select-open="${id}">打开长详</button>`;
+}
+
+function renderBlockersSection(reviews, doneRecent) {
+  const root = document.getElementById("blocker-list");
+  const counts = document.getElementById("blocker-counts");
+  if (!root) return;
+  root.innerHTML = "";
+  const pending = reviews.filter((s) => s.review_status !== "approved");
+  const ready = reviews.filter((s) => s.review_status === "approved");
+  const total = pending.length + ready.length + doneRecent.length;
+  if (counts) {
+    counts.textContent = total ? `${total} 条` : "";
+  }
+  if (!total) {
+    root.innerHTML = `<div class="empty-desk calm">
+      <p class="clear">现在没有卡点</p>
+      <p class="clear-meta">规格待审、待派 Lead、近一天自动关闭会排在这里。</p>
+    </div>`;
+    return;
+  }
+
+  for (const spec of pending) {
+    const selected =
+      state.selectedKind !== "checklist" &&
+      (state.selectedId === spec.id || state.selectedId === spec.candidate_id);
+    root.appendChild(
+      renderBlockerRow({
+        id: spec.id,
+        selectId: spec.id,
+        title: firstHuman(spec.title) || "未命名规格",
+        why: blockerWhy("spec_review"),
+        actionHtml: specBlockerAction(spec),
+        selected,
+      })
+    );
+  }
+  for (const spec of ready) {
+    const selected =
+      state.selectedKind !== "checklist" &&
+      (state.selectedId === spec.id || state.selectedId === spec.candidate_id);
+    root.appendChild(
+      renderBlockerRow({
+        id: spec.id,
+        selectId: spec.id,
+        title: firstHuman(spec.title) || "未命名规格",
+        why: blockerWhy("spec_handoff"),
+        actionHtml: specBlockerAction(spec),
+        selected,
+      })
+    );
+  }
+  for (const c of doneRecent) {
+    const reason = firstHuman(c.closed_reason) || statusLabel("already_done") || "已在仓库/历史进度关闭";
+    const kept = Boolean(state.keptClosed[c.id]);
+    root.appendChild(
+      renderBlockerRow({
+        id: c.id,
+        selectId: c.id,
+        title: firstHuman(c.title) || "未命名事项",
+        why: blockerWhy("already_done", `${reason}。`),
+        actionHtml: `<button type="button" class="ghost" data-reopen="${escapeHtml(c.id)}">仍要我跟</button>
+          <button type="button" data-keep-closed="${escapeHtml(c.id)}" aria-pressed="${kept ? "true" : "false"}">${
+            kept ? "已保持关闭" : "保持关闭"
+          }</button>`,
+        selected: state.selectedId === c.id,
+      })
+    );
+  }
+}
+
+function collectProgressBuckets(snapshot) {
+  const buckets = [];
+  if (!snapshot) return buckets;
+  for (const ws of snapshot.workspaces || []) {
+    const items = Array.isArray(ws.items) ? ws.items : [];
+    if (!items.length) continue;
+    const recent = items
+      .slice()
+      .sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")))
+      .slice(0, 2);
+    buckets.push({
+      id: ws.id,
+      label: workspaceLabel(ws.id),
+      lines: recent.map(progressItemLine).filter(Boolean),
+      available: ws.available !== false,
+    });
+  }
+  const discourse = snapshot.discourse;
+  if (discourse && Array.isArray(discourse.items) && discourse.items.length) {
+    const recent = discourse.items
+      .slice()
+      .sort((a, b) => String(b.at || "").localeCompare(String(a.at || "")))
+      .slice(0, 2);
+    buckets.push({
+      id: "discourse-yzj",
+      label: "云之家完成话",
+      lines: recent.map(progressItemLine).filter(Boolean),
+      available: discourse.available !== false,
+    });
+  }
+  return buckets;
+}
+
+function renderProgressSection() {
+  const root = document.getElementById("progress-summary");
+  const counts = document.getElementById("progress-counts");
+  if (!root) return;
+  const snap = state.progressSnapshot;
+  const buckets = collectProgressBuckets(snap);
+  const when = snap?.generated_at ? relativeTime(snap.generated_at) : "";
+  if (counts) {
+    counts.textContent = when ? `快照 ${when}` : "";
+  }
+  if (!snap) {
+    root.innerHTML = `<div class="empty-desk calm">
+      <p class="clear">还没有进度快照</p>
+      <p class="clear-meta">跑过 progress-scan 或等定时刷新后，这里会列出各仓库近况。</p>
+    </div>`;
+    return;
+  }
+  if (!buckets.length) {
+    root.innerHTML = `<div class="empty-desk calm">
+      <p class="clear">快照里暂时没有新进展</p>
+      <p class="clear-meta">不编造提交。有合并或完成话时会写一两行。</p>
+    </div>`;
+    return;
+  }
+  root.innerHTML = buckets
+    .map((b) => {
+      const lines = (b.lines || []).slice(0, 2);
+      return `<article class="progress-repo">
+        <h3>${escapeHtml(b.label)}</h3>
+        ${lines.map((line) => `<p class="progress-line">${escapeHtml(line)}</p>`).join("")}
+      </article>`;
+    })
+    .join("");
+}
+
+function renderQueue() {
+  const suggested = state.candidates.filter((c) => c.status === "suggested");
+  const reviews = reviewSpecs();
+  const acks = awaitingChecklists();
+  const doneRecent = recentAlreadyDone(1);
+  state.alreadyDone = (state.candidates || []).filter(
+    (c) =>
+      c.status === "rejected" &&
+      (c.disposition === "already_done" ||
+        c.reject_reason === "already_done" ||
+        c.disposition === "irrelevant" ||
+        c.reject_reason === "irrelevant" ||
+        c.disposition === "muted_source" ||
+        c.reject_reason === "muted_source")
+  );
+  renderNeedsYouSection(suggested, acks);
+  renderBlockersSection(reviews, doneRecent);
+  renderProgressSection();
 }
 
 function renderWorkspaces(data) {
@@ -1499,7 +1724,8 @@ function onBriefChromeClick(e) {
   if (keepBtn && !keepBtn.disabled) {
     e.stopPropagation();
     rememberKept(keepBtn.dataset.keepClosed);
-    renderProcessed();
+    renderQueue();
+    if (state.page === "processed") renderProcessed();
     return true;
   }
   return false;
@@ -1668,7 +1894,40 @@ document.getElementById("page-needs-you").addEventListener("click", async (e) =>
     selectMatter(chk.dataset.selectChecklist, "checklist");
     return;
   }
+  const openLong = e.target.closest("[data-select-open]");
+  if (openLong) {
+    e.stopPropagation();
+    const id = openLong.dataset.selectOpen;
+    state.briefLen[id] = "long";
+    selectMatter(id);
+    return;
+  }
+  const reopenBtn = e.target.closest("button[data-reopen]");
+  if (reopenBtn && !reopenBtn.disabled) {
+    e.stopPropagation();
+    reopenBtn.disabled = true;
+    try {
+      const res = await fetch("/api/reopen", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: reopenBtn.dataset.reopen, note: "仍要我跟" }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        reopenBtn.disabled = false;
+        reopenBtn.textContent = data.error || "无法重开";
+        return;
+      }
+      showToast("已放回要你拍板");
+      await loadDesk();
+    } catch (err) {
+      reopenBtn.disabled = false;
+      reopenBtn.textContent = String(err);
+    }
+    return;
+  }
   if (e.target.closest("summary.needs-group-summary")) return;
+  if (e.target.closest(".blocker-actions")) return;
   const selectable = e.target.closest("[data-select]");
   if (selectable) selectMatter(selectable.dataset.select);
 });
@@ -1719,7 +1978,7 @@ document.getElementById("lead-form").addEventListener("submit", async (e) => {
 
 async function loadDesk() {
   seedTranscript();
-  const [cands, specs, sources, triggersRes, workspaces, agents, subs, checks, runtime, pref] =
+  const [cands, specs, sources, triggersRes, workspaces, agents, subs, checks, runtime, pref, progress] =
     await Promise.all([
       fetchJson("/api/candidates", { candidates: [] }),
       fetchJson("/api/specs", { specs: [] }),
@@ -1733,6 +1992,7 @@ async function loadDesk() {
       fetchJson("/api/checklists", { checklists: [], awaitingHumanAck: [] }),
       fetchJson("/api/meta", {}),
       fetchJson("/api/preference-memory", null),
+      fetchJson("/api/progress-snapshot", { snapshot: null }),
     ]);
   if (pref && pref.memory) state.preference = pref;
   state.candidates = cands.candidates || [];
@@ -1741,6 +2001,8 @@ async function loadDesk() {
   state.checklists = checks.checklists || [];
   state.sources = sources.sources || [];
   state.machines = workspaces.machines || {};
+  state.workspaces = workspaces.workspaces || [];
+  state.progressSnapshot = progress && progress.snapshot ? progress.snapshot : null;
   state.meta = {
     lastExtractAt: runtime.lastExtractAt || null,
     lastRunAt: runtime.lastRunAt || null,
@@ -2315,3 +2577,8 @@ document.querySelectorAll(".drawers details").forEach((d) => {
     });
   });
 });
+
+const drawerPack = document.getElementById("drawer-pack");
+if (drawerPack) {
+  drawerPack.open = false;
+}
