@@ -81,19 +81,21 @@ Use **`POST /api/run`** from the CLI. Keep **`POST /hooks/run`** for inbound web
 | `serve` | *(starts this daemon)* |
 | `candidates [--status]` | `GET /api/candidates?status=` |
 | `approve <id>` | `POST /api/approve` `{id, note?}` → `{specId, created}` (draft only; no handoff) |
-| `reject <id>` | `POST /api/reject` `{id, reason?}` |
+| `reject <id>` | `POST /api/reject` `{id, reason?}` — empty reason or 跟我无关 writes a same-group+theme `irrelevant` scope (no send) |
 | `reject-noise` | `POST /api/reject-noise` |
 | `merge-sweep [--apply]` | `POST /api/merge-sweep` `{apply?}` (default dry-run) |
 | `tag-backfill [--apply]` | `POST /api/tag-backfill` `{apply?}` (default dry-run; suggested only) |
 | `progress-scan [--apply]` | **host-local** write `data/progress-snapshot.json` (imports core for git/`gh`; Docker cannot see Mac paths). Preserves `discourse` (云之家 completions folded later by the Done gate from ingested messages). `--apply` then `POST /api/done-sweep` `{apply:true}` if Desk is up |
 | `progress-scan --loop` | Mac helper: watch `data/progress-scan.request.json` + 15m weekday interval + optional `127.0.0.1:8788`. `pnpm desk` starts this with compose |
 | `done-sweep [--apply]` | `POST /api/done-sweep` `{apply?}` (default dry-run; already_done off Needs-you) |
-| `reopen <id>` | `POST /api/reopen` `{id, note?}` (「仍要我跟」; already_done only) |
+| `reopen <id>` | `POST /api/reopen` `{id, note?}` (「仍要我跟」; already_done, irrelevant, or muted_source) |
 | `outbound-check [--title …] [--body … \| --path]` | `POST /api/outbound-check` `{title?, body?, kind?}` (never sends) |
 | `preference-rsi [--dry-run \| --apply]` | `POST /api/preference-rsi` `{apply?}` (default dry-run; never sends) |
 | `gate-digest [--since …] [--json]` | `GET` or `POST /api/gate-digest` `{since?}` (read-only; default last 24h; never sends) |
 | *(Desk 我的偏好)* | `GET /api/preference-memory` (file + last RSI; never sends) |
-| *(Desk 我的偏好 light-edit)* | `PATCH /api/preference-memory` `{thresholds?, blocklist?, blocklist_add?, blocklist_remove?}` (clamped; never sends; does not move RSI `cursor_at`) |
+| *(Desk 我的偏好 light-edit)* | `PATCH /api/preference-memory` `{thresholds?, blocklist?, blocklist_add?, blocklist_remove?}` (clamped; never sends; does not move RSI `cursor_at`; keeps `irrelevant` and `muted_sources`) |
+| *(Desk 静音此来源)* | `POST /api/source-mute` `{source, label?}` — whole group off Needs you; sweeps open non-personal cards; no send; does not move RSI `cursor_at` |
+| *(Desk 取消静音)* | `POST /api/source-unmute` `{source}` — later extracts from that group can surface again; does not reopen closed cards; no send |
 | *(Desk status strip)* | `GET /api/status` `{desk, lastRunAt, lastExtractAt, preference.floors, laya}` (Laya probe ≤400ms) |
 | `specs` | `GET /api/specs` `{specs, review}` (review = not yet 已派 Lead) |
 | `spec-approve <id>` | `POST /api/spec-approve` `{id, title?, body?, acceptance_criteria?, note?}` |

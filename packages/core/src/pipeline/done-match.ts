@@ -38,6 +38,7 @@ import {
 import type { WorkspaceEntry } from "../agents/lead.js";
 import type { ProgressItem, ProgressSnapshot } from "./progress-snapshot.js";
 import { discourseCoversTitle } from "./yzj-discourse.js";
+import { isPersonalAsk } from "./irrelevant.js";
 
 /** Stronger than merge's 0.32 when there is no workspace hint. */
 export const DONE_TITLE_MIN = 0.36;
@@ -139,6 +140,8 @@ export type DoneHistoryItem = DoneThemeFields & {
   body: string;
   refs: string[];
   status: "accepted" | "rejected" | "merged";
+  /** User 跟我无关 / auto 同类 divert. Not evidence that the work shipped. */
+  reject_reason?: string;
 };
 
 export type DoneCandidate = DoneThemeFields & {
@@ -504,6 +507,16 @@ function bestHistoryHit(
   let best: { h: DoneHistoryItem; overlap: number } | null = null;
   for (const h of history) {
     if (cand.id && h.id === cand.id) continue;
+    // 拒绝 / 同类已标无关 means "not my problem", not "this ask is done".
+    // A later personal ask with the same words still belongs on Needs you.
+    if (
+      (h.reject_reason === "not_mine" ||
+        h.reject_reason === "irrelevant" ||
+        h.reject_reason === "muted_source") &&
+      isPersonalAsk(cand.title, cand.body ?? "")
+    ) {
+      continue;
+    }
     const score = scoreNearDuplicate(text, historyText(h));
     const shared = sharedRefTokens(cand.refs, h.refs);
     const same =

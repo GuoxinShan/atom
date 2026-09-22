@@ -52,6 +52,11 @@ import {
   runDoneSweep,
   reopenCandidate,
   loadProgressSnapshot,
+  isUserIrrelevantReason,
+  NOT_MINE_REASON,
+  teachIrrelevantFromReject,
+  muteSource,
+  unmuteSource,
 } from "@atom/core";
 import type { Daemon } from "./context.js";
 import { json, readJson } from "./http.js";
@@ -137,6 +142,43 @@ export async function handleApi(
     return true;
   }
 
+  if (method === "POST" && p === "/api/source-mute") {
+    const body = await readJson(req);
+    const source = str(body, "source");
+    if (!source) {
+      json(res, { error: "source required" }, 400);
+      return true;
+    }
+    const label = str(body, "label");
+    const muted = muteSource(daemon.store, daemon.repoRoot, source, label);
+    if (!muted.ok) {
+      json(res, { error: "source required" }, 400);
+      return true;
+    }
+    json(res, {
+      ok: true,
+      diverted: muted.diverted.length,
+      memory: loadPreferenceMemory(daemon.repoRoot, daemon.store),
+    });
+    return true;
+  }
+
+  if (method === "POST" && p === "/api/source-unmute") {
+    const body = await readJson(req);
+    const source = str(body, "source");
+    if (!source) {
+      json(res, { error: "source required" }, 400);
+      return true;
+    }
+    const unmuted = unmuteSource(daemon.store, daemon.repoRoot, source);
+    json(res, {
+      ok: true,
+      changed: unmuted.changed,
+      memory: loadPreferenceMemory(daemon.repoRoot, daemon.store),
+    });
+    return true;
+  }
+
   if (method === "GET" && p === "/api/candidates") {
     const status = url.searchParams.get("status") as
       | "suggested"
@@ -180,8 +222,12 @@ export async function handleApi(
       json(res, { error: "id required" }, 400);
       return true;
     }
-    rejectCandidate(daemon.store, id, body.reason ? String(body.reason) : undefined);
-    json(res, { ok: true });
+    const raw = body.reason ? String(body.reason) : undefined;
+    const teach = isUserIrrelevantReason(raw);
+    const reason = teach ? NOT_MINE_REASON : raw;
+    rejectCandidate(daemon.store, id, reason);
+    const taught = teach ? teachIrrelevantFromReject(daemon.store, daemon.repoRoot, id) : null;
+    json(res, { ok: true, irrelevant: taught?.learned === true, diverted: taught?.diverted.length ?? 0 });
     return true;
   }
 

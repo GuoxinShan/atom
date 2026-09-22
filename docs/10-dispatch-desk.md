@@ -73,17 +73,21 @@ Needs-you cards, the opened theme group, and the matter detail share one contrac
 
 Reading order: **title → source chip → 【摘要】 → 【要你拍板】 → 【可选动作】**.
 
-**Source chip** — the Yunzhijia group (or other cite label) sits under the title on every short card. It is not only a phrase inside 【摘要】 or the quiet status line. Clicking it opens this matter’s long detail and scrolls to 【原文】 (group name + digest). If the ref already has an `https` deep-link (`url`, `href`, `link`, or a `url` token), that same click also opens the link in a new tab (`noopener`). Desk does not invent a 云之家 URL, and it never sends.
+**Source chip** — the Yunzhijia group (or other cite label) sits under the title on every short card. It is not only a phrase inside 【摘要】 or the quiet status line. Clicking it opens this matter’s long detail and scrolls to 【原文】 (group name + digest). If the ref already has an `https` deep-link (`url`, `href`, `link`, or a `url` token), that same click also opens the link in a new tab (`noopener`). Desk does not invent a 云之家 URL, and it never sends. A group chip also has **静音此来源** beside it (not on the chip itself).
 
 1. **【摘要】** — short view is two lines: what changed, plus one reason this is on Needs you. The group name lives on the source chip, not again in the sentence.
 2. **【要你拍板】** — the decision, urgency first within a theme group (higher confidence, then older `updated_at`; display only). Each option is a verb plus one line of consequence:
-   - **A 通过** — 记为已通过，草稿进「规格待审」。不外发、不开工。 / **B 拒绝** — 移出今天的队列。只记在本机。
+   - **A 通过** — 记为已通过，草稿进「规格待审」。不外发、不开工。 / **B 拒绝** — 移出今天的队列。同类少露。只记在本机。
    - **A 批准规格** — 记为已批准。还不会写交接包，也不会外发。 / **B 退回修改** — 留在规格待审。
    - **A 派给 Lead** — 确认后写出本机交接包。不编码、不发云之家。 / **B 退回修改** — 回到待审，不写交接包。
    - **A 仍要我跟** — 重新放回 Needs you。只改本机。 / **B 保持关闭** — 留在系统已处理。
 3. **【可选动作】** — **回群同步** and **先记下**. Default is do not send. 回群同步 stays disabled (`即将推出 · 不会发送`) until an outbound send is actually wired. 先记下 writes a local note in this browser. Neither sends 云之家, and Desk never auto-sends 云之家.
 
-**Confirm** (`window.confirm`) runs only before **派给 Lead** and any future 发群. 通过, 拒绝, 批准规格, 退回修改, 确认清单, 仍要我跟, 保持关闭, and 先记下 apply on the first click.
+**拒绝 teaches the queue.** A local 拒绝 (or an explicit reason 跟我无关) writes one source+theme scope into `data/preference-memory.json` immediately — same Yunzhijia group plus the theme class (for example 发布与发布流程) or a distinctive title stem. The next extract diverts a strong overlap off Needs you onto **系统已处理** as 「同类已标无关」 (not theme-tagged back onto the home queue). Same group with only a weak hint (bare 「发布」) stays suggested. A personal ask (单国鑫 / 请你 / 需要你, including a high-confidence one) is never diverted. RSI apply keeps these scopes; it does not retrain Laya. No 云之家 send.
+
+**来源静音.** **静音此来源** asks once, then writes that whole Yunzhijia group into `muted_sources` on the same preference file. New non-personal cards from the group stay off Needs you and show on **系统已处理** as 「来源已静音」. **我的偏好** lists the mute; **取消静音** lets the next extract surface that group again and does not reopen cards already closed. A personal ask from a muted group still stays on Needs you. No 云之家 send.
+
+**Confirm** (`window.confirm`) runs before **派给 Lead**, before **静音此来源**, and any future 发群. 通过, 拒绝, 批准规格, 退回修改, 确认清单, 仍要我跟, 保持关闭, 取消静音, and 先记下 apply on the first click.
 
 **短 / 长** on the matter detail swaps the same item between short (title + source chip + 【摘要】 + the two action sections) and long (【原文】, then full body and 验收标准, or the spec edit form) without leaving the item or reloading the queue. 【原文】 says it only opens a view and does not send.
 
@@ -96,8 +100,8 @@ When Needs you has zero suggested and zero `awaitingHumanAck`, Desk shows calm c
 Top nav (Chinese labels, English page keys):
 
 1. **需要你拍板** (`needs-you`) — default home
-2. **系统已处理** (`processed`) — read-only last-24h gate-digest (noise dropped / merged / already_done / outbound allow-drop-hold / auto_rate) plus auto-closed cards labeled **已在仓库/历史进度关闭** or **云之家进度关闭**. 「仍要我跟」 reopens that card onto Needs you. Accepted specs show **已通过 → spec 待审 → 已批准 → 已派 Lead**.
-3. **我的偏好** (`preferences`) — view + clamped light-edit of `data/preference-memory.json`; RSI via existing `POST /api/preference-rsi`
+2. **系统已处理** (`processed`) — read-only last-24h gate-digest (noise dropped / merged / already_done / outbound allow-drop-hold / auto_rate) plus auto-closed cards labeled **已在仓库/历史进度关闭**, **云之家进度关闭**, **同类已标无关**, or **来源已静音**. 「仍要我跟」 reopens that card onto Needs you. Accepted specs show **已通过 → spec 待审 → 已批准 → 已派 Lead**.
+3. **我的偏好** (`preferences`) — view + clamped light-edit of `data/preference-memory.json`, including 跟我无关 scopes and muted sources (取消静音); RSI via existing `POST /api/preference-rsi`
 4. **高级** (`advanced`) — Atoms append-only log placeholder (collapsed) + spec 进度 + cold-start/Setup. Not the home screen; backend log/API unchanged.
 
 Lead / Listening / providers / workspaces / outbound stay **collapsed drawers** on Needs you, not peer tabs.

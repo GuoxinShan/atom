@@ -106,9 +106,19 @@ export function projectCandidates(store: EventStore): CandidateView[] {
       else delete cur.reject_reason;
       const alreadyDone =
         reason === "already_done" || optionalText(detail.disposition) === "already_done";
+      const irrelevant =
+        reason === "irrelevant" || optionalText(detail.disposition) === "irrelevant";
+      const mutedSource =
+        reason === "muted_source" || optionalText(detail.disposition) === "muted_source";
       if (alreadyDone) {
         cur.disposition = "already_done";
         cur.closed_reason = label ?? "已在仓库/历史进度关闭";
+      } else if (irrelevant) {
+        cur.disposition = "irrelevant";
+        cur.closed_reason = label ?? "同类已标无关";
+      } else if (mutedSource) {
+        cur.disposition = "muted_source";
+        cur.closed_reason = label ?? "来源已静音";
       } else {
         delete cur.disposition;
         if (label) cur.closed_reason = label;

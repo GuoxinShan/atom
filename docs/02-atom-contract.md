@@ -71,7 +71,7 @@ Derived fields (examples):
 
 - `title`, `body`, `confidence`
 - `status`: `suggested` \| `accepted` \| `rejected` \| `merged`
-- optional `disposition` / `closed_reason` / `keep_open` (Done gate `already_done` + reopen)
+- optional `disposition` / `closed_reason` / `keep_open` (Done gate `already_done`, 同类 `irrelevant`, muted group `muted_source`, plus reopen)
 - `refs[]` union from propose + later attachments
 - `updated_at` = last related atom time
 - optional `theme` / `project` (or `tags.theme` / `tags.project`) for Desk grouping; later `candidate_tagged` overlays those fields without changing status. `cluster_key` remains the same-request skip key

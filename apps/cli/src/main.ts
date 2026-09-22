@@ -18,7 +18,7 @@ Usage:
   pnpm atom digest
   pnpm atom candidates [--status suggested|accepted|rejected|merged]
   pnpm atom approve <candidateId> [--note ...]
-  pnpm atom reject <candidateId> [--reason ...]
+  pnpm atom reject <candidateId> [--reason ...]   # default / 跟我无关 learns same group+theme
   pnpm atom specs
   pnpm atom spec-approve <specOrCandidateId> [--note ...]
   pnpm atom spec-return <specOrCandidateId> [--note ...]
@@ -114,9 +114,10 @@ async function main() {
       skipped: number;
       noiseDropped: number;
       alreadyDone?: number;
+      irrelevant?: number;
     }>("POST", "/api/extract", { source: sourceId, agent: agentName, groupIds });
     console.log(
-      `OK extract agent=${data.agent} seeds=${data.seeded} gated_out=${data.gated} proposed=${data.proposed} skipped=${data.skipped} noise_dropped=${data.noiseDropped} already_done=${data.alreadyDone ?? 0}`
+      `OK extract agent=${data.agent} seeds=${data.seeded} gated_out=${data.gated} proposed=${data.proposed} skipped=${data.skipped} noise_dropped=${data.noiseDropped} already_done=${data.alreadyDone ?? 0} irrelevant=${data.irrelevant ?? 0}`
     );
     return;
   }

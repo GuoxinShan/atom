@@ -16,6 +16,7 @@ import {
   clampMergeThreshold,
   clampThreshold,
   loadPreferenceMemory,
+  mergeIrrelevant,
   mergePatternList,
   parsePreferenceMemory,
   patternStem,
@@ -23,6 +24,8 @@ import {
   type LayaGateThresholds,
   type PreferenceMemory,
 } from "../agents/preference-memory.js";
+import { loadThemeVocabulary } from "../agents/theme-vocabulary.js";
+import { irrelevantSig, scopesFromIrrelevantFeedback } from "./irrelevant.js";
 import { newId } from "../schema/ids.js";
 import type { CandidateStatus } from "../schema/types.js";
 import type { EventStore } from "../store/events.js";
@@ -73,12 +76,32 @@ type FeedbackRow = {
   id: string;
   title: string;
   body: string;
+  refs: string[];
+  theme?: string;
+  tags?: { theme?: string };
   status: CandidateStatus;
   decidedAt?: string;
   layaGate?: LayaGateAudit;
   layaMerge?: LayaMergeAudit;
   rejectReason?: string;
 };
+
+function refTokens(raw: string): string[] {
+  try {
+    const v = JSON.parse(raw) as unknown;
+    if (!Array.isArray(v)) return [];
+    const out: string[] = [];
+    for (const item of v) {
+      if (item && typeof item === "object" && "token" in item) {
+        const token = (item as { token?: unknown }).token;
+        if (typeof token === "string" && token) out.push(token);
+      }
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
 
 function parseDetail(raw: string): Record<string, unknown> {
   try {
@@ -101,10 +124,17 @@ function collectFeedback(store: EventStore, sinceIso: string | null): FeedbackRo
     if (ev.type === "candidate_proposed") {
       const gate = asAudit(detail.laya_gate);
       const merge = asAudit(detail.laya_merge);
+      const tags =
+        detail.tags && typeof detail.tags === "object" && !Array.isArray(detail.tags)
+          ? (detail.tags as { theme?: string })
+          : undefined;
       map.set(ev.subject_id, {
         id: ev.subject_id,
         title: String(detail.title ?? ev.summary),
         body: String(detail.body ?? ""),
+        refs: refTokens(ev.refs_json),
+        theme: typeof detail.theme === "string" ? detail.theme : tags?.theme,
+        ...(tags ? { tags } : {}),
         status: "suggested",
         layaGate: gate
           ? {
@@ -202,7 +232,8 @@ function collectPatterns(
 
 export function computePreferenceRsi(
   store: EventStore,
-  current: PreferenceMemory
+  current: PreferenceMemory,
+  opts?: { repoRoot?: string }
 ): {
   memory: PreferenceMemory;
   samples: PreferenceRsiSamples;
@@ -223,7 +254,8 @@ export function computePreferenceRsi(
   let mergeFailOpenMerged = 0;
 
   for (const row of rows) {
-    if ((row.rejectReason ?? "").toLowerCase() === "already_done") continue;
+    const skipReason = (row.rejectReason ?? "").toLowerCase();
+    if (skipReason === "already_done" || skipReason === "irrelevant" || skipReason === "muted_source") continue;
     if (row.status === "accepted") accepted += 1;
     else if (row.status === "rejected") rejected += 1;
     else if (row.status === "merged") merged += 1;
@@ -292,6 +324,10 @@ export function computePreferenceRsi(
 
   const allowlist = mergePatternList(current.allowlist, addedAllow);
   const blocklist = mergePatternList(current.blocklist, addedBlock);
+  const irrelevant = mergeIrrelevant(
+    current.irrelevant,
+    scopesFromIrrelevantFeedback(rows, loadThemeVocabulary(opts?.repoRoot))
+  );
 
   const deltas: LayaGateThresholds = {
     noise: roundDelta(afterThresholds.noise - current.thresholds.noise),
@@ -301,7 +337,8 @@ export function computePreferenceRsi(
 
   const patternsChanged =
     allowlist.join("\0") !== current.allowlist.join("\0") ||
-    blocklist.join("\0") !== current.blocklist.join("\0");
+    blocklist.join("\0") !== current.blocklist.join("\0") ||
+    irrelevantSig(irrelevant) !== irrelevantSig(current.irrelevant);
   const thresholdsChanged = deltas.noise !== 0 || deltas.merge !== 0 || deltas.outbound !== 0;
 
   if (!thresholdsChanged && !patternsChanged) {
@@ -326,6 +363,8 @@ export function computePreferenceRsi(
       thresholds: afterThresholds,
       allowlist,
       blocklist,
+      irrelevant,
+      muted_sources: (current.muted_sources ?? []).map((s) => ({ ...s })),
     },
     samples,
     deltas,
@@ -387,7 +426,7 @@ export function runPreferenceRsi(
   const now = (opts?.now ?? new Date()).toISOString();
   const current = parsePreferenceMemory(opts?.current ?? loadPreferenceMemory(repoRoot, store));
 
-  const computed = computePreferenceRsi(store, current);
+  const computed = computePreferenceRsi(store, current, { repoRoot });
   const changed = computed.reason === "adjusted";
   const next: PreferenceMemory = changed
     ? { ...computed.memory, updated_at: now, cursor_at: now }

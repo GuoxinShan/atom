@@ -44,4 +44,17 @@ describe("applyPreferenceMemoryPatch", () => {
     assert.deepEqual(removed.memory.blocklist, ["收到确认"]);
     assert.deepEqual(removed.memory.allowlist, []);
   });
+
+  it("keeps muted sources and 跟我无关 scopes when floors change", () => {
+    const current = {
+      ...defaultPreferenceMemory(),
+      muted_sources: [{ source: "g1", label: "mcpApp开发群" }],
+      irrelevant: [{ source: "g1", theme: "日程/会议", stem: "日历同步" }],
+    };
+    const { memory, changed } = applyPreferenceMemoryPatch(current, { thresholds: { noise: 0.82 } });
+    assert.equal(changed, true);
+    assert.deepEqual(memory.muted_sources, current.muted_sources);
+    assert.deepEqual(memory.irrelevant, current.irrelevant);
+    assert.equal(memory.cursor_at, null);
+  });
 });

@@ -90,8 +90,8 @@ export interface CandidateView {
   theme?: string;
   project?: string;
   tags?: CandidateTags;
-  /** `already_done` when the Done gate auto-closed this card. */
-  disposition?: "already_done";
+  /** `already_done` from the Done gate, `irrelevant` for 同类, `muted_source` for a muted group. */
+  disposition?: "already_done" | "irrelevant" | "muted_source";
   reject_reason?: string;
   /** Human line for 系统已处理, e.g. 已在仓库/历史进度关闭. */
   closed_reason?: string;
