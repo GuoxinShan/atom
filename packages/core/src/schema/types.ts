@@ -15,6 +15,8 @@ export const AtomTypeSchema = z.enum([
   "decision_merged",
   "decision_reopened",
   "spec_drafted",
+  "spec_approved",
+  "spec_returned",
   "pr_opened",
   "evidence_attached",
   "handoff_exported",
@@ -130,6 +132,21 @@ export interface SpecDraft {
   body: string;
   acceptance_criteria: string[];
   refs: Ref[];
+}
+
+/** Human review of a drafted spec, before an explicit Lead handoff. */
+export type SpecReviewStatus = "pending" | "returned" | "approved" | "handed_off";
+
+export interface SpecView extends SpecDraft {
+  review_status: SpecReviewStatus;
+  /** 已通过 → spec 待审 → 已批准 → 已派 Lead (current step). */
+  stage_label: string;
+  updated_at: string;
+  note?: string;
+  handoff_id?: string;
+  handoff_path?: string;
+  handoff_target?: string;
+  ran?: boolean;
 }
 
 export interface HandoffPack {

@@ -19,7 +19,7 @@ ATOM is a **cited demand inbox + human triage desk**, not a coding factory and n
 | Weekdays 08:00–20:00, every 15m | Desk daemon + host helper | Refresh `data/progress-snapshot.json` (Mac git/`gh`), then the same pipeline as `POST /api/run` for `yzj-ai-advance` (configured groups ∪ ~8 recent private chats). Skip nights/weekends/overlap. Scan fail → last snapshot, poll continues. |
 | After a morning tick | 干饭人 / you | `pnpm atom gate-digest` — paste the markdown if you want a gate-acceptance line in the group; JSON is `GET /api/gate-digest` |
 | When you ship / after PRs land | (automatic) | Next 15m tick picks up merged PRs / git log. Hard-refresh Desk. One-shot `pnpm atom progress-scan` is optional. |
-| Anytime | You | Open Desk → **Needs you** only (approve / reject / checklist ack). Hard-refresh `:8787` so cards show in collapsible theme/project groups. |
+| Anytime | You | Open Desk → **Needs you** (通过 / 拒绝, then 规格待审 → 派给 Lead). Hard-refresh `:8787`. |
 | After triage | You | `pnpm atom preference-rsi` (dry-run) then `--apply` if the deltas look right |
 
 Toggle the poll in `data/triggers.json` (`id: poll-yzj-15m`). Restart the container / serve after edits. `ATOM_CRON=0` disables the timer.
@@ -48,20 +48,20 @@ Rules:
 
 ```
 Approve
-  → spec_drafted (auto, already)
-  → handoff_exported to routed workspace (auto on Approve? NO in week 1)
-  → you click Handoff when ready (Desk)
+  → spec_drafted (auto, already) — card leaves Needs-you candidate queue
+  → 规格待审 on Desk (human: 批准规格 / 退回修改)
+  → spec_approved
+  → you click 派给 Lead (confirm) → handoff_exported local pack
   → checklist (tests / evidence / summary / human_gate_ack)
   → pr-open only after checklist passed
-  → coding agent --run: OFF by default; only when you pass --run or a future explicit Desk toggle
+  → coding agent --run: OFF by default; only when you pass --run
 ```
 
 Week 1 lock:
-- **Accept = “值得跟”**, not “开写”.
-- Handoff is a separate human click (keeps Needs you calm).
-- Coding stays confirm-gated; ATOM stops at a good brief + path.
-
-Week 2+ (only if handoffs pile up unused): optional “Accept & handoff” one-click still **without** `--run`.
+- **Accept = “值得跟”**, not “开写”. No coding, no Yunzhijia, no Lead dispatch on accept.
+- Spec review is a separate human gate. 派给 Lead is a third, confirm-gated click.
+- Repeated 派给 Lead does not duplicate packs.
+- Coding stays confirm-gated; ATOM stops at a good brief + path unless `--run`.
 
 ## 4. Sources & noise (群 / 标准)
 

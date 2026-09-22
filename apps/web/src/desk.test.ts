@@ -108,6 +108,18 @@ describe("Desk shell", () => {
     assert.match(js, /already_done/);
     assert.match(js, /processed-done/);
     assert.match(html, /按主题\/项目折叠/);
+    assert.match(html, /规格待审/);
+    assert.match(html, /规格进度/);
+    assert.match(js, /批准规格/);
+    assert.match(js, /退回修改/);
+    assert.match(js, /派给 Lead/);
+    assert.match(js, /spec-review-card/);
+    assert.match(js, /window\.confirm/);
+    assert.match(js, /target: "file", run: false/);
+    assert.match(js, /\/api\/spec-approve/);
+    assert.match(js, /\/api\/spec-return/);
+    assert.match(css, /spec-review-board/);
+    assert.match(css, /spec-review-card/);
     assert.match(css, /needs-group\.is-other/);
     assert.match(css, /empty-desk/);
     assert.doesNotMatch(css, /#6e7bf2/);
@@ -423,6 +435,113 @@ describe("Desk operator APIs", () => {
     );
     assert.equal(live?.status, "suggested");
     assert.equal(live?.keep_open, true);
+  });
+
+  it("accept drafts a spec; review + confirm-gated handoff; no dispatch on accept", async () => {
+    const daemon = await tempDaemon();
+    fs.writeFileSync(
+      path.join(daemon.repoRoot, "data/workspaces.json"),
+      JSON.stringify({
+        version: 1,
+        defaultMachine: "test",
+        machines: {},
+        workspaces: [
+          {
+            id: "atom",
+            machine: "test",
+            path: "/tmp/atom",
+            kind: "personal",
+            tags: ["atom"],
+            match: ["ATOM", "Desk", "OAuth"],
+          },
+        ],
+      })
+    );
+    const id = newId("cand");
+    daemon.store.append({
+      type: "candidate_proposed",
+      subject_id: id,
+      summary: "Desk 需要 OAuth 本机登录",
+      detail: {
+        title: "Desk 需要 OAuth 本机登录",
+        body: "登录后才能批候选",
+        confidence: 0.9,
+      },
+      refs: [{ token: "yzj:im:g:spec-desk", kind: "im", digest: "oauth" }],
+      actor: "test",
+    });
+
+    const accepted = await api(daemon, "POST", "/api/approve", { id });
+    assert.equal(accepted.status, 200);
+    const specId = String(accepted.json.specId);
+    assert.match(specId, /^spec_/);
+    assert.equal(accepted.json.created, true);
+
+    const again = await api(daemon, "POST", "/api/approve", { id });
+    assert.equal(again.json.specId, specId);
+    assert.equal(again.json.created, false);
+
+    const listed = await api(daemon, "GET", "/api/specs");
+    const specs = listed.json.specs as Array<{
+      id: string;
+      review_status: string;
+      stage_label: string;
+      candidate_id: string;
+    }>;
+    assert.equal(specs.length, 1);
+    assert.equal(specs[0]?.id, specId);
+    assert.equal(specs[0]?.review_status, "pending");
+    assert.equal(specs[0]?.stage_label, "spec 待审");
+    const review = listed.json.review as Array<{ id: string }>;
+    assert.equal(review.length, 1);
+
+    assert.equal(daemon.store.list({ type: "handoff_exported" }).length, 0);
+    assert.equal(daemon.store.list({ type: "agent_started" }).length, 0);
+
+    const blocked = await api(daemon, "POST", "/api/handoff", { id: specId, target: "file" });
+    assert.equal(blocked.status, 400);
+    assert.equal(blocked.json.code, "not_approved");
+    assert.equal(daemon.store.list({ type: "handoff_exported" }).length, 0);
+
+    const returned = await api(daemon, "POST", "/api/spec-return", {
+      id: specId,
+      title: "Desk OAuth",
+      body: "本机登录",
+      acceptance_criteria: ["能登录"],
+    });
+    assert.equal(returned.status, 200);
+    const returnedSpec = returned.json.spec as { review_status: string; title: string };
+    assert.equal(returnedSpec.review_status, "returned");
+    assert.equal(returnedSpec.title, "Desk OAuth");
+
+    const approved = await api(daemon, "POST", "/api/spec-approve", { id: specId });
+    assert.equal(approved.status, 200);
+    assert.equal((approved.json.spec as { review_status: string }).review_status, "approved");
+
+    const handoff = await api(daemon, "POST", "/api/handoff", { id: specId, target: "file", run: false });
+    assert.equal(handoff.status, 200);
+    const pack = handoff.json.pack as { id: string; path: string };
+    assert.ok(pack.id);
+    assert.equal(handoff.json.reused, false);
+    assert.equal(handoff.json.ran, false);
+    assert.match(String(handoff.json.limitation), /未启动编码/);
+    assert.equal(fs.existsSync(pack.path), true);
+
+    const againHandoff = await api(daemon, "POST", "/api/handoff", {
+      id: specId,
+      target: "file",
+      run: true,
+    });
+    assert.equal(againHandoff.status, 200);
+    assert.equal(againHandoff.json.reused, true);
+    assert.equal((againHandoff.json.pack as { id: string }).id, pack.id);
+    assert.equal(daemon.store.list({ type: "handoff_exported" }).length, 1);
+
+    const after = await api(daemon, "GET", "/api/specs");
+    const handed = (after.json.specs as Array<{ review_status: string; stage_label: string }>)[0];
+    assert.equal(handed?.review_status, "handed_off");
+    assert.equal(handed?.stage_label, "已派 Lead");
+    assert.equal((after.json.review as unknown[]).length, 0);
   });
 });
 

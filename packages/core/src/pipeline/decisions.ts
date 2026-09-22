@@ -2,24 +2,33 @@ import { EventStore } from "../store/events.js";
 import { projectCandidates } from "../store/candidates.js";
 import { newId } from "../schema/ids.js";
 import { isNoiseProposal, NOISE_REJECT_REASON } from "../agents/noise.js";
+import { findSpecForCandidate } from "./handoff.js";
 
 export function approveCandidate(
   store: EventStore,
   candidateId: string,
   note?: string
-): { specId: string } {
+): { specId: string; created: boolean } {
   const found = projectCandidates(store).find((c) => c.id === candidateId);
   if (!found) throw new Error(`Candidate not found: ${candidateId}`);
-  store.append({
-    type: "decision_accepted",
-    subject_id: candidateId,
-    summary: `accepted: ${found.title}`,
-    detail: { note: note ?? "" },
-    refs: found.refs,
-    actor: "user:local",
-  });
+  const existing = findSpecForCandidate(store, candidateId);
+  if (found.status === "accepted" && existing) {
+    return { specId: existing.id, created: false };
+  }
+
+  if (found.status !== "accepted") {
+    store.append({
+      type: "decision_accepted",
+      subject_id: candidateId,
+      summary: `accepted: ${found.title}`,
+      detail: { note: note ?? "" },
+      refs: found.refs,
+      actor: "user:local",
+    });
+  }
 
   // Event loop: acceptance wakes a draft spec (still human-refinable).
+  // Does not hand off, dispatch a coding agent, or send Yunzhijia.
   const specId = newId("spec");
   store.append({
     type: "spec_drafted",
@@ -40,7 +49,7 @@ export function approveCandidate(
     refs: found.refs,
     actor: "system:spec-agent",
   });
-  return { specId };
+  return { specId, created: true };
 }
 
 export function rejectCandidate(

@@ -49,8 +49,10 @@ type Ref = {
 | `decision_rejected` | candidate id | optional | reason |
 | `decision_merged` | surviving candidate id | optional | `merged_ids[]` (Laya fold: subject is the loser, `merged_into` = survivor) |
 | `decision_reopened` | candidate id | optional | 「仍要我跟」 after Done-gate `already_done`; projection returns to `suggested` + `keep_open` |
-| `spec_drafted` | spec id | yes (to candidate / messages) | acceptance criteria[] |
-| `handoff_exported` | handoff id | yes | target (`cursor`/`codex`/file path) |
+| `spec_drafted` | spec id | yes (to candidate / messages) | title, body, acceptance criteria[], `status: draft` |
+| `spec_returned` | spec id | optional | optional title/body/criteria patches + note. Projection stays 规格待审 |
+| `spec_approved` | spec id | optional | optional patches. Ready for explicit 派给 Lead |
+| `handoff_exported` | handoff id | yes | target (`cursor`/`codex`/file path). Idempotent per spec |
 | `evidence_attached` | evidence id | yes | kind (`test`/`screenshot`/`log`), path |
 | `pr_checklist_started` | handoff or candidate id | optional | checklist items[] (`id`, `key`, `required`, `label`) |
 | `pr_checklist_item_done` | checklist item id | optional | `key`, `note`, `evidence_ref?`, `parent_id` |

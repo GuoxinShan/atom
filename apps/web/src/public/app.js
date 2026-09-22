@@ -67,6 +67,10 @@ const STATUS_LABELS = {
   merged: "已合并",
   already_done: "已在仓库/历史进度关闭",
   spec: "规格",
+  pending: "spec 待审",
+  returned: "spec 待审",
+  approved: "已批准",
+  handed_off: "已派 Lead",
 };
 
 const PIPELINE_LABELS = {
@@ -371,6 +375,23 @@ function specForCandidate(candidateId) {
   return state.specs.filter((s) => s.candidate_id === candidateId).at(-1);
 }
 
+function reviewSpecs() {
+  return (state.specs || []).filter((s) => s.review_status && s.review_status !== "handed_off");
+}
+
+function specStage(spec) {
+  if (!spec) return "已通过";
+  return spec.stage_label || statusLabel(spec.review_status) || "spec 待审";
+}
+
+function specTrail(spec) {
+  const status = spec?.review_status;
+  if (status === "handed_off") return "已通过 → spec 待审 → 已批准 → 已派 Lead";
+  if (status === "approved") return "已通过 → spec 待审 → 已批准";
+  if (status === "returned" || status === "pending") return "已通过 → spec 待审";
+  return "已通过";
+}
+
 function buildMatters() {
   const accepted = state.candidates.filter((c) => c.status === "accepted");
   const rows = [];
@@ -384,8 +405,9 @@ function buildMatters() {
       specId: spec?.id,
       title: firstHuman(spec?.title, c.title) || "未命名事项",
       kind: spec ? "spec" : "accepted",
-      status: c.status,
-      updatedAt: c.updated_at,
+      status: spec?.review_status || c.status,
+      stage: specStage(spec),
+      updatedAt: spec?.updated_at || c.updated_at,
       refs: spec?.refs || c.refs || [],
     });
   }
@@ -398,7 +420,8 @@ function buildMatters() {
       specId: s.id,
       title: firstHuman(s.title) || "未命名事项",
       kind: "spec",
-      status: cand?.status || "spec",
+      status: s.review_status || cand?.status || "spec",
+      stage: specStage(s),
       refs: s.refs || [],
     });
   }
@@ -411,7 +434,7 @@ function renderMatters() {
   const accepted = buildMatters();
   const rejected = state.candidates.filter((c) => c.status === "rejected");
   if (!accepted.length && !rejected.length) {
-    root.innerHTML = '<p class="hint tiny">Accept or reject a candidate; settled work lives here, not on home.</p>';
+    root.innerHTML = '<p class="hint tiny">通过或拒绝后的事项在这里。待审规格在首页「规格待审」。</p>';
     return;
   }
   for (const m of accepted) {
@@ -421,7 +444,7 @@ function renderMatters() {
     btn.dataset.select = m.specId || m.candidateId;
     btn.innerHTML = `
       <h3>${escapeHtml(m.title)}</h3>
-      ${metaLine({ sources: citeLabels(m.refs), status: m.status || m.kind, when: relativeTime(m.updatedAt) })}
+      ${metaLine({ sources: citeLabels(m.refs), status: m.status || m.kind, extra: m.stage ? [m.stage] : [], when: relativeTime(m.updatedAt) })}
     `;
     root.appendChild(btn);
   }
@@ -471,8 +494,8 @@ function renderDetail() {
   const sel = findSelected();
   if (!sel) {
     root.innerHTML = `
-      <h2>Matter</h2>
-      <p class="empty">Pick something in Needs you. Approve, reject, or ack — Lead stays in the drawer and does not code here.</p>
+      <h2>事项</h2>
+      <p class="empty">在「需要你拍板」里选一张。新需求用通过 / 拒绝；通过后的草稿规格在「规格待审」。Lead 不在这里写代码。</p>
     `;
     return;
   }
@@ -512,13 +535,16 @@ function renderDetail() {
     `;
     return;
   }
-  const title = firstHuman(sel.spec?.title, sel.cand?.title) || "未命名事项";
-  const body = sel.spec?.body || sel.cand?.body || "";
-  const refs = sel.spec?.refs || sel.cand?.refs || [];
-  const status = sel.cand?.status || (sel.kind === "spec" ? "spec" : "");
-  const canHandoff = status === "accepted" || sel.kind === "spec";
-  const handoffId = sel.spec?.id || sel.candidateId;
-  const sources = citeLabels(refs);
+  const spec = sel.spec;
+  const title = firstHuman(spec?.title, sel.cand?.title) || "未命名事项";
+  const body = spec?.body || sel.cand?.body || "";
+  const refs = spec?.refs || sel.cand?.refs || [];
+  const candStatus = sel.cand?.status || "";
+  const review = spec?.review_status || "";
+  const handed = review === "handed_off";
+  const approved = review === "approved";
+  const reviewing = Boolean(spec) && !handed;
+  const specId = spec?.id || "";
   const citeCount = (refs || []).length;
   const citeHint = citeCount
     ? `<p class="cite-hint">${
@@ -527,33 +553,70 @@ function renderDetail() {
           : `${citeCount} 条引用`
       }</p>`
     : "";
+  const criteriaText = (spec?.acceptance_criteria || []).join("\n");
+  const kicker = reviewing ? (approved ? "已批准" : "规格待审") : candStatus === "suggested" ? "待拍板" : "事项";
+  const editable = reviewing && !handed;
+  const bodyHtml = editable
+    ? `<form class="spec-edit" id="spec-edit-form" data-spec-id="${escapeHtml(specId)}">
+        <label for="spec-title">标题</label>
+        <input id="spec-title" name="title" maxlength="240" value="${escapeHtml(title)}" />
+        <label for="spec-body">正文</label>
+        <textarea id="spec-body" name="body" rows="5">${escapeHtml(body)}</textarea>
+        <label for="spec-criteria">验收标准（一行一条）</label>
+        <textarea id="spec-criteria" name="criteria" rows="4">${escapeHtml(criteriaText)}</textarea>
+      </form>`
+    : `<h3>${escapeHtml(title)}</h3>
+       <p class="body">${escapeHtml(body)}</p>
+       ${
+         spec?.acceptance_criteria?.length
+           ? `<h2 class="subhead">验收标准</h2><div class="body">${spec.acceptance_criteria
+               .map((c) => escapeHtml(c))
+               .join("\n")}</div>`
+           : ""
+       }`;
+  const actions = [];
+  if (candStatus === "suggested") {
+    actions.push(`<div class="card-actions">
+            <button type="button" data-act="approve" data-id="${escapeHtml(sel.candidateId)}">通过</button>
+            <button type="button" data-act="reject" data-id="${escapeHtml(sel.candidateId)}">拒绝</button>
+          </div>`);
+  }
+  if (editable) {
+    actions.push(`<div class="card-actions spec-review-actions">
+            <button type="button" class="primary" data-spec-approve="${escapeHtml(specId)}">批准规格</button>
+            <button type="button" class="ghost" data-spec-return="${escapeHtml(specId)}">退回修改</button>
+          </div>`);
+    if (approved) {
+      actions.push(
+        `<button type="button" class="cta primary" data-handoff="${escapeHtml(specId)}">派给 Lead</button>
+         <p class="cite-hint">派给 Lead 会写出本机交接包，不会开始编码，也不会发云之家。</p>`
+      );
+    } else {
+      actions.push(`<p class="cite-hint">先批准规格，再派给 Lead。通过需求不会自动开工。</p>`);
+    }
+  }
+  if (handed) {
+    actions.push(
+      `<p class="cite-hint">已派 Lead。${
+        spec?.handoff_path ? `包：${escapeHtml(basenamePath(spec.handoff_path))}` : ""
+      }${spec?.ran ? " · 已 --run" : " · 未启动编码"}。</p>`
+    );
+  }
   root.innerHTML = `
     <div class="detail-kicker">
-      <h2>Matter</h2>
-      ${copyIdButton(sel.candidateId || sel.id)}
+      <h2>${escapeHtml(kicker)}</h2>
+      ${copyIdButton(specId || sel.candidateId || sel.id)}
     </div>
-    <h3>${escapeHtml(title)}</h3>
-    ${metaLine({ sources, status, when: relativeTime(sel.cand?.updated_at) })}
-    <p class="body">${escapeHtml(body)}</p>
+    ${editable ? "" : ""}
+    ${metaLine({
+      sources,
+      status: review || candStatus,
+      extra: spec ? [specTrail(spec)] : [],
+      when: relativeTime(spec?.updated_at || sel.cand?.updated_at),
+    })}
+    ${bodyHtml}
     ${citeHint}
-        ${
-      sel.spec?.acceptance_criteria?.length
-        ? `<h2 class="subhead" style="margin-top:14px">Criteria</h2><div class="body">${sel.spec.acceptance_criteria
-            .map((c) => escapeHtml(c))
-            .join("\n")}</div>`
-        : ""
-    }
-    ${
-      status === "suggested"
-        ? `<div class="card-actions">
-            <button type="button" data-act="approve" data-id="${escapeHtml(sel.candidateId)}">Approve</button>
-            <button type="button" data-act="reject" data-id="${escapeHtml(sel.candidateId)}">Reject</button>
-          </div>`
-        : ""
-    }
-    <button type="button" class="cta primary" data-handoff="${escapeHtml(handoffId)}" ${
-      canHandoff ? "" : "disabled"
-    }>Handoff</button>
+    ${actions.join("")}
     ${state.handoffNote ? `<pre class="handoff-out">${escapeHtml(state.handoffNote)}</pre>` : ""}
   `;
 }
@@ -593,6 +656,41 @@ function groupSummaryHtml(title, count) {
   )}</span><span class="group-count">${n}</span></summary>`;
 }
 
+function renderSpecReviewCard(spec) {
+  const card = document.createElement("article");
+  const selected =
+    state.selectedKind !== "checklist" &&
+    (state.selectedId === spec.id || state.selectedId === spec.candidate_id);
+  card.className = `item needs-card spec-review-card${selected ? " selected" : ""}`;
+  card.dataset.select = spec.id;
+  const title = firstHuman(spec.title) || "未命名规格";
+  const summary = (spec.body || "").trim();
+  const approved = spec.review_status === "approved";
+  const status = spec.review_status;
+  card.innerHTML = `
+        <p class="spec-kicker">${approved ? "已批准 · 可派 Lead" : "规格待审"}</p>
+        <h3>${escapeHtml(title)}</h3>
+        ${summary ? `<p class="card-summary">${escapeHtml(summary.slice(0, 220))}</p>` : ""}
+        ${metaLine({
+          sources: citeLabels(spec.refs),
+          status,
+          extra: [specTrail(spec)],
+          when: relativeTime(spec.updated_at),
+          quiet: true,
+        })}
+        <div class="card-actions">
+          ${
+            approved
+              ? `<button type="button" class="primary" data-handoff="${escapeHtml(spec.id)}">派给 Lead</button>
+                 <button type="button" class="ghost" data-spec-return="${escapeHtml(spec.id)}">退回修改</button>`
+              : `<button type="button" class="primary" data-spec-approve="${escapeHtml(spec.id)}">批准规格</button>
+                 <button type="button" class="ghost" data-spec-return="${escapeHtml(spec.id)}">退回修改</button>`
+          }
+        </div>
+      `;
+  return card;
+}
+
 function renderSuggestedCard(c) {
   const card = document.createElement("article");
   const selected =
@@ -612,8 +710,8 @@ function renderSuggestedCard(c) {
           quiet: true,
         })}
         <div class="card-actions">
-          <button type="button" data-act="approve" data-id="${escapeHtml(c.id)}">Approve</button>
-          <button type="button" data-act="reject" data-id="${escapeHtml(c.id)}">Reject</button>
+          <button type="button" data-act="approve" data-id="${escapeHtml(c.id)}">通过</button>
+          <button type="button" data-act="reject" data-id="${escapeHtml(c.id)}">拒绝</button>
         </div>
       `;
   return card;
@@ -653,18 +751,20 @@ function fallbackNeedsGroups(suggested) {
 
 function renderQueue() {
   const suggested = state.candidates.filter((c) => c.status === "suggested");
+  const reviews = reviewSpecs();
   const acks = awaitingChecklists();
   const outbound = 0;
   const counts = document.getElementById("gate-counts");
   if (counts) {
-    const bits = [`${suggested.length} suggested`];
-    if (acks.length) bits.push(`${acks.length} checklist`);
+    const bits = [`${suggested.length} 待拍板`];
+    if (reviews.length) bits.push(`${reviews.length} 规格待审`);
+    if (acks.length) bits.push(`${acks.length} 清单`);
     if (outbound) bits.push(`${outbound} outbound`);
     counts.textContent = bits.join(" · ");
   }
   queue.innerHTML = "";
 
-  if (!suggested.length && !acks.length && !outbound) {
+  if (!suggested.length && !reviews.length && !acks.length && !outbound) {
     queue.innerHTML = `
       <div class="empty-desk">
         <p class="clear">今天没有要你拍板的</p>
@@ -706,6 +806,15 @@ function renderQueue() {
       for (const c of leftovers) wrap.appendChild(renderSuggestedCard(c));
       section.appendChild(wrap);
     }
+    queue.appendChild(section);
+  }
+
+  if (reviews.length) {
+    const section = document.createElement("section");
+    section.className = "needs-board spec-review-board";
+    section.innerHTML = `<h2 class="needs-board-label">规格待审 <span>${reviews.length}</span></h2>
+      <p class="spec-review-hint">已通过的需求草稿。不是新卡片。看过标题、正文和验收标准后再批准，然后派给 Lead。</p>`;
+    for (const spec of reviews) section.appendChild(renderSpecReviewCard(spec));
     queue.appendChild(section);
   }
 
@@ -833,14 +942,40 @@ function selectMatter(id, kind = "candidate") {
 }
 
 async function actOnCandidate(act, id) {
-  await fetch(`/api/${act}`, {
+  const res = await fetch(`/api/${act}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ id }),
   });
-  state.selectedId = id;
-  state.selectedKind = "candidate";
+  const data = await res.json().catch(() => ({}));
+  if (act === "approve" && data.specId) {
+    state.selectedId = data.specId;
+    state.selectedKind = "spec";
+  } else {
+    state.selectedId = id;
+    state.selectedKind = "candidate";
+  }
   await loadDesk();
+}
+
+function readSpecPatch(specId) {
+  const form = document.getElementById("spec-edit-form");
+  if (!form || (specId && form.dataset.specId && form.dataset.specId !== specId)) return {};
+  const title = document.getElementById("spec-title")?.value;
+  const body = document.getElementById("spec-body")?.value;
+  const criteriaRaw = document.getElementById("spec-criteria")?.value;
+  const criteria =
+    typeof criteriaRaw === "string"
+      ? criteriaRaw
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : undefined;
+  return {
+    title: typeof title === "string" ? title : undefined,
+    body: typeof body === "string" ? body : undefined,
+    acceptance_criteria: criteria,
+  };
 }
 
 async function copyId(id, btn) {
@@ -885,17 +1020,75 @@ document.getElementById("page-needs-you").addEventListener("click", async (e) =>
     await actOnCandidate(actBtn.dataset.act, actBtn.dataset.id);
     return;
   }
+  const specApproveBtn = e.target.closest("[data-spec-approve]");
+  if (specApproveBtn && !specApproveBtn.disabled) {
+    e.stopPropagation();
+    specApproveBtn.disabled = true;
+    const id = specApproveBtn.dataset.specApprove;
+    try {
+      const res = await fetch("/api/spec-approve", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id, ...readSpecPatch(id) }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        state.handoffNote = data.error || JSON.stringify(data);
+        renderDetail();
+        return;
+      }
+      state.selectedId = data.spec?.id || id;
+      state.selectedKind = "spec";
+      state.handoffNote = "";
+      await loadDesk();
+    } catch (err) {
+      state.handoffNote = String(err);
+      renderDetail();
+    }
+    return;
+  }
+  const specReturnBtn = e.target.closest("[data-spec-return]");
+  if (specReturnBtn && !specReturnBtn.disabled) {
+    e.stopPropagation();
+    specReturnBtn.disabled = true;
+    const id = specReturnBtn.dataset.specReturn;
+    try {
+      const res = await fetch("/api/spec-return", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id, ...readSpecPatch(id) }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        state.handoffNote = data.error || JSON.stringify(data);
+        renderDetail();
+        return;
+      }
+      state.selectedId = data.spec?.id || id;
+      state.selectedKind = "spec";
+      state.handoffNote = "";
+      await loadDesk();
+    } catch (err) {
+      state.handoffNote = String(err);
+      renderDetail();
+    }
+    return;
+  }
   const handoffBtn = e.target.closest("[data-handoff]");
   if (handoffBtn && !handoffBtn.disabled) {
     e.stopPropagation();
+    const ok = window.confirm("确认派给 Lead？只会写出本机交接包，不会开始编码，也不会发云之家。");
+    if (!ok) return;
     handoffBtn.disabled = true;
     state.handoffNote = "…";
+    state.selectedId = handoffBtn.dataset.handoff;
+    state.selectedKind = "spec";
     renderDetail();
     try {
       const res = await fetch("/api/handoff", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: handoffBtn.dataset.handoff }),
+        body: JSON.stringify({ id: handoffBtn.dataset.handoff, target: "file", run: false }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -903,12 +1096,13 @@ document.getElementById("page-needs-you").addEventListener("click", async (e) =>
       } else {
         const pack = data.pack || {};
         const dest = pack.path || pack.target || "完成";
-        state.handoffNote = `已交接 → ${dest}`;
+        const limit = data.limitation || "已写出本机交接包，未启动编码，未发云之家。";
+        state.handoffNote = `${limit}\n${dest}`;
       }
     } catch (err) {
       state.handoffNote = String(err);
     }
-    renderDetail();
+    await loadDesk();
     return;
   }
   const ackBtn = e.target.closest("[data-ack]");
@@ -1030,7 +1224,12 @@ async function loadDesk() {
 }
 
 async function loadSetup() {
-  const data = await fetchJson("/api/setup", { checks: [], ready: false });
+  const [data, specs] = await Promise.all([
+    fetchJson("/api/setup", { checks: [], ready: false }),
+    fetchJson("/api/specs", { specs: [] }),
+  ]);
+  if (Array.isArray(specs.specs)) state.specs = specs.specs;
+  renderAdvancedSpecs();
   const root = document.getElementById("setup-list");
   root.innerHTML = "";
   if (!data.ready) {
@@ -1177,6 +1376,7 @@ function renderProcessed() {
     <p class="processed-note">Desk 拍板：通过 ${escapeHtml(String(desk.accepted ?? 0))} · 拒绝 ${escapeHtml(
       String(desk.rejected ?? 0)
     )} · 待拍板 ${escapeHtml(String(desk.suggested ?? 0))}</p>
+    ${renderProcessedSpecs()}
     ${
       done.length
         ? `<div class="processed-done">
@@ -1195,13 +1395,65 @@ function renderProcessed() {
   `;
 }
 
+function renderProcessedSpecs() {
+  const specs = Array.isArray(state.specs) ? state.specs : [];
+  if (!specs.length) {
+    return '<p class="processed-note">尚无规格进度（通过一张 Needs-you 卡片会生成草稿）。</p>';
+  }
+  const cards = specs
+    .map((s) => {
+      const cand = state.candidates.find((c) => c.id === s.candidate_id);
+      return `<article class="item processed-card">
+        <h3>${escapeHtml(firstHuman(s.title, cand?.title) || "未命名规格")}</h3>
+        <p class="card-summary">${escapeHtml(specTrail(s))}</p>
+        ${metaLine({
+          sources: citeLabels(s.refs || cand?.refs),
+          status: s.review_status,
+          extra: [specStage(s)],
+          when: relativeTime(s.updated_at),
+          quiet: true,
+        })}
+      </article>`;
+    })
+    .join("");
+  return `<div class="processed-done">
+            <h3 class="processed-done-head">规格进度</h3>
+            ${cards}
+          </div>`;
+}
+
+function renderAdvancedSpecs() {
+  const root = document.getElementById("advanced-specs-list");
+  if (!root) return;
+  const specs = Array.isArray(state.specs) ? state.specs : [];
+  if (!specs.length) {
+    root.innerHTML = '<p class="hint tiny">还没有规格。通过一张卡片后会出现在这里。</p>';
+    return;
+  }
+  root.innerHTML = specs
+    .map((s) => {
+      const cand = (state.candidates || []).find((c) => c.id === s.candidate_id);
+      return `<div class="drawer-row">
+        <div class="row">
+          <h3>${escapeHtml(firstHuman(s.title, cand?.title) || "未命名规格")}</h3>
+          ${pill(specStage(s))}
+        </div>
+        <div class="sub">${escapeHtml(specTrail(s))}</div>
+      </div>`;
+    })
+    .join("");
+}
+
 async function loadProcessed() {
-  const [digest, cands] = await Promise.all([
+  const [digest, cands, specs] = await Promise.all([
     fetchJson("/api/gate-digest?since=24h", null),
     fetchJson("/api/candidates", { candidates: [] }),
+    fetchJson("/api/specs", { specs: [] }),
   ]);
   state.digest = digest && digest.ok !== false ? digest : null;
   const list = Array.isArray(cands.candidates) ? cands.candidates : [];
+  state.candidates = list;
+  state.specs = Array.isArray(specs.specs) ? specs.specs : [];
   state.alreadyDone = list.filter(
     (c) =>
       c.status === "rejected" &&

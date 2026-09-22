@@ -29,7 +29,7 @@
           <header class="needs-head">
             <div>
               <h2>需要你拍板</h2>
-              <p class="hint tiny">只放需要人决定的卡片。按主题/项目折叠；每张卡片上的 Approve / Reject 仍是主操作。</p>
+              <p class="hint tiny">只放需要人决定的卡片。新需求按主题/项目折叠（通过 / 拒绝）。通过后的草稿规格在下面「规格待审」，不是新卡片。</p>
             </div>
             <div class="gate-counts" id="gate-counts"></div>
           </header>
@@ -63,7 +63,7 @@
             </details>
             <details>
               <summary>Matters</summary>
-              <p class="hint tiny">Accepted, rejected, and specs — settled, not the home queue.</p>
+              <p class="hint tiny">已通过 / 已拒绝，以及已派 Lead 的规格。待审规格在首页「规格待审」。</p>
               <div id="matters-list" class="stack"></div>
             </details>
             <details>
@@ -86,7 +86,7 @@
         <div class="panel wide">
           <p class="eyebrow">系统已处理</p>
           <h2>最近 24 小时，机器已经帮你挡掉的</h2>
-          <p class="hint">只读摘要，不用拍板。自动关闭的卡片（已在仓库/历史进度关闭）列在下面；数字来自 gate-digest，缺的字段显示 n/a，不会编造。</p>
+          <p class="hint">只读摘要，不用拍板。自动关闭的卡片（已在仓库/历史进度关闭）列在下面；通过后的规格进度是 已通过 → spec 待审 → 已批准 → 已派 Lead。数字来自 gate-digest，缺的字段显示 n/a，不会编造。</p>
           <div id="processed-root" class="processed-root"></div>
         </div>
       </section>
@@ -109,6 +109,11 @@
           <p class="hint">日常拍板请回「需要你拍板」。这里是日志占位和机器检查，不是首页。</p>
 
           <div class="advanced-stack">
+            <details id="advanced-specs">
+              <summary>规格进度</summary>
+              <p class="hint tiny">已通过 → spec 待审 → 已批准 → 已派 Lead。日常操作仍在「需要你拍板」。</p>
+              <div id="advanced-specs-list" class="stack"></div>
+            </details>
             <details id="advanced-atoms">
               <summary>Atoms · 追加日志（占位）</summary>
               <div class="stub nested">
