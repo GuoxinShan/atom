@@ -125,6 +125,9 @@ describe("Desk shell", () => {
     assert.match(js, /派给 Lead/);
     assert.match(js, /spec-review-card/);
     assert.match(js, /renderBlockersSection/);
+    assert.match(js, /renderClosedFold/);
+    assert.match(js, /近一天系统已关/);
+    assert.match(js, /closedFoldOpen: false/);
     assert.match(js, /renderProgressSection/);
     assert.match(js, /recentAlreadyDone/);
     assert.match(js, /\/api\/progress-snapshot/);
@@ -137,6 +140,9 @@ describe("Desk shell", () => {
     assert.match(css, /needs-group\.is-other/);
     assert.match(css, /empty-desk/);
     assert.match(css, /\.blocker-row/);
+    assert.match(css, /\.blocker-fold/);
+    assert.match(css, /\.blocker-fold\[open\] > \.blocker-fold-body/);
+    assert.match(css, /\.blocker-fold > \.blocker-fold-body \{\s*display:\s*none/);
     assert.match(css, /\.progress-repo/);
     assert.match(css, /\.drawer-pack/);
     assert.doesNotMatch(css, /#6e7bf2/);
@@ -147,14 +153,35 @@ describe("Desk shell", () => {
     const html = fs.readFileSync(path.join(here, "public/index.html"), "utf8");
     assert.match(js, /今天没有要你拍板的/);
     assert.match(js, /现在没有卡点/);
+    assert.match(js, /规格待审、已批准待派 Lead 会排在这里/);
     assert.match(js, /还没有进度快照|快照里暂时没有新进展/);
     assert.match(js, /不编造提交/);
     assert.match(html, /id="blocker-list"/);
+    assert.match(html, /近一天系统已关折在下面/);
     assert.match(html, /id="progress-summary"/);
     const morningFn = js.slice(js.indexOf("function morningLine"), js.indexOf("function recentAlreadyDone"));
     assert.match(morningFn, /今日 \$\{n\} 条待拍板/);
     assert.doesNotMatch(morningFn, /规格待审/);
     assert.match(js, /drawerPack\.open = false/);
+  });
+
+  it("keeps already_done in a collapsed 近一天系统已关 fold, off the primary 卡点 rows", () => {
+    const js = fs.readFileSync(path.join(here, "public/app.js"), "utf8");
+    const foldFn = js.slice(js.indexOf("function renderClosedFold"), js.indexOf("function renderBlockersSection"));
+    const blockers = js.slice(js.indexOf("function renderBlockersSection"), js.indexOf("function collectProgressBuckets"));
+    assert.match(foldFn, /if \(!doneRecent\.length\) return null/);
+    assert.match(foldFn, /近一天系统已关/);
+    assert.match(foldFn, /blocker-fold/);
+    assert.match(foldFn, /data-reopen/);
+    assert.match(foldFn, /仍要我跟/);
+    assert.match(foldFn, /fold\.addEventListener\("toggle"/);
+    assert.match(foldFn, /fold\.open = Boolean\(state\.closedFoldOpen\)/);
+    assert.doesNotMatch(foldFn, /fold\.open = true/);
+    assert.match(blockers, /const primary = pending\.length \+ ready\.length/);
+    assert.doesNotMatch(blockers, /doneRecent\.length/);
+    assert.doesNotMatch(blockers, /data-reopen/);
+    assert.match(blockers, /renderClosedFold\(doneRecent\)/);
+    assert.match(blockers, /if \(fold\) root\.appendChild\(fold\)/);
   });
 
   it("renders the three-section brief and confirms only Lead handoff", () => {

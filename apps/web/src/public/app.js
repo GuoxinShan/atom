@@ -28,6 +28,8 @@ const state = {
   specDrafts: {},
   localNotes: {},
   keptClosed: {},
+  /** Last-day already_done fold on 卡点. Collapsed until the user opens it. */
+  closedFoldOpen: false,
 };
 
 const WORKSPACE_LABELS = {
@@ -1395,59 +1397,17 @@ function specBlockerAction(spec) {
     <button type="button" class="ghost" data-select-open="${id}">打开长详</button>`;
 }
 
-function renderBlockersSection(reviews, doneRecent) {
-  const root = document.getElementById("blocker-list");
-  const counts = document.getElementById("blocker-counts");
-  if (!root) return;
-  root.innerHTML = "";
-  const pending = reviews.filter((s) => s.review_status !== "approved");
-  const ready = reviews.filter((s) => s.review_status === "approved");
-  const total = pending.length + ready.length + doneRecent.length;
-  if (counts) {
-    counts.textContent = total ? `${total} 条` : "";
-  }
-  if (!total) {
-    root.innerHTML = `<div class="empty-desk calm">
-      <p class="clear">现在没有卡点</p>
-      <p class="clear-meta">规格待审、待派 Lead、近一天自动关闭会排在这里。</p>
-    </div>`;
-    return;
-  }
-
-  for (const spec of pending) {
-    const selected =
-      state.selectedKind !== "checklist" &&
-      (state.selectedId === spec.id || state.selectedId === spec.candidate_id);
-    root.appendChild(
-      renderBlockerRow({
-        id: spec.id,
-        selectId: spec.id,
-        title: firstHuman(spec.title) || "未命名规格",
-        why: blockerWhy("spec_review"),
-        actionHtml: specBlockerAction(spec),
-        selected,
-      })
-    );
-  }
-  for (const spec of ready) {
-    const selected =
-      state.selectedKind !== "checklist" &&
-      (state.selectedId === spec.id || state.selectedId === spec.candidate_id);
-    root.appendChild(
-      renderBlockerRow({
-        id: spec.id,
-        selectId: spec.id,
-        title: firstHuman(spec.title) || "未命名规格",
-        why: blockerWhy("spec_handoff"),
-        actionHtml: specBlockerAction(spec),
-        selected,
-      })
-    );
-  }
+function renderClosedFold(doneRecent) {
+  if (!doneRecent.length) return null;
+  const fold = document.createElement("details");
+  fold.className = "blocker-fold";
+  fold.innerHTML = `<summary class="blocker-fold-summary"><span class="blocker-fold-title">近一天系统已关</span><span class="blocker-fold-count">${doneRecent.length}</span></summary>`;
+  const body = document.createElement("div");
+  body.className = "blocker-fold-body";
   for (const c of doneRecent) {
     const reason = firstHuman(c.closed_reason) || statusLabel("already_done") || "已在仓库/历史进度关闭";
     const kept = Boolean(state.keptClosed[c.id]);
-    root.appendChild(
+    body.appendChild(
       renderBlockerRow({
         id: c.id,
         selectId: c.id,
@@ -1461,6 +1421,65 @@ function renderBlockersSection(reviews, doneRecent) {
       })
     );
   }
+  fold.appendChild(body);
+  fold.addEventListener("toggle", () => {
+    state.closedFoldOpen = fold.open;
+  });
+  fold.open = Boolean(state.closedFoldOpen);
+  return fold;
+}
+
+function renderBlockersSection(reviews, doneRecent) {
+  const root = document.getElementById("blocker-list");
+  const counts = document.getElementById("blocker-counts");
+  if (!root) return;
+  root.innerHTML = "";
+  const pending = reviews.filter((s) => s.review_status !== "approved");
+  const ready = reviews.filter((s) => s.review_status === "approved");
+  const primary = pending.length + ready.length;
+  if (counts) {
+    counts.textContent = primary ? `${primary} 条` : "";
+  }
+  if (!primary) {
+    const empty = document.createElement("div");
+    empty.className = "empty-desk calm";
+    empty.innerHTML = `<p class="clear">现在没有卡点</p>
+      <p class="clear-meta">规格待审、已批准待派 Lead 会排在这里。</p>`;
+    root.appendChild(empty);
+  } else {
+    for (const spec of pending) {
+      const selected =
+        state.selectedKind !== "checklist" &&
+        (state.selectedId === spec.id || state.selectedId === spec.candidate_id);
+      root.appendChild(
+        renderBlockerRow({
+          id: spec.id,
+          selectId: spec.id,
+          title: firstHuman(spec.title) || "未命名规格",
+          why: blockerWhy("spec_review"),
+          actionHtml: specBlockerAction(spec),
+          selected,
+        })
+      );
+    }
+    for (const spec of ready) {
+      const selected =
+        state.selectedKind !== "checklist" &&
+        (state.selectedId === spec.id || state.selectedId === spec.candidate_id);
+      root.appendChild(
+        renderBlockerRow({
+          id: spec.id,
+          selectId: spec.id,
+          title: firstHuman(spec.title) || "未命名规格",
+          why: blockerWhy("spec_handoff"),
+          actionHtml: specBlockerAction(spec),
+          selected,
+        })
+      );
+    }
+  }
+  const fold = renderClosedFold(doneRecent);
+  if (fold) root.appendChild(fold);
 }
 
 function collectProgressBuckets(snapshot) {
@@ -1927,6 +1946,7 @@ document.getElementById("page-needs-you").addEventListener("click", async (e) =>
     return;
   }
   if (e.target.closest("summary.needs-group-summary")) return;
+  if (e.target.closest("summary.blocker-fold-summary")) return;
   if (e.target.closest(".blocker-actions")) return;
   const selectable = e.target.closest("[data-select]");
   if (selectable) selectMatter(selectable.dataset.select);

@@ -379,6 +379,60 @@ body {
 .blocker-actions button:not(.primary):hover {
   border-color: var(--line-strong);
 }
+.blocker-fold {
+  margin: 6px 0 0;
+  border: none;
+  background: transparent;
+}
+.blocker-fold > .blocker-fold-summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 2px 6px;
+  font-size: 13px;
+  font-weight: 450;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  user-select: none;
+}
+.blocker-fold > .blocker-fold-summary::-webkit-details-marker { display: none; }
+.blocker-fold > .blocker-fold-summary::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--muted);
+  border-bottom: 1.5px solid var(--muted);
+  transform: rotate(-45deg);
+  margin: 0 4px 1px 2px;
+  flex: 0 0 auto;
+  opacity: 0.75;
+}
+.blocker-fold[open] > .blocker-fold-summary::before {
+  transform: rotate(45deg);
+  margin-bottom: 3px;
+}
+.blocker-fold[open] > .blocker-fold-summary {
+  color: var(--text);
+}
+.blocker-fold-count {
+  margin-left: auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--muted) 78%, var(--bg));
+}
+.blocker-fold > .blocker-fold-body {
+  display: none;
+}
+.blocker-fold[open] > .blocker-fold-body {
+  display: grid;
+  gap: 8px;
+  padding: 2px 0 4px;
+}
+.blocker-fold .blocker-row {
+  box-shadow: none;
+}
 .progress-repo {
   padding: 10px 2px 4px;
 }
