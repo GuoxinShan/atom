@@ -80,7 +80,7 @@ Use **`POST /api/run`** from the CLI. Keep **`POST /hooks/run`** for inbound web
 |---|---|
 | `serve` | *(starts this daemon)* |
 | `candidates [--status]` | `GET /api/candidates?status=` |
-| `approve <id>` | `POST /api/approve` `{id, note?}` |
+| `approve <id>` | `POST /api/approve` `{id, note?}` → `{specId, created}` (draft only; no handoff) |
 | `reject <id>` | `POST /api/reject` `{id, reason?}` |
 | `reject-noise` | `POST /api/reject-noise` |
 | `merge-sweep [--apply]` | `POST /api/merge-sweep` `{apply?}` (default dry-run) |
@@ -95,8 +95,10 @@ Use **`POST /api/run`** from the CLI. Keep **`POST /hooks/run`** for inbound web
 | *(Desk 我的偏好)* | `GET /api/preference-memory` (file + last RSI; never sends) |
 | *(Desk 我的偏好 light-edit)* | `PATCH /api/preference-memory` `{thresholds?, blocklist?, blocklist_add?, blocklist_remove?}` (clamped; never sends; does not move RSI `cursor_at`) |
 | *(Desk status strip)* | `GET /api/status` `{desk, lastRunAt, lastExtractAt, preference.floors, laya}` (Laya probe ≤400ms) |
-| `specs` | `GET /api/specs` |
-| `handoff <id>` | `POST /api/handoff` `{id, run?, target?}` |
+| `specs` | `GET /api/specs` `{specs, review}` (review = not yet 已派 Lead) |
+| `spec-approve <id>` | `POST /api/spec-approve` `{id, title?, body?, acceptance_criteria?, note?}` |
+| `spec-return <id>` | `POST /api/spec-return` `{id, title?, body?, acceptance_criteria?, note?}` |
+| `handoff <id>` | `POST /api/handoff` `{id, run?, target?}` — requires 已批准; idempotent; Desk default `target=file` `run=false` |
 | `lead "…"` | `POST /api/lead` `{utterance}` |
 | `agents` | `GET /api/agents` |
 | `doctor` | `GET /api/doctor` *(same report as `GET /api/setup`)* |

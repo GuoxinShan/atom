@@ -8,8 +8,12 @@ import {
   approveCandidate,
   rejectCandidate,
   rejectNoiseCandidates,
-  exportHandoff,
   listSpecDrafts,
+  approveSpec,
+  returnSpec,
+  dispatchToLead,
+  SpecReviewError,
+  specsAwaitingReview,
   listChecklists,
   completeChecklistItem,
   startChecklist,
@@ -160,12 +164,12 @@ export async function handleApi(
       json(res, { error: "id required" }, 400);
       return true;
     }
-    const { specId } = approveCandidate(
+    const { specId, created } = approveCandidate(
       daemon.store,
       id,
       body.note ? String(body.note) : undefined
     );
-    json(res, { ok: true, specId });
+    json(res, { ok: true, specId, created });
     return true;
   }
 
@@ -312,7 +316,48 @@ export async function handleApi(
   }
 
   if (method === "GET" && p === "/api/specs") {
-    json(res, { specs: listSpecDrafts(daemon.store) });
+    const specs = listSpecDrafts(daemon.store);
+    json(res, { specs, review: specsAwaitingReview(daemon.store) });
+    return true;
+  }
+
+  if (method === "POST" && p === "/api/spec-approve") {
+    const body = await readJson(req);
+    const id = str(body, "id", "specId", "candidateId");
+    if (!id) {
+      json(res, { error: "id required" }, 400);
+      return true;
+    }
+    try {
+      const spec = approveSpec(daemon.store, id, specPatch(body));
+      json(res, { ok: true, spec });
+    } catch (err) {
+      if (err instanceof SpecReviewError) {
+        json(res, { error: err.message, code: err.code }, 400);
+        return true;
+      }
+      throw err;
+    }
+    return true;
+  }
+
+  if (method === "POST" && p === "/api/spec-return") {
+    const body = await readJson(req);
+    const id = str(body, "id", "specId", "candidateId");
+    if (!id) {
+      json(res, { error: "id required" }, 400);
+      return true;
+    }
+    try {
+      const spec = returnSpec(daemon.store, id, specPatch(body));
+      json(res, { ok: true, spec });
+    } catch (err) {
+      if (err instanceof SpecReviewError) {
+        json(res, { error: err.message, code: err.code }, 400);
+        return true;
+      }
+      throw err;
+    }
     return true;
   }
 
@@ -377,13 +422,27 @@ export async function handleApi(
       return true;
     }
     const run = Boolean(body.run);
+    const target =
+      body.target === "grok-cli" || body.target === "cursor" || body.target === "file"
+        ? body.target
+        : "file";
     const coding =
-      body.target === "file" ? undefined : resolveCodingAgent(daemon.repoRoot);
-    const pack = await exportHandoff(daemon.store, daemon.repoRoot, id, coding, {
-      run,
-      target: body.target === "file" ? "file" : "grok-cli",
-    });
-    json(res, { ok: true, pack });
+      run || target === "grok-cli" || target === "cursor"
+        ? resolveCodingAgent(daemon.repoRoot)
+        : undefined;
+    try {
+      const result = await dispatchToLead(daemon.store, daemon.repoRoot, id, coding, {
+        run,
+        target,
+      });
+      json(res, { ok: true, ...result });
+    } catch (err) {
+      if (err instanceof SpecReviewError) {
+        json(res, { error: err.message, code: err.code }, 400);
+        return true;
+      }
+      throw err;
+    }
     return true;
   }
 
@@ -607,6 +666,21 @@ function str(body: Record<string, unknown>, ...keys: string[]): string {
     if (typeof v === "string" && v.trim()) return v;
   }
   return "";
+}
+
+function specPatch(body: Record<string, unknown>): {
+  title?: string;
+  body?: string;
+  acceptance_criteria?: string[];
+  note?: string;
+} {
+  const criteriaRaw = body.acceptance_criteria ?? body.criteria;
+  return {
+    title: typeof body.title === "string" ? body.title : undefined,
+    body: typeof body.body === "string" ? body.body : undefined,
+    acceptance_criteria: Array.isArray(criteriaRaw) ? criteriaRaw.map(String) : undefined,
+    note: typeof body.note === "string" ? body.note : undefined,
+  };
 }
 
 function readDataJson(repoRoot: string, rel: string, fallback: unknown): unknown {

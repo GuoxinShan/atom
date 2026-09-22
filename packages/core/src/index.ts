@@ -25,6 +25,7 @@ export * from "./pipeline/run.js";
 export * from "./pipeline/cron-schedule.js";
 export * from "./pipeline/runtime-meta.js";
 export * from "./pipeline/handoff.js";
+export * from "./pipeline/spec-review.js";
 export * from "./pipeline/checklist.js";
 export * from "./pipeline/progress-snapshot.js";
 export * from "./pipeline/progress-scan.js";

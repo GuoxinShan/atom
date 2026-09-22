@@ -20,6 +20,8 @@ Usage:
   pnpm atom approve <candidateId> [--note ...]
   pnpm atom reject <candidateId> [--reason ...]
   pnpm atom specs
+  pnpm atom spec-approve <specOrCandidateId> [--note ...]
+  pnpm atom spec-return <specOrCandidateId> [--note ...]
   pnpm atom handoff <specOrCandidateId> [--run] [--target grok-cli|file]
   pnpm atom evidence <handoffId> --path <file>
   pnpm atom checklist <handoffOrCandidateId>
@@ -136,12 +138,13 @@ async function main() {
   if (cmd === "approve") {
     const id = positional(argv.slice(1));
     if (!id) usage();
-    const data = await apiOk<{ specId: string }>("POST", "/api/approve", {
+    const data = await apiOk<{ specId: string; created?: boolean }>("POST", "/api/approve", {
       id,
       note: flags.note,
     });
     console.log(`OK approved ${id}`);
     console.log(`spec drafted: ${data.specId} (atom type spec_drafted)`);
+    console.log("未派 Lead、未启动编码。下一步：Desk「规格待审」或 pnpm atom spec-approve");
     return;
   }
 
@@ -399,7 +402,15 @@ async function main() {
   }
 
   if (cmd === "specs") {
-    const data = await apiOk<{ specs: Array<{ id: string; candidate_id: string; title: string }> }>(
+    const data = await apiOk<{
+      specs: Array<{
+        id: string;
+        candidate_id: string;
+        title: string;
+        review_status?: string;
+        stage_label?: string;
+      }>;
+    }>(
       "GET",
       "/api/specs"
     );
@@ -409,9 +420,38 @@ async function main() {
       return;
     }
     for (const s of specs) {
-      console.log(`- ${s.id} ← ${s.candidate_id}`);
+      const stage = s.stage_label || s.review_status || "";
+      console.log(`- ${s.id} ← ${s.candidate_id}${stage ? `  [${stage}]` : ""}`);
       console.log(`  ${s.title}`);
     }
+    return;
+  }
+
+  if (cmd === "spec-approve") {
+    const id = positional(argv.slice(1));
+    if (!id) usage();
+    const data = await apiOk<{ spec: { id: string; review_status?: string; stage_label?: string } }>(
+      "POST",
+      "/api/spec-approve",
+      { id, note: flags.note }
+    );
+    const spec = data.spec;
+    console.log(`OK spec-approve ${spec.id}`);
+    console.log(`status: ${spec.stage_label || spec.review_status || "已批准"}`);
+    return;
+  }
+
+  if (cmd === "spec-return") {
+    const id = positional(argv.slice(1));
+    if (!id) usage();
+    const data = await apiOk<{ spec: { id: string; review_status?: string; stage_label?: string } }>(
+      "POST",
+      "/api/spec-return",
+      { id, note: flags.note }
+    );
+    const spec = data.spec;
+    console.log(`OK spec-return ${spec.id}`);
+    console.log(`status: ${spec.stage_label || spec.review_status || "spec 待审"}`);
     return;
   }
 
@@ -420,15 +460,21 @@ async function main() {
     if (!id) usage();
     const target = (flags.target as string | undefined) ?? "grok-cli";
     const run = Boolean(flags.run);
-    const data = await apiOk<{ pack: { id: string; path: string; target: string } }>(
+    const data = await apiOk<{
+      pack: { id: string; path: string; target: string };
+      reused?: boolean;
+      ran?: boolean;
+      limitation?: string;
+    }>(
       "POST",
       "/api/handoff",
       { id, run, target }
     );
     const pack = data.pack;
-    console.log(`OK handoff ${pack.id}`);
+    console.log(`OK handoff ${pack.id}${data.reused ? " (reused)" : ""}`);
     console.log(`path: ${pack.path}`);
-    console.log(`target: ${pack.target} run=${run}`);
+    console.log(`target: ${pack.target} run=${Boolean(data.ran)}`);
+    if (data.limitation) console.log(data.limitation);
     return;
   }
 

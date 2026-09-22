@@ -7,8 +7,10 @@
                               ↓ human
                     accept | reject | merge
                               ↓
-                         [spec_drafted]
-                              ↓ human (optional tighten)
+                         [spec_drafted]          ← auto on accept; no coding
+                              ↓ human 规格待审（批准 / 退回修改）
+                         [spec_approved]
+                              ↓ human 派给 Lead（confirm；默认只写本机包）
                          [handoff_exported]
                               ↓ external coding agent
                          [evidence_attached]
@@ -25,7 +27,8 @@
 | Gate | Who | Default |
 |---|---|---|
 | Demand accept/reject/merge | owner | **required** |
-| Spec “good enough to hand off” | owner | required before handoff |
+| Spec review（批准规格 / 退回修改） | owner | **required** before 派给 Lead |
+| 派给 Lead (`handoff_exported`) | owner | **required** (confirm-gated; default file pack, no `--run`) |
 | Outbound digest / chat post | owner | **required** |
 | PR checklist (`human_gate_ack`) | owner | **required** (`--ack`; never auto) |
 | Merge PR / release | owner | **required** |

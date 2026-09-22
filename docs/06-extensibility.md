@@ -63,10 +63,12 @@ Inbound webhooks (triggers) and outbound webhooks (subscriptions) are **differen
 
 ## Handoff / coding seam
 
-After `decision_accepted` → `spec_drafted`:
+After `decision_accepted` → `spec_drafted` (draft only). Human review (`spec_approved` / `spec_returned`) then explicit 派给 Lead:
 
 ```bash
 pnpm atom specs
+pnpm atom spec-approve <specOrCandidateId>
+pnpm atom spec-return <specOrCandidateId> --note "收紧标准"
 pnpm atom handoff <specOrCandidateId>          # write out/handoffs/*.md + handoff_exported
 pnpm atom handoff <id> --run                   # also spawn local grok -p on the pack
 pnpm atom evidence <handoffId> --path ./note.md

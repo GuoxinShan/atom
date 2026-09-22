@@ -46,7 +46,11 @@ It does not fall back to in-process `@atom/core`. Optional `ATOM_API_AUTO_START=
 | `pnpm atom extract [--agent heuristic\|grok-cli]` | propose candidates |
 | `pnpm atom digest` | rewrite Markdown projection |
 | `pnpm atom candidates` | print candidate projection |
-| `pnpm atom approve <id>` | append `decision_accepted` |
+| `pnpm atom approve <id>` | append `decision_accepted` + one `spec_drafted` (no handoff) |
+| `pnpm atom spec-approve <id>` | 批准规格 (`spec_approved`) |
+| `pnpm atom spec-return <id>` | 退回修改 (`spec_returned`) |
+| `pnpm atom specs` | list spec drafts + 待审/已批准/已派 Lead |
+| `pnpm atom handoff <id>` | 派给 Lead（须已批准；默认写本机包，`--run` 才编码） |
 | `pnpm atom reject <id>` | append `decision_rejected` |
 | `pnpm atom reject-noise` | reject suggested junk (`bot digest` / `收到✅` / log dumps) as `decision_rejected` reason `noise-heuristic` |
 | `pnpm atom merge-sweep [--apply]` | one-shot Laya fold of existing open Needs-you twins (dry-run default; `--apply` writes) |
@@ -73,14 +77,14 @@ pnpm atom run --agent grok-cli
 
 ### Dispatch Desk
 
-Same daemon, same SQLite. Home is **需要你拍板** (Approve/Reject). Cards fold into collapsible **theme/project groups**. After extract, Laya labels new candidates from the closed Chinese list in `data/theme-vocabulary.json` (「AI推进」, 「日程/会议」, 「其他」, …). Untagged / 「其他」 titles divert onto that same list from title/body (no new labels). Timeout/5xx never drop the card; Laya tags stay off, but local divert still shrinks 「其他」. Near-duplicate merge needs Laya up and fail-opens if it is down. The **Done gate** (after noise/merge, before theme tag) matches new and existing suggested cards against `data/progress-snapshot.json` (merged PRs / closed issues / recent commits) plus Desk accept/reject/merge history. A hit is `already_done` — it leaves Needs-you and shows on **系统已处理** as 「已在仓库/历史进度关闭」. Repo scan fail / missing path / Docker-without-git **fail-opens** (card stays). 「仍要我跟」 reopens. Unknown slugs map onto that list or become 「其他」. Approve/Reject is still per card. Hard-refresh `http://127.0.0.1:8787` after pull. **系统已处理** is last-24h gate-digest plus auto-closed cards. **我的偏好** shows `data/preference-memory.json`. **高级** hides the Atoms log placeholder. Lead NL configures sources.
+Same daemon, same SQLite. Home is **需要你拍板** (通过/拒绝). Cards fold into collapsible **theme/project groups**. After extract, Laya labels new candidates from the closed Chinese list in `data/theme-vocabulary.json` (「AI推进」, 「日程/会议」, 「其他」, …). Untagged / 「其他」 titles divert onto that same list from title/body (no new labels). Timeout/5xx never drop the card; Laya tags stay off, but local divert still shrinks 「其他」. Near-duplicate merge needs Laya up and fail-opens if it is down. The **Done gate** (after noise/merge, before theme tag) matches new and existing suggested cards against `data/progress-snapshot.json` (merged PRs / closed issues / recent commits) plus Desk accept/reject/merge history. A hit is `already_done` — it leaves Needs-you and shows on **系统已处理** as 「已在仓库/历史进度关闭」. Repo scan fail / missing path / Docker-without-git **fail-opens** (card stays). 「仍要我跟」 reopens. Unknown slugs map onto that list or become 「其他」. 通过/拒绝 is still per card. Accepting writes a spec draft onto **规格待审** (not the candidate queue): 批准规格 / 退回修改, then confirm-gated **派给 Lead** (local pack; no coding, no 云之家). Hard-refresh `http://127.0.0.1:8787` after pull. **系统已处理** is last-24h gate-digest plus auto-closed cards and spec 进度（已通过 → spec 待审 → 已批准 → 已派 Lead）. **我的偏好** shows `data/preference-memory.json`. **高级** hides the Atoms log placeholder. Lead NL configures sources.
 
 ```bash
 pnpm atom serve
 # open Desk at http://127.0.0.1:8787
 ```
 
-Light paper inbox (warm cream + calm ink). Listen → propose → approve → route.
+Light paper inbox (warm cream + calm ink). Listen → propose → approve → spec 待审 → 派给 Lead.
 
 ### Cron / webhooks
 
