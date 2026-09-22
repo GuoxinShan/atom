@@ -1422,6 +1422,9 @@ function renderClosedFold(doneRecent) {
     );
   }
   fold.appendChild(body);
+  fold.addEventListener("toggle", () => {
+    state.closedFoldOpen = fold.open;
+  });
   fold.open = Boolean(state.closedFoldOpen);
   return fold;
 }
@@ -1773,13 +1776,6 @@ queue.addEventListener("toggle", (e) => {
   if (!el.classList.contains("needs-group")) return;
   const key = el.dataset.groupKey;
   if (key) state.groupOpen[key] = el.open;
-});
-
-document.getElementById("blocker-list")?.addEventListener("toggle", (e) => {
-  const el = e.target;
-  if (!(el instanceof HTMLDetailsElement)) return;
-  if (!el.classList.contains("blocker-fold")) return;
-  state.closedFoldOpen = el.open;
 });
 
 document.getElementById("page-needs-you").addEventListener("click", async (e) => {

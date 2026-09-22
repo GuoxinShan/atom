@@ -141,6 +141,8 @@ describe("Desk shell", () => {
     assert.match(css, /empty-desk/);
     assert.match(css, /\.blocker-row/);
     assert.match(css, /\.blocker-fold/);
+    assert.match(css, /\.blocker-fold\[open\] > \.blocker-fold-body/);
+    assert.match(css, /\.blocker-fold > \.blocker-fold-body \{\s*display:\s*none/);
     assert.match(css, /\.progress-repo/);
     assert.match(css, /\.drawer-pack/);
     assert.doesNotMatch(css, /#6e7bf2/);
@@ -172,6 +174,7 @@ describe("Desk shell", () => {
     assert.match(foldFn, /blocker-fold/);
     assert.match(foldFn, /data-reopen/);
     assert.match(foldFn, /仍要我跟/);
+    assert.match(foldFn, /fold\.addEventListener\("toggle"/);
     assert.match(foldFn, /fold\.open = Boolean\(state\.closedFoldOpen\)/);
     assert.doesNotMatch(foldFn, /fold\.open = true/);
     assert.match(blockers, /const primary = pending\.length \+ ready\.length/);

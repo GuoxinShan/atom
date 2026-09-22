@@ -422,7 +422,10 @@ body {
   font-variant-numeric: tabular-nums;
   color: color-mix(in srgb, var(--muted) 78%, var(--bg));
 }
-.blocker-fold-body {
+.blocker-fold > .blocker-fold-body {
+  display: none;
+}
+.blocker-fold[open] > .blocker-fold-body {
   display: grid;
   gap: 8px;
   padding: 2px 0 4px;
