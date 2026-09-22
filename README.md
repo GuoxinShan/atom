@@ -58,7 +58,7 @@ It does not fall back to in-process `@atom/core`. Optional `ATOM_API_AUTO_START=
 | `pnpm desk` / `pnpm desk:down` | **dogfood start**: host `progress-scan --loop` + `docker compose up -d`. Scan stays on the Mac; Desk cron consumes `data/progress-snapshot.json` |
 | `pnpm atom progress-scan [--apply]` | **host-local** git/`gh` scan of `atom`/`yzj`/`ai-advance` → `data/progress-snapshot.json`. One-shot; `--apply` then `POST /api/done-sweep` if Desk is up. Do not `docker compose exec` this |
 | `pnpm atom progress-scan --loop` | Mac helper: watch `data/progress-scan.request.json` + same 15m weekday window. Pair with compose (or use `pnpm desk`) |
-| `pnpm atom done-sweep [--apply]` | close open Needs-you cards that match snapshot + Desk history (`already_done`). Dry-run default |
+| `pnpm atom done-sweep [--apply]` | close open Needs-you cards that match snapshot + Desk history + 云之家「已完成」discourse (`already_done`). Dry-run default |
 | `pnpm atom reopen <id>` | 「仍要我跟」 — put an auto-closed already_done card back on Needs-you |
 | `pnpm atom outbound-check [--title …] [--body … \| --path <file>] [--kind digest]` | Laya pre-post gate (allow/drop/hold); never sends |
 | `pnpm atom preference-rsi [--dry-run \| --apply]` | daily Desk-feedback loop: tune Laya floors / allowlists (dry-run default; `--apply` writes `data/preference-memory.json`) |
@@ -77,7 +77,7 @@ pnpm atom run --agent grok-cli
 
 ### Dispatch Desk
 
-Same daemon, same SQLite. Home is **需要你拍板** (通过/拒绝). Cards fold into collapsible **theme/project groups**. After extract, Laya labels new candidates from the closed Chinese list in `data/theme-vocabulary.json` (「AI推进」, 「日程/会议」, 「其他」, …). Untagged / 「其他」 titles divert onto that same list from title/body (no new labels). Timeout/5xx never drop the card; Laya tags stay off, but local divert still shrinks 「其他」. Near-duplicate merge needs Laya up and fail-opens if it is down. The **Done gate** (after noise/merge, before theme tag) matches new and existing suggested cards against `data/progress-snapshot.json` (merged PRs / closed issues / recent commits) plus Desk accept/reject/merge history. A hit is `already_done` — it leaves Needs-you and shows on **系统已处理** as 「已在仓库/历史进度关闭」. Repo scan fail / missing path / Docker-without-git **fail-opens** (card stays). 「仍要我跟」 reopens. Unknown slugs map onto that list or become 「其他」. 通过/拒绝 is still per card. Accepting writes a spec draft onto **规格待审** (not the candidate queue): 批准规格 / 退回修改, then confirm-gated **派给 Lead** (local pack; no coding, no 云之家). Hard-refresh `http://127.0.0.1:8787` after pull. **系统已处理** is last-24h gate-digest plus auto-closed cards and spec 进度（已通过 → spec 待审 → 已批准 → 已派 Lead）. **我的偏好** shows `data/preference-memory.json`. **高级** hides the Atoms log placeholder. Lead NL configures sources.
+Same daemon, same SQLite. Home is **需要你拍板** (通过/拒绝). Cards fold into collapsible **theme/project groups**. After extract, Laya labels new candidates from the closed Chinese list in `data/theme-vocabulary.json` (「AI推进」, 「日程/会议」, 「其他」, …). Untagged / 「其他」 titles divert onto that same list from title/body (no new labels). Timeout/5xx never drop the card; Laya tags stay off, but local divert still shrinks 「其他」. Near-duplicate merge needs Laya up and fail-opens if it is down. The **Done gate** (after noise/merge, before theme tag) matches new and existing suggested cards against `data/progress-snapshot.json` (merged PRs / closed issues / recent commits) plus Desk accept/reject/merge history plus high-confidence 云之家「已完成 / 搞定 / 上线了」lines already ingested (`discourse` on that snapshot — not a second yzj pull). A hit is `already_done` — it leaves Needs-you and shows on **系统已处理** as 「已在仓库/历史进度关闭」 or 「云之家进度关闭」. Repo scan fail / missing path / Docker-without-git / no yzj messages **fail-open** (card stays). Vague chat and cross-theme talk do not close. 「仍要我跟」 reopens. Unknown slugs map onto that list or become 「其他」. 通过/拒绝 is still per card. Accepting writes a spec draft onto **规格待审** (not the candidate queue): 批准规格 / 退回修改, then confirm-gated **派给 Lead** (local pack; no coding, no 云之家). Hard-refresh `http://127.0.0.1:8787` after pull. **系统已处理** is last-24h gate-digest plus auto-closed cards and spec 进度（已通过 → spec 待审 → 已批准 → 已派 Lead）. **我的偏好** shows `data/preference-memory.json`. **高级** hides the Atoms log placeholder. Lead NL configures sources.
 
 ```bash
 pnpm atom serve
@@ -131,7 +131,7 @@ pnpm atom tag-backfill --apply  # write candidate_tagged overlays
 
 ### Done loop (already shipped)
 
-Needs-you must not resurface work you already shipped. Progress sources are the existing `data/workspaces.json` entries **`atom`**, **`yzj`**, **`ai-advance`** (paths already there).
+Needs-you must not resurface work you already shipped. Progress sources are the existing `data/workspaces.json` entries **`atom`**, **`yzj`**, **`ai-advance`** (paths already there), plus high-confidence 云之家 completion talk already in the ingest store (`discourse` on the same snapshot: 「已完成」「搞定」「上线了」). Vague, negated, or cross-theme chat stays suggested.
 
 **Dogfood (Rock-Shan / Docker):** git checkouts stay on the Mac. Start Desk with the helper so the 15-minute cron keeps `data/progress-snapshot.json` fresh — no hand-run `progress-scan`:
 
@@ -144,8 +144,13 @@ pnpm desk                  # scripts/desk-up.sh
 # After rebuild, wait ≤15m (or watch logs for the first in-window tick):
 docker compose logs -f desk | grep progress
 stat -f '%Sm' data/progress-snapshot.json   # mtime should move
-# Needs-you still uses #31/#32 Done matching. Hard-refresh Desk.
+# Needs-you uses repo/history Done matching plus 云之家 discourse.
+# Hard-refresh Desk. A 云之家 hit shows 云之家进度关闭 on 系统已处理.
 # 「仍要我跟」 reopens a false already_done.
+# Optional one-shot after a group says something is done (Desk must be up so
+# ingest has the message; discourse is folded at done-sweep / the next extract):
+#   pnpm atom done-sweep
+#   pnpm atom done-sweep --apply
 
 # Two terminals instead of pnpm desk:
 pnpm atom progress-scan --loop

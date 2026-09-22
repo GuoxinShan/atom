@@ -13,6 +13,7 @@ import { EventStore } from "../store/events.js";
 import { projectCandidates } from "../store/candidates.js";
 import { loadGroupingWorkspaces } from "../store/needs-groups.js";
 import { loadProgressSnapshot } from "./progress-snapshot.js";
+import { foldYzjDiscourse } from "./yzj-discourse.js";
 import {
   matchCandidateToDone,
   type DoneHistoryItem,
@@ -23,6 +24,7 @@ import { listOpenSuggested } from "./merge-sweep.js";
 
 export const ALREADY_DONE_REASON = "already_done";
 export const ALREADY_DONE_LABEL = "已在仓库/历史进度关闭";
+export const YZJ_ALREADY_DONE_LABEL = "云之家进度关闭";
 export const DONE_GATE_ACTOR = "system:done-gate";
 export const REOPEN_ACTOR = "user:local";
 
@@ -46,6 +48,11 @@ export type DoneSweepResult = {
 
 export function isAlreadyDoneReason(reason: string | undefined): boolean {
   return (reason ?? "").trim().toLowerCase() === ALREADY_DONE_REASON;
+}
+
+/** Desk 系统已处理 line. 云之家 discourse is distinct from repo / history. */
+export function alreadyDoneLabel(hit: DoneHit): string {
+  return hit.via === "yzj" || hit.evidence.kind === "yzj" ? YZJ_ALREADY_DONE_LABEL : ALREADY_DONE_LABEL;
 }
 
 export function doneGateToDetail(hit: DoneHit): Record<string, unknown> {
@@ -80,8 +87,14 @@ export function historyFromStore(store: EventStore): DoneHistoryItem[] {
 
 export function loadDoneContext(store: EventStore, repoRoot?: string): DoneMatchContext {
   const root = repoRoot ?? "";
+  let snapshot = root ? loadProgressSnapshot(root) : null;
+  try {
+    snapshot = foldYzjDiscourse(store, root || undefined, snapshot);
+  } catch (err) {
+    console.warn(`[yzj-discourse] fail-open: ${(err as Error).message}`);
+  }
   return {
-    snapshot: root ? loadProgressSnapshot(root) : null,
+    snapshot,
     history: historyFromStore(store),
     workspaces: root ? loadGroupingWorkspaces(root) : [],
   };
@@ -102,7 +115,7 @@ export function appendAlreadyDone(
     summary: `already_done: ${candidate.title}`,
     detail: {
       reason: ALREADY_DONE_REASON,
-      reason_label: ALREADY_DONE_LABEL,
+      reason_label: alreadyDoneLabel(hit),
       disposition: ALREADY_DONE_REASON,
       evidence: hit.evidence,
       done_gate: doneGateToDetail(hit),

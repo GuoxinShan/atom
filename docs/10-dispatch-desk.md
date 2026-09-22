@@ -28,7 +28,7 @@ Projects optimizes *shipping code over months*. ATOM optimizes *not losing cited
 
 **Home = Needs you.** Only surfaces that need a human gate:
 
-1. Suggested candidates (approve / reject / merge) — **display-grouped** by stored `theme` / `project` tags mapped onto the closed Chinese vocabulary in `data/theme-vocabulary.json` (Laya writes these after extract when it is up; timeout/5xx leave cards untagged). Untagged / 「其他」 / weak titles **divert** onto that same list from title/body; leftover heuristic buckets whose workspace title is a canonical theme (e.g. AI推进) collapse into the theme group. Else a workspace + title-stem / `cluster_key` heuristic. Same-request merge folds near-duplicate cards; groups nest distinct cards. The **Done gate** (after noise/merge, before theme tag) matches repo progress + Desk history; hits leave this queue as `already_done`.
+1. Suggested candidates (approve / reject / merge) — **display-grouped** by stored `theme` / `project` tags mapped onto the closed Chinese vocabulary in `data/theme-vocabulary.json` (Laya writes these after extract when it is up; timeout/5xx leave cards untagged). Untagged / 「其他」 / weak titles **divert** onto that same list from title/body; leftover heuristic buckets whose workspace title is a canonical theme (e.g. AI推进) collapse into the theme group. Else a workspace + title-stem / `cluster_key` heuristic. Same-request merge folds near-duplicate cards; groups nest distinct cards. The **Done gate** (after noise/merge, before theme tag) matches repo progress + Desk history + high-confidence 云之家「已完成」talk; hits leave this queue as `already_done`.
 2. **规格待审** — after accept, the auto-drafted spec (title / body / acceptance criteria). Distinct from the candidate queue. 批准规格 / 退回修改, then confirm-gated **派给 Lead** (local pack; no coding unless CLI `--run`).
 3. Checklist human_gate_ack
 4. Outbound digest / chat post confirm (when enabled)
@@ -72,7 +72,7 @@ When Needs you has zero suggested and zero `awaitingHumanAck`, Desk shows calm c
 Top nav (Chinese labels, English page keys):
 
 1. **需要你拍板** (`needs-you`) — default home
-2. **系统已处理** (`processed`) — read-only last-24h gate-digest (noise dropped / merged / already_done / outbound allow-drop-hold / auto_rate) plus auto-closed cards labeled **已在仓库/历史进度关闭**. 「仍要我跟」 reopens that card onto Needs you. Accepted specs show **已通过 → spec 待审 → 已批准 → 已派 Lead**.
+2. **系统已处理** (`processed`) — read-only last-24h gate-digest (noise dropped / merged / already_done / outbound allow-drop-hold / auto_rate) plus auto-closed cards labeled **已在仓库/历史进度关闭** or **云之家进度关闭**. 「仍要我跟」 reopens that card onto Needs you. Accepted specs show **已通过 → spec 待审 → 已批准 → 已派 Lead**.
 3. **我的偏好** (`preferences`) — view + clamped light-edit of `data/preference-memory.json`; RSI via existing `POST /api/preference-rsi`
 4. **高级** (`advanced`) — Atoms append-only log placeholder (collapsed) + spec 进度 + cold-start/Setup. Not the home screen; backend log/API unchanged.
 

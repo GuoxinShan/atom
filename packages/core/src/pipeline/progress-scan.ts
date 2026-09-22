@@ -10,6 +10,8 @@
  * Signals (bounded): merged PRs + closed issues via `gh` when authenticated,
  * else `git log` on main|master. Path missing / not a git repo / command fail
  * → that workspace is fail-open (Done gate will not drop on repo evidence).
+ * Does not read SQLite or yzj-cli. A prior `discourse` field (云之家 「已完成」
+ * lines folded by the Done gate from ingested messages) is preserved.
  */
 
 import fs from "node:fs";
@@ -379,6 +381,14 @@ export async function runProgressScan(
       `[progress-scan] ${w.id} ${mark} path=${w.path || "-"} items=${w.items.length}${
         w.reason ? ` (${w.reason})` : ""
       }`
+    );
+  }
+  if (snapshot.discourse) {
+    const d = snapshot.discourse;
+    console.log(
+      `[progress-scan] yzj discourse ${d.fail_open ? "fail-open" : "ok"} items=${d.items.length}${
+        d.preserved ? " preserved" : ""
+      }${d.reason ? ` (${d.reason})` : ""}`
     );
   }
   return { path: outPath, snapshot, available, failOpen, items };

@@ -1358,7 +1358,7 @@ function renderProcessed() {
       <div class="stat-card">
         <span class="num">${escapeHtml(String(extract.already_done ?? done.length))}</span>
         <span class="lbl">进度已关闭</span>
-        <span class="sub">已在仓库/历史进度关闭</span>
+        <span class="sub">已在仓库/历史进度关闭 · 云之家进度关闭</span>
       </div>
       <div class="stat-card">
         <span class="num">${escapeHtml(
@@ -1383,7 +1383,7 @@ function renderProcessed() {
             <h3 class="processed-done-head">自动关闭</h3>
             ${doneCards}
           </div>`
-        : '<p class="processed-note">尚无「已在仓库/历史进度关闭」的卡片。</p>'
+        : '<p class="processed-note">尚无「已在仓库/历史进度关闭」或「云之家进度关闭」的卡片。</p>'
     }
     ${
       d?.markdown
