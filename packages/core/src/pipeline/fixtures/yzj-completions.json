@@ -1,0 +1,66 @@
+{
+  "hit": {
+    "id": "m-graph-cli",
+    "source": "yzj",
+    "groupId": "g-ai",
+    "text": "上下文图谱 CLI 单机分发已经上线了",
+    "ts": "2026-09-21T10:00:00+08:00"
+  },
+  "weak": [
+    {
+      "id": "w-bare",
+      "source": "yzj",
+      "text": "搞定了",
+      "ts": "2026-09-21T10:01:00+08:00"
+    },
+    {
+      "id": "w-deictic",
+      "source": "yzj",
+      "text": "这个已经完成了",
+      "ts": "2026-09-21T10:02:00+08:00"
+    },
+    {
+      "id": "w-question",
+      "source": "yzj",
+      "text": "上下文图谱 CLI 单机分发上线了吗",
+      "ts": "2026-09-21T10:03:00+08:00"
+    },
+    {
+      "id": "w-negation",
+      "source": "yzj",
+      "text": "上下文图谱 CLI 单机分发还没上线",
+      "ts": "2026-09-21T10:04:00+08:00"
+    },
+    {
+      "id": "w-soon",
+      "source": "yzj",
+      "text": "上下文图谱 CLI 单机分发快上线了",
+      "ts": "2026-09-21T10:05:00+08:00"
+    },
+    {
+      "id": "w-plan",
+      "source": "yzj",
+      "text": "准备把上下文图谱 CLI 单机分发上线",
+      "ts": "2026-09-21T10:06:00+08:00"
+    },
+    {
+      "id": "w-modifier",
+      "source": "yzj",
+      "text": "已完成的上下文图谱 CLI 单机分发还要补文档",
+      "ts": "2026-09-21T10:07:00+08:00"
+    }
+  ],
+  "theme_mismatch": {
+    "id": "m-steno-pdf",
+    "source": "yzj",
+    "groupId": "g-steno",
+    "text": "速记导出 PDF 已完成，搞定了",
+    "ts": "2026-09-21T11:00:00+08:00"
+  },
+  "other_source": {
+    "id": "m-slack",
+    "source": "slack",
+    "text": "上下文图谱 CLI 单机分发已经上线了",
+    "ts": "2026-09-21T12:00:00+08:00"
+  }
+}

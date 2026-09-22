@@ -8,6 +8,9 @@
  *
  * Fail-open: any scan/hook/timeout error logs and keeps the last snapshot.
  * Never throws into poll / extract.
+ * 云之家 「已完成」 discourse is not scanned here (no second yzj pull, no
+ * SQLite). The Done gate folds ingested messages into `snapshot.discourse`
+ * after this refresh; a host rewrite preserves that field.
  */
 
 import fs from "node:fs";

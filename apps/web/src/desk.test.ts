@@ -88,6 +88,8 @@ describe("Desk shell", () => {
     assert.match(html, /data-page="needs-you"[^>]*class="active">需要你拍板/);
     assert.match(html, /data-page="processed">系统已处理/);
     assert.match(html, /已在仓库\/历史进度关闭/);
+    assert.match(html, /云之家进度关闭/);
+    assert.match(js, /云之家进度关闭/);
     assert.match(js, /PAGES = \["needs-you", "processed", "preferences", "advanced"\]/);
     assert.match(html, /data-page="preferences">我的偏好/);
     assert.match(html, /data-page="advanced">高级/);

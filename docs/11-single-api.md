@@ -85,7 +85,7 @@ Use **`POST /api/run`** from the CLI. Keep **`POST /hooks/run`** for inbound web
 | `reject-noise` | `POST /api/reject-noise` |
 | `merge-sweep [--apply]` | `POST /api/merge-sweep` `{apply?}` (default dry-run) |
 | `tag-backfill [--apply]` | `POST /api/tag-backfill` `{apply?}` (default dry-run; suggested only) |
-| `progress-scan [--apply]` | **host-local** write `data/progress-snapshot.json` (imports core for git/`gh`; Docker cannot see Mac paths). `--apply` then `POST /api/done-sweep` `{apply:true}` if Desk is up |
+| `progress-scan [--apply]` | **host-local** write `data/progress-snapshot.json` (imports core for git/`gh`; Docker cannot see Mac paths). Preserves `discourse` (云之家 completions folded later by the Done gate from ingested messages). `--apply` then `POST /api/done-sweep` `{apply:true}` if Desk is up |
 | `progress-scan --loop` | Mac helper: watch `data/progress-scan.request.json` + 15m weekday interval + optional `127.0.0.1:8788`. `pnpm desk` starts this with compose |
 | `done-sweep [--apply]` | `POST /api/done-sweep` `{apply?}` (default dry-run; already_done off Needs-you) |
 | `reopen <id>` | `POST /api/reopen` `{id, note?}` (「仍要我跟」; already_done only) |

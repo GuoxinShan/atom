@@ -1,8 +1,10 @@
 /**
- * Match a Needs-you candidate against repo progress + Desk history.
+ * Match a Needs-you candidate against repo progress + Desk history +
+ * high-confidence 云之家 completion talk (`snapshot.discourse`).
  *
  * Hit → already shipped / already triaged (Done gate closes it).
  * Uncertain → stay suggested. Repo scan fail does not produce a hit.
+ * Missing yzj discourse does not produce a hit.
  *
  * Desk history is stricter than repo snapshot matching: same/compatible theme
  * (or both untagged), else workspace keyword overlap / a higher title floor.
@@ -35,6 +37,7 @@ import {
 } from "../agents/theme-vocabulary.js";
 import type { WorkspaceEntry } from "../agents/lead.js";
 import type { ProgressItem, ProgressSnapshot } from "./progress-snapshot.js";
+import { discourseCoversTitle } from "./yzj-discourse.js";
 
 /** Stronger than merge's 0.32 when there is no workspace hint. */
 export const DONE_TITLE_MIN = 0.36;
@@ -48,7 +51,7 @@ export const DONE_STEM_STRONG_MIN = 3;
  */
 export const DONE_HISTORY_MIXED_TITLE_MIN = NEAR_DUP_OVERRIDE_TITLE_MIN;
 
-export type DoneEvidenceKind = "pr" | "issue" | "commit" | "history";
+export type DoneEvidenceKind = "pr" | "issue" | "commit" | "history" | "yzj";
 
 export type DoneEvidence = {
   kind: DoneEvidenceKind;
@@ -62,7 +65,7 @@ export type DoneEvidence = {
 
 export type DoneHit = {
   hit: true;
-  via: "link" | "title" | "history";
+  via: "link" | "title" | "history" | "yzj";
   evidence: DoneEvidence;
   reason: string;
 };
@@ -423,6 +426,7 @@ function bestRepoHit(
 
   let bestTitle: { item: ProgressItem; overlap: number; hinted: boolean } | null = null;
   for (const item of items) {
+    if (item.kind === "yzj") continue;
     if (sharedLinkHit(blob, item)) {
       const where = item.kind === "pr" ? "合并 PR" : item.kind === "issue" ? "已关 issue" : "仓库提交";
       return {
@@ -444,6 +448,46 @@ function bestRepoHit(
     via: "title",
     evidence: evidenceFromItem(bestTitle.item),
     reason: `标题接近${where}「${bestTitle.item.title}」`,
+  };
+}
+
+function discourseItems(snapshot: ProgressSnapshot | null): ProgressItem[] {
+  const block = snapshot?.discourse;
+  if (!block?.items.length) return [];
+  return block.items.filter((item) => item.kind === "yzj" && item.title.trim());
+}
+
+/**
+ * 云之家 completion subject must cover the card title, and themes must agree
+ * when both sides resolve. Weak chat never becomes an item.
+ */
+function bestDiscourseHit(cand: DoneCandidate, snapshot: ProgressSnapshot | null): DoneHit | null {
+  const items = discourseItems(snapshot);
+  if (!items.length) return null;
+  const candTheme = resolveDoneTheme(cand);
+  let best: { item: ProgressItem } | null = null;
+  for (const item of items) {
+    const itemTheme = resolveDoneTheme({
+      title: item.title,
+      theme: item.theme,
+    });
+    if (candTheme && itemTheme && candTheme !== itemTheme) continue;
+    if (!discourseCoversTitle(cand.title, item.title)) continue;
+    best = { item };
+    break;
+  }
+  if (!best) return null;
+  const phrase = best.item.phrase ? `（${best.item.phrase}）` : "";
+  return {
+    hit: true,
+    via: "yzj",
+    evidence: {
+      kind: "yzj",
+      title: best.item.title,
+      workspace_id: best.item.workspace_id || "yzj",
+      ...(best.item.message_id ? { sha: best.item.message_id } : {}),
+    },
+    reason: `云之家进度关闭：群里说「${best.item.title}」${phrase}`,
   };
 }
 
@@ -497,6 +541,9 @@ export function matchCandidateToDone(cand: DoneCandidate, ctx: DoneMatchContext)
 
   const repoHit = bestRepoHit(cand, ctx.snapshot, ctx.workspaces);
   if (repoHit) return repoHit;
+
+  const yzjHit = bestDiscourseHit(cand, ctx.snapshot);
+  if (yzjHit) return yzjHit;
 
   return { hit: false, failOpen: snapshotFailOpen(ctx.snapshot) };
 }

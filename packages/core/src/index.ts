@@ -33,6 +33,7 @@ export * from "./pipeline/progress-refresh.js";
 export * from "./pipeline/progress-scan-host.js";
 export * from "./pipeline/done-match.js";
 export * from "./pipeline/done-gate.js";
+export * from "./pipeline/yzj-discourse.js";
 export * from "./agents/grok-coding.js";
 export * from "./stubs/webhook-trigger.js";
 export * from "./agents/lead.js";

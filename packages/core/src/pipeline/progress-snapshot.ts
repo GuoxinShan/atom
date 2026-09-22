@@ -7,7 +7,7 @@ export type ProgressWorkspaceId = (typeof PROGRESS_WORKSPACE_IDS)[number];
 
 export const PROGRESS_SNAPSHOT_FILE = "data/progress-snapshot.json";
 
-export type ProgressItemKind = "pr" | "issue" | "commit";
+export type ProgressItemKind = "pr" | "issue" | "commit" | "yzj";
 
 export type ProgressItem = {
   kind: ProgressItemKind;
@@ -18,6 +18,25 @@ export type ProgressItem = {
   number?: number;
   at?: string;
   workspace_id: string;
+  /** Ingested yzj message id when `kind` is `yzj`. */
+  message_id?: string;
+  /** Diverted theme of a 云之家 completion subject. */
+  theme?: string;
+  /** Assertive phrase that qualified the line (已完成 / 上线了 / 搞定). */
+  phrase?: string;
+};
+
+/** High-confidence 云之家 completion talk. Missing → Done gate ignores this source. */
+export type ProgressDiscourse = {
+  id: "yzj";
+  available: boolean;
+  fail_open: boolean;
+  reason?: string;
+  preserved?: boolean;
+  preserved_from?: string;
+  scanned?: number;
+  refreshed_at?: string;
+  items: ProgressItem[];
 };
 
 export type ProgressWorkspaceScan = {
@@ -37,6 +56,8 @@ export type ProgressSnapshot = {
   source: "progress-scan";
   since_days: number;
   workspaces: ProgressWorkspaceScan[];
+  /** 云之家 「已完成」 discourse. Host git scan preserves this field. */
+  discourse?: ProgressDiscourse;
 };
 
 export function isProgressWorkspaceId(id: string): id is ProgressWorkspaceId {
@@ -50,7 +71,8 @@ export function progressSnapshotPath(repoRoot: string): string {
 function asItem(raw: unknown, workspaceId: string): ProgressItem | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const o = raw as Record<string, unknown>;
-  const kind = o.kind === "pr" || o.kind === "issue" || o.kind === "commit" ? o.kind : null;
+  const kind =
+    o.kind === "pr" || o.kind === "issue" || o.kind === "commit" || o.kind === "yzj" ? o.kind : null;
   const title = typeof o.title === "string" ? o.title.trim() : "";
   if (!kind || !title) return null;
   const body = typeof o.body === "string" ? o.body : undefined;
@@ -58,6 +80,9 @@ function asItem(raw: unknown, workspaceId: string): ProgressItem | null {
   const sha = typeof o.sha === "string" ? o.sha : undefined;
   const number = typeof o.number === "number" && Number.isFinite(o.number) ? o.number : undefined;
   const at = typeof o.at === "string" ? o.at : undefined;
+  const messageId = typeof o.message_id === "string" && o.message_id.trim() ? o.message_id.trim() : undefined;
+  const theme = typeof o.theme === "string" && o.theme.trim() ? o.theme.trim() : undefined;
+  const phrase = typeof o.phrase === "string" && o.phrase.trim() ? o.phrase.trim() : undefined;
   return {
     kind,
     title,
@@ -66,7 +91,31 @@ function asItem(raw: unknown, workspaceId: string): ProgressItem | null {
     ...(sha ? { sha } : {}),
     ...(number != null ? { number } : {}),
     ...(at ? { at } : {}),
+    ...(messageId ? { message_id: messageId } : {}),
+    ...(theme ? { theme } : {}),
+    ...(phrase ? { phrase } : {}),
     workspace_id: typeof o.workspace_id === "string" && o.workspace_id ? o.workspace_id : workspaceId,
+  };
+}
+
+function asDiscourse(raw: unknown): ProgressDiscourse | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const o = raw as Record<string, unknown>;
+  const itemsRaw = Array.isArray(o.items) ? o.items : [];
+  const items = itemsRaw
+    .map((it) => asItem(it, "yzj"))
+    .filter((it): it is ProgressItem => Boolean(it))
+    .map((it) => ({ ...it, kind: "yzj" as const }));
+  return {
+    id: "yzj",
+    available: o.available === true,
+    fail_open: o.fail_open === true,
+    reason: typeof o.reason === "string" && o.reason.trim() ? o.reason.trim() : undefined,
+    preserved: o.preserved === true ? true : undefined,
+    preserved_from: typeof o.preserved_from === "string" ? o.preserved_from : undefined,
+    scanned: typeof o.scanned === "number" && Number.isFinite(o.scanned) ? o.scanned : undefined,
+    refreshed_at: typeof o.refreshed_at === "string" ? o.refreshed_at : undefined,
+    items,
   };
 }
 
@@ -100,12 +149,14 @@ export function loadProgressSnapshot(repoRoot: string): ProgressSnapshot | null 
     const workspaces = Array.isArray(raw.workspaces)
       ? raw.workspaces.map(asWorkspace).filter((w): w is ProgressWorkspaceScan => Boolean(w))
       : [];
+    const discourse = asDiscourse(raw.discourse);
     return {
       version: 1,
       generated_at: typeof raw.generated_at === "string" ? raw.generated_at : "",
       source: "progress-scan",
       since_days: typeof raw.since_days === "number" && Number.isFinite(raw.since_days) ? raw.since_days : 90,
       workspaces,
+      ...(discourse ? { discourse } : {}),
     };
   } catch {
     return null;
@@ -119,15 +170,29 @@ export function writeProgressSnapshot(repoRoot: string, snapshot: ProgressSnapsh
   return p;
 }
 
+function keptDiscourse(next: ProgressSnapshot, prev: ProgressSnapshot | null): ProgressDiscourse | undefined {
+  if (next.discourse) return next.discourse;
+  if (!prev?.discourse) return undefined;
+  return {
+    ...prev.discourse,
+    preserved: true,
+    preserved_from: prev.generated_at || prev.discourse.refreshed_at,
+  };
+}
+
 /** Keep previous items when a workspace is unavailable this run (Docker / missing git). */
 export function preserveUnavailableWorkspaces(
   next: ProgressSnapshot,
   prev: ProgressSnapshot | null
 ): ProgressSnapshot {
-  if (!prev?.workspaces.length) return next;
+  const discourse = keptDiscourse(next, prev);
+  if (!prev?.workspaces.length) {
+    return discourse ? { ...next, discourse } : next;
+  }
   const byId = new Map(prev.workspaces.map((w) => [w.id, w]));
   return {
     ...next,
+    ...(discourse ? { discourse } : {}),
     workspaces: next.workspaces.map((ws) => {
       if (ws.available || ws.items.length) return ws;
       const old = byId.get(ws.id);
