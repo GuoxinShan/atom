@@ -52,11 +52,13 @@ Home is **Needs you**, not a coordinator chat and not a three-column settled boa
 ```
 ┌────────────────────────────────────────┬──────────────────┐
 │ 需要你拍板 (Needs you) — default home  │ Matter detail    │
-│ · Suggested, folded by theme/project   │ 【摘要】         │
-│   (通过 / 拒绝 still per card)         │ 【要你拍板】     │
-│ · 规格待审 (批准规格 / 退回 / 派给 Lead)│ 【可选动作】     │
-│ · Checklist ack (when any)             │ 短 / 长          │
-│ · Outbound confirm (when enabled)      │ ▸ Listening      │
+│ · Suggested, folded by theme/project   │ title            │
+│   (通过 / 拒绝 still per card)         │ source chip      │
+│ · 规格待审 (批准规格 / 退回 / 派给 Lead)│ 【摘要】         │
+│ · Checklist ack (when any)             │ 【要你拍板】     │
+│ · Outbound confirm (when enabled)      │ 【可选动作】     │
+│                                        │ 短 / 长 · 【原文】│
+│                                        │ ▸ Listening      │
 │                                        │ ▸ Lead           │
 │                                        │ ▸ Matters        │
 │                                        │ ▸ Workspaces     │
@@ -69,7 +71,11 @@ Home is **Needs you**, not a coordinator chat and not a three-column settled boa
 
 Needs-you cards, the opened theme group, and the matter detail share one contract. It is how Desk presents gates that already exist. It is not a new agent, routine, or chat.
 
-1. **【摘要】** — what changed, plus why this is on Needs you (cite + one short reason). The summary is already on screen. Desk does not ask whether you want to see it.
+Reading order: **title → source chip → 【摘要】 → 【要你拍板】 → 【可选动作】**.
+
+**Source chip** — the Yunzhijia group (or other cite label) sits under the title on every short card. It is not only a phrase inside 【摘要】 or the quiet status line. Clicking it opens this matter’s long detail and scrolls to 【原文】 (group name + digest). If the ref already has an `https` deep-link (`url`, `href`, `link`, or a `url` token), that same click also opens the link in a new tab (`noopener`). Desk does not invent a 云之家 URL, and it never sends.
+
+1. **【摘要】** — short view is two lines: what changed, plus one reason this is on Needs you. The group name lives on the source chip, not again in the sentence.
 2. **【要你拍板】** — the decision, urgency first within a theme group (higher confidence, then older `updated_at`; display only). Each option is a verb plus one line of consequence:
    - **A 通过** — 记为已通过，草稿进「规格待审」。不外发、不开工。 / **B 拒绝** — 移出今天的队列。只记在本机。
    - **A 批准规格** — 记为已批准。还不会写交接包，也不会外发。 / **B 退回修改** — 留在规格待审。
@@ -79,7 +85,7 @@ Needs-you cards, the opened theme group, and the matter detail share one contrac
 
 **Confirm** (`window.confirm`) runs only before **派给 Lead** and any future 发群. 通过, 拒绝, 批准规格, 退回修改, 确认清单, 仍要我跟, 保持关闭, and 先记下 apply on the first click.
 
-**短 / 长** on the matter detail swaps the same item between short (title + 【摘要】 + the two action sections) and long (full body and 验收标准, or the spec edit form) without leaving the item or reloading the queue.
+**短 / 长** on the matter detail swaps the same item between short (title + source chip + 【摘要】 + the two action sections) and long (【原文】, then full body and 验收标准, or the spec edit form) without leaving the item or reloading the queue. 【原文】 says it only opens a view and does not send.
 
 Empty Needs you stays **今天没有要你拍板的**.
 

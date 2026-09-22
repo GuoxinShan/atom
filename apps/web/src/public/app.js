@@ -22,6 +22,7 @@ const state = {
   handoffNote: "",
   ackNote: "",
   briefLen: {},
+  citeFocus: "",
   specDrafts: {},
   localNotes: {},
   keptClosed: {},
@@ -224,6 +225,118 @@ function citeLabels(refs) {
     labels.push(label);
   }
   return labels;
+}
+
+function safeHttpUrl(value) {
+  const s = String(value ?? "").trim();
+  if (!/^https:\/\//i.test(s)) return "";
+  try {
+    const u = new URL(s);
+    if (u.username || u.password) return "";
+    return u.toString();
+  } catch {
+    return "";
+  }
+}
+
+function hostCiteLabel(href) {
+  try {
+    const host = new URL(href).hostname.toLowerCase();
+    if (host.includes("yunzhijia") || host.includes("yzj") || host.includes("kingdee")) return "云之家";
+  } catch {
+    /* not a url */
+  }
+  return "";
+}
+
+/** Group / cite shown on the card. Deep link only when the ref already has an https URL. */
+function citeFromRef(ref) {
+  const token = String(ref?.token ?? "").trim();
+  const parts = token.split(":");
+  const sourceHint = parts[0] || "";
+  const kindHint = String(ref?.kind || parts[1] || "");
+  const groupId = parts[1] === "im" && parts.length >= 3 ? parts[2] : "";
+  const groupName = groupNameForId(groupId);
+  const href =
+    safeHttpUrl(ref?.url) ||
+    safeHttpUrl(ref?.href) ||
+    safeHttpUrl(ref?.link) ||
+    (kindHint === "url" || /^https:\/\//i.test(token) ? safeHttpUrl(token) : "");
+  const digestRaw = firstHuman(ref?.digest);
+  const digest = digestRaw && digestRaw !== href ? digestRaw : "";
+  const label =
+    firstHuman(
+      groupName,
+      ref?.groupName,
+      ref?.label,
+      SOURCE_LABELS[sourceHint],
+      href ? hostCiteLabel(href) : "",
+      kindLabel(kindHint),
+      SOURCE_LABELS[ref?.source]
+    ) || "";
+  return { label, href, digest };
+}
+
+function citeEntries(refs) {
+  const out = [];
+  const seen = new Set();
+  for (const r of refs || []) {
+    const c = citeFromRef(r);
+    const label = c.label || (c.href ? hostCiteLabel(c.href) || "链接" : "");
+    if (!label && !c.href) continue;
+    const key = label || c.href;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ label: label || "链接", href: c.href, digest: c.digest });
+  }
+  return out;
+}
+
+function sourceChipHtml(entry, openId, kind) {
+  const label = entry.label || "来源";
+  const href = entry.href || "";
+  const hrefAttr = href ? ` data-cite-href="${escapeHtml(href)}"` : "";
+  return `<button type="button" class="source-chip" data-open-cite="${escapeHtml(
+    openId
+  )}" data-cite-kind="${escapeHtml(kind)}"${hrefAttr} aria-label="${escapeHtml(
+    href ? `打开来源：${label}` : `查看来源：${label}`
+  )}"><span class="source-kicker">来自</span><span class="source-name">${escapeHtml(label)}</span></button>`;
+}
+
+function sourceChipsHtml(refs, openId, kind = "candidate") {
+  const entries = citeEntries(refs);
+  const rows = entries.length ? entries : [{ label: "来源", href: "", digest: "" }];
+  return `<div class="source-row">${rows.map((e) => sourceChipHtml(e, openId, kind)).join("")}</div>`;
+}
+
+function citeBlockHtml(refs, id) {
+  const entries = citeEntries(refs);
+  const rows = entries.length
+    ? entries
+        .map((e) => {
+          const link = e.href
+            ? `<a class="cite-link" href="${escapeHtml(e.href)}" target="_blank" rel="noopener noreferrer">${
+                hostCiteLabel(e.href) === "云之家" ? "在云之家打开" : "打开链接"
+              }</a>`
+            : "";
+          const digest = e.digest ? `<p class="cite-digest">${escapeHtml(e.digest)}</p>` : "";
+          return `<div class="cite-row"><p class="cite-source">${escapeHtml(e.label || "来源")}</p>${digest}${link}</div>`;
+        })
+        .join("")
+    : `<p class="cite-digest">没有单独的引用原文。</p>`;
+  return `<section class="cite-block" id="cite-block" data-cite-block="${escapeHtml(
+    id
+  )}" tabindex="-1"><h4 class="brief-label">【原文】</h4>${rows}<p class="cite-hint">只打开查看。不会发送。</p></section>`;
+}
+
+function briefLength(id, altId) {
+  if (state.citeFocus && (state.citeFocus === id || (altId && state.citeFocus === altId))) return "long";
+  if (state.briefLen[id] === "long" || (altId && state.briefLen[altId] === "long")) return "long";
+  return "short";
+}
+
+function shortSummary(body, situation) {
+  return [clipText(body, 64), situation].filter(Boolean).join(" ");
 }
 
 function metaLine({ sources = [], status = "", when = "", extra = [], quiet = false } = {}) {
@@ -712,13 +825,44 @@ function longSpecHtml({ editable, specId, title, body, criteriaText, criteria })
   return `<div class="brief-long">${bodyHtml}${criteriaHtml}</div>`;
 }
 
-function detailFrame({ kicker, briefId, len, title, bodyHtml }) {
+function detailFrame({ kicker, briefId, len, title, sourceHtml = "", bodyHtml }) {
   return `<div class="detail-kicker">
       <h2>${escapeHtml(kicker)}</h2>
       <div class="kicker-tools">${lenToggle(briefId, len)}${copyIdButton(briefId)}</div>
     </div>
     <h3>${escapeHtml(title)}</h3>
+    ${sourceHtml}
     ${bodyHtml}`;
+}
+
+function revealCite(id, kind = "candidate") {
+  if (!id) return;
+  state.briefLen[id] = "long";
+  state.citeFocus = id;
+  selectMatter(id, kind);
+}
+
+function focusCiteBlock() {
+  const id = state.citeFocus;
+  if (!id) return;
+  state.citeFocus = "";
+  const block = document.querySelector("#matter-detail [data-cite-block]");
+  if (!block) return;
+  block.scrollIntoView({ block: "nearest" });
+  if (typeof block.focus === "function") block.focus({ preventScroll: true });
+}
+
+function onSourceChipClick(e) {
+  const citeBtn = e.target.closest("[data-open-cite]");
+  if (!citeBtn) return false;
+  e.stopPropagation();
+  e.preventDefault();
+  const href = String(citeBtn.dataset.citeHref || "");
+  if (/^https:\/\//i.test(href)) {
+    window.open(href, "_blank", "noopener,noreferrer");
+  }
+  revealCite(citeBtn.dataset.openCite, citeBtn.dataset.citeKind || "candidate");
+  return true;
 }
 
 function renderDetail() {
@@ -729,6 +873,7 @@ function renderDetail() {
       <h2>事项</h2>
       <p class="empty">在「需要你拍板」里选一张。新需求用通过 / 拒绝；通过后的草稿规格在「规格待审」。Lead 不在这里写代码。</p>
     `;
+    state.citeFocus = "";
     return;
   }
   if (sel.kind === "checklist") {
@@ -742,30 +887,31 @@ function renderDetail() {
     const canAck = chk.awaitingHumanAck && !chk.passed;
     const linked = state.candidates.find((c) => c.id === chk.candidateId);
     const briefId = chk.subjectId;
-    const len = state.briefLen[briefId] === "long" ? "long" : "short";
-    const sources = citeLabels(linked?.refs);
-    const summary = whyNeedsYou({
-      sources,
-      situation: canAck
-        ? "其余项已完成，等你确认。不会自动代点。"
-        : chk.passed
-          ? "清单已通过。"
-          : "其余项还在 CLI 侧完成。",
-    });
+    const refs = linked?.refs || [];
+    const len = briefLength(briefId);
+    if (len === "long") state.briefLen[briefId] = "long";
+    const situation = canAck
+      ? "其余项已完成，等你确认。不会自动代点。"
+      : chk.passed
+        ? "清单已通过。"
+        : "其余项还在 CLI 侧完成。";
+    const summary = shortSummary("", situation);
     const longHtml =
       len === "long"
-        ? `<div class="brief-long">${listHtml || `<p class="brief-summary">没有更长的清单。</p>`}</div>`
+        ? `${citeBlockHtml(refs, briefId)}<div class="brief-long">${
+            listHtml || `<p class="brief-summary">没有更长的清单。</p>`
+          }</div>`
         : "";
     root.innerHTML = detailFrame({
       kicker: "确认清单",
       briefId,
       len,
       title: firstHuman(chk.title, linked?.title) || "确认清单",
+      sourceHtml: sourceChipsHtml(refs, briefId, "checklist"),
       bodyHtml: `
         ${briefSummarySection(
           summary,
           metaLine({
-            sources,
             status: chk.passed ? "accepted" : "suggested",
             when: relativeTime(linked?.updated_at),
             extra: [canAck ? "等人确认" : ""],
@@ -777,13 +923,13 @@ function renderDetail() {
         ${state.ackNote ? `<pre class="handoff-out">${escapeHtml(state.ackNote)}</pre>` : ""}
       `,
     });
+    focusCiteBlock();
     return;
   }
   const spec = sel.spec;
   const title = firstHuman(spec?.title, sel.cand?.title) || "未命名事项";
   const body = spec?.body || sel.cand?.body || "";
   const refs = spec?.refs || sel.cand?.refs || [];
-  const sources = citeLabels(refs);
   const candStatus = sel.cand?.status || "";
   const review = spec?.review_status || "";
   const handed = review === "handed_off";
@@ -791,19 +937,20 @@ function renderDetail() {
   const reviewing = Boolean(spec) && !handed;
   const specId = spec?.id || "";
   const briefId = specId || sel.candidateId || sel.id;
-  const len = state.briefLen[briefId] === "long" ? "long" : "short";
+  const len = briefLength(briefId, sel.candidateId);
+  if (len === "long") state.briefLen[briefId] = "long";
   const criteria = spec?.acceptance_criteria || [];
   const criteriaText = criteria.join("\n");
   const kicker = reviewing ? (approved ? "已批准" : "规格待审") : candStatus === "suggested" ? "待拍板" : "事项";
   const editable = reviewing && !handed;
   let situation = "打开这张即可拍板。";
-  if (candStatus === "suggested" && !reviewing) situation = "在 Needs you，因为这条还没拍板。";
+  if (candStatus === "suggested" && !reviewing) situation = "还没拍板。";
   else if (handed) situation = "已派 Lead。交接包在本机，没有开始编码，也没有发云之家。";
   else if (approved) situation = "规格已批准。派给 Lead 要再确认一次，现在还没写交接包。";
   else if (reviewing) situation = "已通过。规格还在待审，因为还没批准或退回。";
   else if (candStatus === "rejected") situation = "已拒绝，不在今天的队列里。";
   else if (candStatus === "accepted") situation = "已通过。";
-  const summary = [clipText(body, 80), whyNeedsYou({ sources, situation })].filter(Boolean).join(" ");
+  const summary = shortSummary(body, situation);
   const choices =
     candStatus === "suggested" && !reviewing
       ? suggestedChoices(sel.candidateId)
@@ -812,7 +959,7 @@ function renderDetail() {
         : settledLine();
   const longHtml =
     len === "long"
-      ? longSpecHtml({ editable, specId, title, body, criteriaText, criteria })
+      ? `${citeBlockHtml(refs, briefId)}${longSpecHtml({ editable, specId, title, body, criteriaText, criteria })}`
       : "";
   const handedNote = handed
     ? `<p class="cite-hint">已派 Lead。${
@@ -824,11 +971,11 @@ function renderDetail() {
     briefId,
     len,
     title,
+    sourceHtml: sourceChipsHtml(refs, briefId, reviewing ? "spec" : "candidate"),
     bodyHtml: `
       ${briefSummarySection(
         summary,
         metaLine({
-          sources,
           status: review || candStatus,
           extra: spec ? [specTrail(spec)] : [],
           when: relativeTime(spec?.updated_at || sel.cand?.updated_at),
@@ -841,6 +988,7 @@ function renderDetail() {
       ${state.handoffNote ? `<pre class="handoff-out">${escapeHtml(state.handoffNote)}</pre>` : ""}
     `,
   });
+  focusCiteBlock();
 }
 
 function awaitingChecklists() {
@@ -886,26 +1034,20 @@ function renderSpecReviewCard(spec) {
   card.className = `item needs-card spec-review-card${selected ? " selected" : ""}`;
   card.dataset.select = spec.id;
   const title = firstHuman(spec.title) || "未命名规格";
-  const sources = citeLabels(spec.refs);
   const approved = spec.review_status === "approved";
-  const summary = [
-    clipText(spec.body, 80),
-    whyNeedsYou({
-      sources,
-      situation: approved
-        ? "规格已批准。派给 Lead 要再确认一次，现在还没写交接包。"
-        : "已通过。规格还在待审，因为还没批准或退回。",
-    }),
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const summary = shortSummary(
+    spec.body,
+    approved
+      ? "规格已批准。派给 Lead 要再确认一次，现在还没写交接包。"
+      : "已通过。规格还在待审，因为还没批准或退回。"
+  );
   card.innerHTML = `
         <p class="spec-kicker">${approved ? "已批准 · 可派 Lead" : "规格待审"}</p>
         <h3>${escapeHtml(title)}</h3>
+        ${sourceChipsHtml(spec.refs, spec.id, "spec")}
         ${briefSummarySection(
           summary,
           metaLine({
-            sources,
             status: spec.review_status,
             extra: [specTrail(spec)],
             when: relativeTime(spec.updated_at),
@@ -926,19 +1068,13 @@ function renderSuggestedCard(c) {
   card.className = `item needs-card${selected ? " selected" : ""}`;
   card.dataset.select = c.id;
   const title = firstHuman(c.title) || "未命名事项";
-  const sources = citeLabels(c.refs);
-  const summary = [
-    clipText(c.body, 80),
-    whyNeedsYou({ sources, situation: "在 Needs you，因为这条还没拍板。" }),
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const summary = shortSummary(c.body, "还没拍板。");
   card.innerHTML = `
         <h3>${escapeHtml(title)}</h3>
+        ${sourceChipsHtml(c.refs, c.id, "candidate")}
         ${briefSummarySection(
           summary,
           metaLine({
-            sources,
             status: c.status,
             when: relativeTime(c.updated_at),
             quiet: true,
@@ -1061,13 +1197,12 @@ function renderQueue() {
       card.className = `item needs-card${selected ? " selected" : ""}`;
       card.dataset.selectChecklist = chk.subjectId;
       const linked = state.candidates.find((c) => c.id === chk.candidateId);
-      const sources = citeLabels(linked?.refs);
       card.innerHTML = `
         <h3>${escapeHtml(firstHuman(chk.title, linked?.title) || "确认清单")}</h3>
+        ${sourceChipsHtml(linked?.refs, chk.subjectId, "checklist")}
         ${briefSummarySection(
-          whyNeedsYou({ sources, situation: "其余项已完成，等你确认。不会自动代点。" }),
+          shortSummary("", "其余项已完成，等你确认。不会自动代点。"),
           metaLine({
-            sources,
             extra: ["等人确认"],
             when: relativeTime(linked?.updated_at),
             quiet: true,
@@ -1288,6 +1423,7 @@ queue.addEventListener("toggle", (e) => {
 });
 
 document.getElementById("page-needs-you").addEventListener("click", async (e) => {
+  if (onSourceChipClick(e)) return;
   if (onBriefChromeClick(e)) return;
   const copyBtn = e.target.closest("button[data-copy-id]");
   if (copyBtn) {

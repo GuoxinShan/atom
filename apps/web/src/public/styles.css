@@ -450,6 +450,73 @@ body {
   line-height: 1.4;
   color: var(--text);
 }
+.source-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0 0;
+}
+.source-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 4px 11px 4px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--warn) 72%, var(--ink));
+  background: color-mix(in srgb, var(--warn) 30%, var(--card));
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+.source-chip .source-kicker {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--warn);
+}
+.source-chip .source-name {
+  color: var(--text);
+}
+.source-chip:hover {
+  border-color: var(--ink);
+  background: color-mix(in srgb, var(--warn) 42%, var(--card));
+}
+.needs-group.is-other .source-chip {
+  background: color-mix(in srgb, var(--warn) 24%, var(--card));
+  color: var(--text);
+}
+.cite-block {
+  margin-top: 8px;
+  padding: 8px 10px 6px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line-strong);
+  background: var(--bg-raised);
+}
+.cite-block .brief-label { margin-top: 0; }
+.cite-source {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.cite-digest {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+}
+.cite-link {
+  display: inline-block;
+  margin-top: 6px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
 .needs-card .card-summary {
   margin: 6px 0 0;
   color: var(--muted);
@@ -495,25 +562,32 @@ body {
 .processed-card .brief-summary {
   color: var(--muted);
 }
+.needs-card .brief-summary {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
 .brief-choices { display: grid; gap: 6px; }
 .choice {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   gap: 4px 10px;
+  padding: 1px 0;
 }
 .choice > button { flex: 0 0 auto; }
 .choice-why {
   flex: 1 1 14em;
   margin: 0;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.45;
+  color: color-mix(in srgb, var(--text) 78%, var(--muted));
+  font-size: 12.5px;
+  line-height: 1.4;
 }
 .choice-key {
   color: var(--text);
-  font-weight: 550;
-  margin-right: 4px;
+  font-weight: 650;
+  margin-right: 2px;
 }
 .choice-why.quiet-line { flex: 1 1 100%; }
 .optional-strip {
@@ -842,6 +916,8 @@ body {
 .cta:focus-visible,
 .composer button:focus-visible,
 .copy-id:focus-visible,
+.source-chip:focus-visible,
+.cite-block:focus,
 .matter:focus-visible,
 .needs-group > summary:focus-visible {
   outline: 2px solid var(--accent);
