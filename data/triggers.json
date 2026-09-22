@@ -14,7 +14,8 @@
         "hoursLocal": [8, 20],
         "tz": "Asia/Shanghai",
         "includeRecentDms": true,
-        "recentDmLimit": 8
+        "recentDmLimit": 8,
+        "progressScan": true
       }
     },
     { "id": "webhook-ingest", "kind": "webhook", "enabled": false, "pipeline": "ingest", "config": { "path": "/hooks/ingest" } }

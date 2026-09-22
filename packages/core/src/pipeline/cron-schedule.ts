@@ -1,8 +1,9 @@
 /**
  * In-process cron/interval poll for Desk serve.
  *
- * Pure schedule + group-union helpers. The HTTP server owns the timer and
- * calls POST /api/run (executeRun) with the unioned groupIds.
+ * Pure schedule + group-union helpers. The HTTP server owns the timer,
+ * refreshes progress-snapshot.json (fail-open), then calls executeRun
+ * (ingest → extract → Done gate) with the unioned groupIds.
  */
 
 import fs from "node:fs";
@@ -28,6 +29,8 @@ export type CronPollConfig = {
   tz: string;
   includeRecentDms: boolean;
   recentDmLimit: number;
+  /** Refresh `data/progress-snapshot.json` before this tick's extract / Done gate. Default true. */
+  progressScan: boolean;
 };
 
 export type CronSkipReason = "overlap" | "weekend" | "hours";
@@ -216,6 +219,7 @@ export function parseCronPollConfig(trigger: TriggerConfig): CronPollConfig | nu
     includeRecentDms: c.includeRecentDms !== false,
     recentDmLimit:
       Number.isFinite(limit) && limit >= 0 ? Math.trunc(limit) : DEFAULT_RECENT_DM_LIMIT,
+    progressScan: c.progressScan !== false,
   };
 }
 

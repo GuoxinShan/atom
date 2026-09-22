@@ -15,10 +15,10 @@ ATOM is a **cited demand inbox + human triage desk**, not a coding factory and n
 
 | When (Asia/Shanghai) | Who | What |
 |---|---|---|
-| You start it | `docker compose up -d` (or `pnpm serve`) | Desk API + in-process poll on Rock-Shan. **Not** a login item / LaunchAgent; compose uses `restart: "no"`. |
-| Weekdays 08:00–20:00, every 15m | Desk daemon | Same pipeline as `POST /api/run` for `yzj-ai-advance` (configured groups ∪ ~8 recent private chats). Skip nights/weekends/overlap. |
+| You start it | `pnpm desk` (compose + Mac progress-scan helper) or `docker compose up -d` / `pnpm serve` | Desk API + in-process poll on Rock-Shan. **Not** a login item / LaunchAgent; compose uses `restart: "no"`. |
+| Weekdays 08:00–20:00, every 15m | Desk daemon + host helper | Refresh `data/progress-snapshot.json` (Mac git/`gh`), then the same pipeline as `POST /api/run` for `yzj-ai-advance` (configured groups ∪ ~8 recent private chats). Skip nights/weekends/overlap. Scan fail → last snapshot, poll continues. |
 | After a morning tick | 干饭人 / you | `pnpm atom gate-digest` — paste the markdown if you want a gate-acceptance line in the group; JSON is `GET /api/gate-digest` |
-| When you ship / after PRs land | You (Mac) | `pnpm atom progress-scan` then `pnpm atom done-sweep --apply` (or wait for extract). Hard-refresh Desk. Do not docker-exec the scan. |
+| When you ship / after PRs land | (automatic) | Next 15m tick picks up merged PRs / git log. Hard-refresh Desk. One-shot `pnpm atom progress-scan` is optional. |
 | Anytime | You | Open Desk → **Needs you** only (approve / reject / checklist ack). Hard-refresh `:8787` so cards show in collapsible theme/project groups. |
 | After triage | You | `pnpm atom preference-rsi` (dry-run) then `--apply` if the deltas look right |
 
@@ -27,14 +27,14 @@ Toggle the poll in `data/triggers.json` (`id: poll-yzj-15m`). Restart the contai
 **Dogfood (Mac):** no LaunchAgents. Start Desk yourself:
 
 ```bash
-docker compose up -d --build
+pnpm desk                    # scripts/desk-up.sh — compose + Mac progress-scan --loop
 # open http://127.0.0.1:8787
 # one-time: docker compose exec desk yzj-cli auth login --device
 # Laya remains http://127.0.0.1:8790 on the Mac (LAYA_URL=http://host.docker.internal:8790 in compose)
-# Done loop: on the Mac checkout (not docker exec)
-pnpm atom progress-scan
-pnpm atom done-sweep --apply   # or wait for extract/cron; then hard-refresh Desk
-docker compose down          # keeps yzj/grok named volumes (login)
+# After rebuild: wait ≤15m (or first in-window tick) and confirm
+#   stat data/progress-snapshot.json   # mtime moved without hand-running progress-scan
+#   docker compose logs desk | grep 'progress via='
+pnpm desk:down               # helper + compose; keeps yzj/grok named volumes (login)
 ```
 
 Host `pnpm serve` is still valid. Do not reinstall `com.guoxinshan.atom.serve` or `com.guoxinshan.atom.morning-run`. Live 云之家 ingest from Docker: Linux `@yunzhijia/cli` is **in the image**; one-time `docker compose exec desk yzj-cli auth login --device` (no host sidecar, no Mac binary bind-mount) — see README **Yunzhijia from Docker**.
@@ -85,7 +85,7 @@ Duplicate policy:
 - Same `cluster_key` / same primary ref token → skip on extract (`skipped`)
 - Laya merge gate on extract folds new twins into an existing Needs-you item (open-item window ranked by title/body/ref near-duplicate; paraphrases merge at `same_request` ≥ 0.72)
 - **Done gate** (after noise/merge, before theme tag) matches suggested cards against `data/progress-snapshot.json` (atom / yzj / ai-advance merged PRs, closed issues, recent main\|master commits) plus Desk accept/reject/merge history. Repo title/stem hits need workspace affinity or shared distinctive tokens; atom meta PRs (Desk / Done-gate / chore) are not evidence that yzj / ai-advance product work is done. Hit → `already_done` (off Needs-you, reason 「已在仓库/历史进度关闭」). Uncertain or repo-scan fail → stay suggested
-- Host-side refresh: `pnpm atom progress-scan` on the Mac (not docker exec) then `pnpm atom done-sweep --apply` or wait for extract/cron. Hard-refresh Desk.
+- Host-side refresh: 15m cron writes `data/progress-scan.request.json`; Mac helper (`pnpm atom progress-scan --loop` / `pnpm desk`) scans git/`gh` into `data/progress-snapshot.json`. Fail-open if the helper is down. One-shot `pnpm atom progress-scan` still works. Do not docker-exec the scan. Hard-refresh Desk.
 - One-shot backfill of twins created *before* that gate: `pnpm atom merge-sweep` then `--apply` (Laya up; dry-run default)
 - One-shot theme/project tag backfill of untagged / 「其他」 / pre-allowlist suggested cards: `pnpm atom tag-backfill` then `--apply` (title/body divert + kebab aliases remap locally without new vocabulary; Laya up for remaining leftovers; dry-run default)
 - Desk: if two suggested share the same ref token, show one and offer “拒重复”
@@ -103,7 +103,7 @@ Week 1 engineering: score title + acceptance only; strip generic tooling mention
 ## 6. Two-week execution
 
 ### Week 1 — make dogfood boring
-1. Docker compose (or `pnpm serve`) keeps `atom serve` alive when you start it. In-process 15m poll (`data/triggers.json` `poll-yzj-15m`). No LaunchAgents.
+1. `pnpm desk` (or compose + `progress-scan --loop`) keeps `atom serve` alive when you start it. In-process 15m poll (`data/triggers.json` `poll-yzj-15m`) refreshes the progress snapshot then extract / Done gate. No LaunchAgents.
 2. Routing haystack fix (上文 §5)
 3. Desk empty state copy: “今天没有要你拍板的” + last run time
 4. Doc link from README → this plan

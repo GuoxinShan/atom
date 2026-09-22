@@ -44,7 +44,7 @@ import {
   readLastPreferenceRsi,
   LayaClient,
   loadThemeVocabulary,
-  runProgressScan,
+  refreshProgressSnapshot,
   runDoneSweep,
   reopenCandidate,
   loadProgressSnapshot,
@@ -208,8 +208,18 @@ export async function handleApi(
   }
 
   if (method === "POST" && p === "/api/progress-scan") {
-    const result = await runProgressScan(daemon.repoRoot);
-    json(res, { ok: true, ...result, snapshot: result.snapshot });
+    const refresh = await refreshProgressSnapshot(daemon.repoRoot, { source: "api" });
+    const snapshot = loadProgressSnapshot(daemon.repoRoot);
+    json(res, {
+      ok: refresh.ok,
+      via: refresh.via,
+      failOpen: refresh.failOpen,
+      error: refresh.error,
+      path: refresh.path,
+      available: refresh.available,
+      items: refresh.items,
+      snapshot,
+    });
     return true;
   }
 

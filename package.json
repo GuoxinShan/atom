@@ -8,8 +8,10 @@
     "atom": "tsx apps/cli/src/main.ts",
     "web": "tsx apps/web/src/server.ts",
     "serve": "tsx apps/web/src/server.ts",
+    "desk": "bash scripts/desk-up.sh",
+    "desk:down": "bash scripts/desk-down.sh",
     "typecheck": "pnpm -r run typecheck",
-    "test": "tsx --test packages/core/src/agents/laya.test.ts packages/core/src/agents/theme-vocabulary.test.ts packages/core/src/agents/preference-memory.test.ts packages/core/src/agents/grok-cli.test.ts packages/core/src/agents/resolve.test.ts packages/core/src/pipeline/laya-gates.test.ts packages/core/src/pipeline/merge-sweep.test.ts packages/core/src/pipeline/tag-backfill.test.ts packages/core/src/pipeline/preference-rsi.test.ts packages/core/src/pipeline/gate-digest.test.ts packages/core/src/pipeline/cron-schedule.test.ts packages/core/src/pipeline/done-match.test.ts packages/core/src/pipeline/done-gate.test.ts packages/core/src/store/needs-groups.test.ts apps/web/src/desk.test.ts",
+    "test": "tsx --test packages/core/src/agents/laya.test.ts packages/core/src/agents/theme-vocabulary.test.ts packages/core/src/agents/preference-memory.test.ts packages/core/src/agents/grok-cli.test.ts packages/core/src/agents/resolve.test.ts packages/core/src/pipeline/laya-gates.test.ts packages/core/src/pipeline/merge-sweep.test.ts packages/core/src/pipeline/tag-backfill.test.ts packages/core/src/pipeline/preference-rsi.test.ts packages/core/src/pipeline/gate-digest.test.ts packages/core/src/pipeline/cron-schedule.test.ts packages/core/src/pipeline/progress-refresh.test.ts packages/core/src/pipeline/done-match.test.ts packages/core/src/pipeline/done-gate.test.ts packages/core/src/store/needs-groups.test.ts apps/web/src/desk.test.ts apps/web/src/scheduler.test.ts",
     "check:lead-routing": "tsx scripts/check-lead-routing.ts"
   },
   "devDependencies": {

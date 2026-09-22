@@ -4,8 +4,13 @@
 # Manual start — this file does not use restart: always / unless-stopped,
 # which would bring Desk back when Docker Desktop launches at login.
 # No LaunchAgent / login item. No host sidecar for yzj-cli.
+# Progress-scan stays on the Mac: scripts/desk-up.sh starts compose plus
+# `pnpm atom progress-scan --loop`, which writes data/progress-snapshot.json
+# into this ./data mount. `docker compose up -d` alone still serves Desk;
+# without the helper, cron fail-opens and keeps the last snapshot.
 #
-#   docker compose up -d          # start Desk on :8787
+#   pnpm desk                     # compose + host progress-scan helper
+#   docker compose up -d          # Desk only (snapshot must already exist)
 #   docker compose down           # stop (named volumes keep yzj/grok login)
 #   docker compose logs -f desk   # follow serve + poll-yzj-15m ticks
 #   docker compose exec desk yzj-cli auth login --device
@@ -27,6 +32,13 @@ services:
       # Optional: skip grok spawn when not logged in. Default uses in-image grok.
       ATOM_EXTRACT_AGENT: "${ATOM_EXTRACT_AGENT:-}"
       XAI_API_KEY: "${XAI_API_KEY:-}"
+      # Refresh progress-snapshot.json on each 15m tick. Git stays on the Mac;
+      # cron writes data/progress-scan.request.json and waits for the helper.
+      # Scan failure is fail-open (last snapshot + poll/extract continue).
+      ATOM_PROGRESS_SCAN: "${ATOM_PROGRESS_SCAN:-}"
+      ATOM_PROGRESS_SCAN_WAIT_MS: "${ATOM_PROGRESS_SCAN_WAIT_MS:-45000}"
+      ATOM_PROGRESS_SCAN_URL: "${ATOM_PROGRESS_SCAN_URL:-}"
+      ATOM_PROGRESS_SCAN_HOOK: "${ATOM_PROGRESS_SCAN_HOOK:-}"
     extra_hosts:
       # Linux Docker Engine: same hostname as Desktop. HTTP to Laya only —
       # does not put host Mac binaries on PATH (and must not; wrong ABI).
@@ -39,11 +51,13 @@ services:
       - yzj-cli-config:/root/.yzj-cli
       - yzj-cli-data:/root/.local/share/yzj-cli
       - grok-home:/root/.grok
-      # Done gate v1: do NOT rely on host git inside the image. Rock-Shan runs
-      # `pnpm atom progress-scan` on the Mac; it writes data/progress-snapshot.json
+      # Done gate: do NOT rely on host git inside the image. Each 15m tick
+      # writes data/progress-scan.request.json; the Mac helper
+      # (`pnpm atom progress-scan --loop`, started by scripts/desk-up.sh)
+      # scans atom/yzj/ai-advance and writes data/progress-snapshot.json
       # which this ./data mount already exposes. Optional read-only repo mounts
       # (same paths as data/workspaces.json) only help if you also install git
-      # in the image — not required for v1:
+      # in the image — not the dogfood path:
       # - /Users/kingdee/dev/personal/atom:/Users/kingdee/dev/personal/atom:ro
       # - /Users/kingdee/dev/yzj:/Users/kingdee/dev/yzj:ro
       # - /Users/kingdee/dev/ai-advance:/Users/kingdee/dev/ai-advance:ro
