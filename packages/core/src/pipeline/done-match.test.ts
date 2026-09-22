@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { matchCandidateToDone, extractLinks, type DoneMatchContext } from "./done-match.js";
+import {
+  DONE_TITLE_MIN,
+  distinctiveSharedStems,
+  doneTopicOverlap,
+  extractLinks,
+  matchCandidateToDone,
+  type DoneMatchContext,
+} from "./done-match.js";
 import type { ProgressSnapshot } from "./progress-snapshot.js";
 import type { WorkspaceEntry } from "../agents/lead.js";
 
@@ -436,5 +443,110 @@ describe("done matcher", () => {
   it("extracts http links for matching", () => {
     const links = extractLinks("see https://github.com/GuoxinShan/atom/pull/12.");
     assert.equal(links.some((u) => u.includes("github.com/guoxinshan/atom/pull/12")), true);
+  });
+
+  it("does not close 会议 MCP 注入失败 against an unrelated networkId/云之家 commit", () => {
+    const card = {
+      id: "cand_muca7rf5",
+      title: "修复内置会议 MCP 默认注入失败",
+      body: "内置会议 MCP 默认没有注入，云之家会议拉不起来",
+    };
+    const commitTitle = "feat: networkId 解析失败落 warn，附云之家原始响应摘要";
+    const commitBody = "networkId 解析失败时打 warn，并附上云之家原始响应摘要";
+    const stems = distinctiveSharedStems(`${card.title} ${card.body}`, `${commitTitle} ${commitBody}`);
+    assert.equal(stems.includes("失败"), false);
+    assert.equal(stems.includes("云之"), false);
+    assert.equal(stems.includes("之家"), false);
+    assert.deepEqual(stems, ["云之家"]);
+
+    const commit = {
+      kind: "commit" as const,
+      title: commitTitle,
+      body: commitBody,
+      sha: "a1b2c3d4e5f67890",
+    };
+    const ai = matchCandidateToDone(card, {
+      snapshot: snapshot([{ ...commit, workspace_id: "ai-advance" }], undefined, "ai-advance"),
+      history: [],
+      workspaces,
+    });
+    assert.equal(ai.hit, false);
+
+    // 云之家 in the card affines yzj, but that keyword is not the same work.
+    const yzj = matchCandidateToDone(card, {
+      snapshot: snapshot([{ ...commit, workspace_id: "yzj" }], undefined, "yzj"),
+      history: [],
+      workspaces,
+    });
+    assert.equal(yzj.hit, false);
+  });
+
+  it("still closes 会议 MCP 注入失败 when the commit is the same work", () => {
+    const hit = matchCandidateToDone(
+      {
+        title: "修复内置会议 MCP 默认注入失败",
+        body: "内置会议 MCP 默认没有注入",
+      },
+      {
+        snapshot: snapshot(
+          [
+            {
+              kind: "commit",
+              title: "fix: 修复内置会议 MCP 默认注入失败",
+              body: "补上内置会议 MCP 的默认注入",
+              sha: "deadbeefcafebabe",
+              workspace_id: "yzj",
+            },
+          ],
+          undefined,
+          "yzj"
+        ),
+        history: [],
+        workspaces,
+      }
+    );
+    assert.equal(hit.hit, true);
+    if (hit.hit) {
+      assert.equal(hit.via, "title");
+      assert.match(hit.evidence.title, /会议 MCP/);
+    }
+  });
+
+  it("still closes on distinctive stems plus workspace affinity below the title floor", () => {
+    const candTitle = "速记迁入灵基 MCP";
+    const candBody = "AI推进这边要处理。甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申酉戌亥";
+    const itemTitle = "chore: refresh worker notes";
+    const itemBody =
+      "速记迁入灵基 MCP. alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima mike november oscar papa quebec romeo sierra tango uniform victor whiskey xray";
+    const overlap = Math.max(
+      doneTopicOverlap(candTitle, itemTitle),
+      doneTopicOverlap(`${candTitle} ${candBody}`, `${itemTitle} ${itemBody}`)
+    );
+    assert.ok(overlap < DONE_TITLE_MIN, `expected overlap below ${DONE_TITLE_MIN}, got ${overlap}`);
+    const stems = distinctiveSharedStems(`${candTitle} ${candBody}`, `${itemTitle} ${itemBody}`);
+    assert.ok(stems.includes("速记") && stems.includes("灵基") && stems.includes("迁入"));
+    assert.ok(stems.length >= 3);
+    const hit = matchCandidateToDone(
+      { title: candTitle, body: candBody },
+      {
+        snapshot: snapshot(
+          [
+            {
+              kind: "commit",
+              title: itemTitle,
+              body: itemBody,
+              sha: "bbbbbbbccccccc1",
+              workspace_id: "ai-advance",
+            },
+          ],
+          undefined,
+          "ai-advance"
+        ),
+        history: [],
+        workspaces,
+      }
+    );
+    assert.equal(hit.hit, true);
+    if (hit.hit) assert.equal(hit.evidence.workspace_id, "ai-advance");
   });
 });
