@@ -156,14 +156,22 @@ describe("Desk shell", () => {
     assert.match(css, /\.optional-strip button:disabled/);
 
     const confirms = [...js.matchAll(/window\.confirm/g)];
-    assert.equal(confirms.length, 2);
+    assert.equal(confirms.length, 1);
     const windows = confirms.map((m) => js.slice(Math.max(0, (m.index ?? 0) - 360), (m.index ?? 0) + 160));
     const handoff = windows.find((w) => /data-handoff/.test(w) && /派给 Lead/.test(w));
-    const mute = windows.find((w) => /data-mute-source/.test(w) && /静音此来源/.test(w));
     assert.ok(handoff);
-    assert.ok(mute);
-    assert.doesNotMatch(handoff, /data-spec-approve|data-reopen|data-note|data-act/);
-    assert.doesNotMatch(mute, /data-spec-approve|data-reopen|data-note|data-act|data-handoff/);
+    assert.doesNotMatch(handoff, /data-spec-approve|data-reopen|data-note|data-act|静音此来源/);
+    assert.match(js, /已记下，同类少露/);
+    assert.match(js, /已静音「\$\{label\}」/);
+    assert.match(js, /已取消静音/);
+    assert.match(html, /id="desk-toast"/);
+    assert.match(html, /id="morning-line"/);
+    assert.match(js, /今日 \$\{n\} 条待拍板/);
+    assert.match(js, /来自 \$\{k\} 个群/);
+    assert.match(js, /已静音 \$\{muted\} 个来源/);
+    assert.match(js, /近一天记下 \$\{recent\} 条/);
+    assert.match(css, /\.desk-toast/);
+    assert.match(css, /\.morning-line/);
 
     const approveAt = js.indexOf('data-act="approve"');
     const approveWindow = js.slice(approveAt, approveAt + 500);
@@ -236,9 +244,13 @@ describe("Desk shell", () => {
     assert.match(doc, /静音此来源/);
 
     const confirms = [...js.matchAll(/window\.confirm/g)];
-    assert.equal(confirms.length, 2);
-    const muteAt = confirms.find((m) => js.slice(m.index ?? 0, (m.index ?? 0) + 40).includes("静音此来源"));
-    assert.ok(muteAt);
+    assert.equal(confirms.length, 1);
+    const muteFn = js.slice(js.indexOf("async function onMuteSourceClick"), js.indexOf("function onSourceChipClick"));
+    assert.match(muteFn, /已静音「/);
+    assert.doesNotMatch(muteFn, /window\.confirm/);
+    assert.match(doc, /已静音「群名」/);
+    assert.match(doc, /今日 N 条待拍板 · 来自 K 个群/);
+    assert.doesNotMatch(doc, /before \*\*静音此来源\*\*/);
   });
 });
 

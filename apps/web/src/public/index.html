@@ -29,6 +29,7 @@
           <header class="needs-head">
             <div>
               <h2>需要你拍板</h2>
+              <p class="morning-line" id="morning-line" hidden></p>
               <p class="hint tiny">只放需要人决定的卡片。新需求按主题/项目折叠（通过 / 拒绝）。一张卡片的顺序是标题、来源、【摘要】、【要你拍板】、【可选动作】。来源在标题下，点开是原文，不外发。通过后的草稿在下面「规格待审」，不是新卡片。</p>
             </div>
             <div class="gate-counts" id="gate-counts"></div>
@@ -133,6 +134,7 @@
         </div>
       </section>
     </div>
+    <p class="desk-toast" id="desk-toast" role="status" aria-live="polite"></p>
     <script src="/app.js" type="module"></script>
   </body>
 </html>

@@ -226,6 +226,15 @@ body {
   text-transform: none;
   color: var(--text);
 }
+.morning-line {
+  margin: 6px 0 0;
+  font-size: 14px;
+  line-height: 1.45;
+  font-weight: 500;
+  letter-spacing: -0.011em;
+  color: var(--text);
+}
+.morning-line[hidden] { display: none; }
 .hint { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
 .hint.tiny { font-size: 12px; line-height: 1.5; margin: 4px 0 0; max-width: 36em; }
 .gate-counts {
@@ -263,6 +272,31 @@ body {
   font-size: 13px;
   line-height: 1.55;
   margin: 0;
+}
+.desk-toast {
+  position: fixed;
+  z-index: 30;
+  left: 50%;
+  bottom: 22px;
+  transform: translate(-50%, 6px);
+  max-width: min(420px, calc(100% - 32px));
+  margin: 0;
+  padding: 9px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow-paper), 0 8px 24px rgba(44, 41, 36, 0.08);
+  font-size: 13px;
+  line-height: 1.4;
+  letter-spacing: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+.desk-toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
 }
 .col {
   background: var(--panel);
@@ -1209,4 +1243,8 @@ code { font-family: ui-monospace, "SF Mono", Menlo, "Cascadia Mono", monospace; 
   }
   .queue { max-width: none; }
   .pref-grid { grid-template-columns: 1fr; }
+  .desk-toast { bottom: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .desk-toast { transition: none; }
 }
