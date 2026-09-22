@@ -172,6 +172,55 @@ describe("Desk shell", () => {
     assert.doesNotMatch(js.slice(noteAt, noteAt + 400), /window\.confirm/);
     assert.doesNotMatch(js, /fetch\([^)]*outbound|\/api\/yunzhijia|云之家.*send/i);
   });
+
+  it("shows a source chip under the title and opens cite without sending", () => {
+    const js = fs.readFileSync(path.join(here, "public/app.js"), "utf8");
+    const css = fs.readFileSync(path.join(here, "public/styles.css"), "utf8");
+    const html = fs.readFileSync(path.join(here, "public/index.html"), "utf8");
+    const doc = fs.readFileSync(path.join(here, "../../../docs/10-dispatch-desk.md"), "utf8");
+
+    assert.match(js, /class="source-chip"/);
+    assert.match(js, /data-open-cite/);
+    assert.match(js, /data-cite-href/);
+    assert.match(js, /id="cite-block"/);
+    assert.match(js, /data-cite-block/);
+    assert.match(js, /【原文】/);
+    assert.match(js, /只打开查看。不会发送。/);
+    assert.match(js, /function onSourceChipClick/);
+    assert.match(js, /function revealCite/);
+    assert.match(js, /scrollIntoView\(\{ block: "nearest" \}\)/);
+    assert.match(css, /\.source-chip/);
+    assert.match(css, /\.cite-block/);
+    assert.match(html, /标题、来源、【摘要】、【要你拍板】、【可选动作】/);
+    assert.match(doc, /source chip/);
+    assert.match(doc, /【原文】/);
+    assert.match(doc, /never sends/);
+    assert.doesNotMatch(css, /#6e7bf2/);
+
+    const cardStart = js.indexOf("function renderSuggestedCard");
+    const cardEnd = js.indexOf("function fallbackNeedsGroups");
+    const card = js.slice(cardStart, cardEnd);
+    const h3 = card.indexOf("<h3>");
+    const chip = card.indexOf("sourceChipsHtml");
+    const summary = card.indexOf("briefSummarySection");
+    const decide = card.indexOf("briefDecideSection");
+    const optional = card.indexOf("briefOptionalSection");
+    assert.ok(h3 >= 0 && chip > h3 && summary > chip && decide > summary && optional > decide);
+    assert.doesNotMatch(card, /whyNeedsYou/);
+    assert.match(card, /还没拍板。/);
+
+    const hop = js.indexOf("function onSourceChipClick");
+    const handler = js.slice(hop, js.indexOf("function renderDetail"));
+    assert.match(handler, /closest\("\[data-open-cite\]"\)/);
+    assert.match(handler, /\^https:\\\/\\\//);
+    assert.match(handler, /window\.open\(href, "_blank", "noopener,noreferrer"\)/);
+    assert.match(handler, /revealCite\(/);
+    assert.doesNotMatch(handler, /fetch\(/);
+    assert.doesNotMatch(handler, /window\.confirm/);
+
+    const confirms = [...js.matchAll(/window\.confirm/g)];
+    assert.equal(confirms.length, 1);
+  });
 });
 
 describe("Desk operator APIs", () => {
