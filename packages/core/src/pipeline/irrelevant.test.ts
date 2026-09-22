@@ -18,12 +18,15 @@ import { rejectCandidate } from "./decisions.js";
 import { runExtract } from "./extract.js";
 import {
   IRRELEVANT_LABEL,
+  MUTED_SOURCE_LABEL,
   NOT_MINE_REASON,
   distinctiveStem,
   isPersonalAsk,
   isUserIrrelevantReason,
   judgeIrrelevant,
+  muteSource,
   teachIrrelevantFromReject,
+  unmuteSource,
 } from "./irrelevant.js";
 import { runPreferenceRsi } from "./preference-rsi.js";
 
@@ -200,6 +203,7 @@ describe("跟我无关 preference", () => {
     const kept = {
       ...defaultPreferenceMemory(),
       irrelevant: [{ source: "group-kept", theme: "日程/会议", stem: "日历同步" }],
+      muted_sources: [{ source: MCP, label: "mcpApp开发群" }],
     };
     savePreferenceMemory(repoRoot, kept);
 
@@ -244,6 +248,92 @@ describe("跟我无关 preference", () => {
       memory.irrelevant.some((s) => s.source === MCP && s.theme === "发布与发布流程"),
       true
     );
+    assert.equal(
+      memory.muted_sources.some((s) => s.source === MCP && s.label === "mcpApp开发群"),
+      true
+    );
+  });
+
+  it("mutes a group so new cards stay off Needs you, and unmute lets the next extract through", async () => {
+    const { store, repoRoot } = await tempCtx();
+    const open = seed(store, "群里对一下技能包版本", MCP, { confidence: 0.7 });
+    const personalOpen = seed(store, "单国鑫请你看一下这个技能包", MCP, {
+      body: "需要你确认",
+      confidence: 0.9,
+    });
+    const muted = muteSource(store, repoRoot, MCP, "mcpApp开发群");
+    assert.equal(muted.ok, true);
+    assert.equal(muted.diverted.includes(open), true);
+    const swept = projectCandidates(store);
+    assert.equal(swept.find((c) => c.id === open)?.status, "rejected");
+    assert.equal(swept.find((c) => c.id === open)?.disposition, "muted_source");
+    assert.equal(swept.find((c) => c.id === open)?.closed_reason, MUTED_SOURCE_LABEL);
+    assert.equal(swept.find((c) => c.id === personalOpen)?.status, "suggested");
+
+    const memory = loadPreferenceMemory(repoRoot, store);
+    assert.equal(memory.muted_sources.length, 1);
+    assert.equal(memory.muted_sources[0]?.source, MCP);
+    assert.equal(memory.cursor_at, null);
+
+    const chatter: CandidateProposal = {
+      title: "再明确一下沙箱环境的技能同步节奏",
+      body: "mcpApp开发群日常对节奏",
+      confidence: 0.88,
+      refs: [refFor(MCP, "chatter")],
+      source_message_ids: ["chatter"],
+    };
+    const otherGroup: CandidateProposal = {
+      title: "需要给 ATOM Desk 加上 OAuth 登录",
+      body: "必须支持本机登录后才能批候选",
+      confidence: 0.9,
+      refs: [refFor(OTHER, "oauth")],
+      source_message_ids: ["oauth"],
+    };
+    const personal: CandidateProposal = {
+      title: "单国鑫请你确认今天的日程冲突",
+      body: "需要你拍板这次冲突",
+      confidence: 0.91,
+      refs: [refFor(MCP, "ask")],
+      source_message_ids: ["ask"],
+    };
+
+    const hidden = await runExtract(store, stubAgent([chatter, otherGroup, personal]), {
+      heuristicGate: false,
+      laya: false,
+      repoRoot,
+    });
+    assert.equal(hidden.irrelevant >= 1, true);
+    assert.equal(hidden.proposed, 2);
+    const rows = projectCandidates(store);
+    const chatterRow = rows.find((c) => c.title === chatter.title);
+    assert.equal(chatterRow?.status, "rejected");
+    assert.equal(chatterRow?.disposition, "muted_source");
+    assert.equal(chatterRow?.closed_reason, MUTED_SOURCE_LABEL);
+    assert.equal(rows.find((c) => c.title === otherGroup.title)?.status, "suggested");
+    assert.equal(rows.find((c) => c.title === personal.title)?.status, "suggested");
+
+    const cleared = unmuteSource(store, repoRoot, MCP);
+    assert.equal(cleared.changed, true);
+    assert.equal(loadPreferenceMemory(repoRoot, store).muted_sources.length, 0);
+    assert.equal(projectCandidates(store).find((c) => c.title === chatter.title)?.status, "rejected");
+
+    const restored: CandidateProposal = {
+      title: "下周技能包要不要进预发布环境",
+      body: "mcpApp开发群新话题",
+      confidence: 0.86,
+      refs: [refFor(MCP, "restored")],
+      source_message_ids: ["restored"],
+    };
+    const again = await runExtract(store, stubAgent([restored]), {
+      heuristicGate: false,
+      laya: false,
+      repoRoot,
+    });
+    assert.equal(again.proposed, 1);
+    assert.equal(
+      projectCandidates(store).find((c) => c.title === restored.title)?.status,
+      "suggested"
+    );
   });
 
   it("parses a preference file that has no irrelevant field", () => {
@@ -253,6 +343,7 @@ describe("跟我无关 preference", () => {
       blocklist: ["午饭闲聊"],
     });
     assert.deepEqual(parsed.irrelevant, []);
+    assert.deepEqual(parsed.muted_sources, []);
     assert.deepEqual(parsed.blocklist, ["午饭闲聊"]);
   });
 });

@@ -55,6 +55,8 @@ import {
   isUserIrrelevantReason,
   NOT_MINE_REASON,
   teachIrrelevantFromReject,
+  muteSource,
+  unmuteSource,
 } from "@atom/core";
 import type { Daemon } from "./context.js";
 import { json, readJson } from "./http.js";
@@ -137,6 +139,43 @@ export async function handleApi(
       savePreferenceMemory(daemon.repoRoot, memory, daemon.store);
     }
     json(res, { ...preferenceMemoryPayload(daemon, memory), changed });
+    return true;
+  }
+
+  if (method === "POST" && p === "/api/source-mute") {
+    const body = await readJson(req);
+    const source = str(body, "source");
+    if (!source) {
+      json(res, { error: "source required" }, 400);
+      return true;
+    }
+    const label = str(body, "label");
+    const muted = muteSource(daemon.store, daemon.repoRoot, source, label);
+    if (!muted.ok) {
+      json(res, { error: "source required" }, 400);
+      return true;
+    }
+    json(res, {
+      ok: true,
+      diverted: muted.diverted.length,
+      memory: loadPreferenceMemory(daemon.repoRoot, daemon.store),
+    });
+    return true;
+  }
+
+  if (method === "POST" && p === "/api/source-unmute") {
+    const body = await readJson(req);
+    const source = str(body, "source");
+    if (!source) {
+      json(res, { error: "source required" }, 400);
+      return true;
+    }
+    const unmuted = unmuteSource(daemon.store, daemon.repoRoot, source);
+    json(res, {
+      ok: true,
+      changed: unmuted.changed,
+      memory: loadPreferenceMemory(daemon.repoRoot, daemon.store),
+    });
     return true;
   }
 

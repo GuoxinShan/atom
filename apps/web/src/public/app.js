@@ -274,7 +274,7 @@ function citeFromRef(ref) {
       kindLabel(kindHint),
       SOURCE_LABELS[ref?.source]
     ) || "";
-  return { label, href, digest };
+  return { label, href, digest, groupId };
 }
 
 function citeEntries(refs) {
@@ -287,7 +287,7 @@ function citeEntries(refs) {
     const key = label || c.href;
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ label: label || "链接", href: c.href, digest: c.digest });
+    out.push({ label: label || "链接", href: c.href, digest: c.digest, groupId: c.groupId || "" });
   }
   return out;
 }
@@ -296,11 +296,17 @@ function sourceChipHtml(entry, openId, kind) {
   const label = entry.label || "来源";
   const href = entry.href || "";
   const hrefAttr = href ? ` data-cite-href="${escapeHtml(href)}"` : "";
-  return `<button type="button" class="source-chip" data-open-cite="${escapeHtml(
+  const chip = `<button type="button" class="source-chip" data-open-cite="${escapeHtml(
     openId
   )}" data-cite-kind="${escapeHtml(kind)}"${hrefAttr} aria-label="${escapeHtml(
     href ? `打开来源：${label}` : `查看来源：${label}`
   )}"><span class="source-kicker">来自</span><span class="source-name">${escapeHtml(label)}</span></button>`;
+  const groupId = String(entry.groupId || "").trim();
+  if (!groupId || groupId === "unknown") return chip;
+  const mute = `<button type="button" class="source-mute" data-mute-source="${escapeHtml(
+    groupId
+  )}" data-mute-label="${escapeHtml(label)}">静音此来源</button>`;
+  return `<span class="source-pair">${chip}${mute}</span>`;
 }
 
 function sourceChipsHtml(refs, openId, kind = "candidate") {
@@ -852,6 +858,36 @@ function focusCiteBlock() {
   if (typeof block.focus === "function") block.focus({ preventScroll: true });
 }
 
+async function onMuteSourceClick(e) {
+  const btn = e.target.closest("[data-mute-source]");
+  if (!btn) return false;
+  e.stopPropagation();
+  e.preventDefault();
+  const source = String(btn.dataset.muteSource || "").trim();
+  const label = String(btn.dataset.muteLabel || source || "这个群");
+  if (!source) return true;
+  const ok = window.confirm(
+    `静音此来源「${label}」？之后这个群的新卡片默认不再进需要你拍板。只改本机，不会发云之家。`
+  );
+  if (!ok) return true;
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/source-mute", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source, label }),
+    });
+    if (!res.ok) {
+      btn.disabled = false;
+      return true;
+    }
+    await loadDesk();
+  } catch {
+    btn.disabled = false;
+  }
+  return true;
+}
+
 function onSourceChipClick(e) {
   const citeBtn = e.target.closest("[data-open-cite]");
   if (!citeBtn) return false;
@@ -950,6 +986,8 @@ function renderDetail() {
   else if (reviewing) situation = "已通过。规格还在待审，因为还没批准或退回。";
   else if (candStatus === "rejected" && sel.cand?.disposition === "irrelevant") {
     situation = "同类已标无关，不在 Needs you。";
+  } else if (candStatus === "rejected" && sel.cand?.disposition === "muted_source") {
+    situation = "来源已静音，不在 Needs you。";
   } else if (candStatus === "rejected" && sel.cand?.reject_reason === "not_mine") {
     situation = "已拒绝。同类少露，只记在本机。";
   } else if (candStatus === "rejected") situation = "已拒绝，不在今天的队列里。";
@@ -1427,6 +1465,7 @@ queue.addEventListener("toggle", (e) => {
 });
 
 document.getElementById("page-needs-you").addEventListener("click", async (e) => {
+  if (await onMuteSourceClick(e)) return;
   if (onSourceChipClick(e)) return;
   if (onBriefChromeClick(e)) return;
   const copyBtn = e.target.closest("button[data-copy-id]");
@@ -1499,7 +1538,7 @@ document.getElementById("page-needs-you").addEventListener("click", async (e) =>
   const handoffBtn = e.target.closest("[data-handoff]");
   if (handoffBtn && !handoffBtn.disabled) {
     e.stopPropagation();
-    // Confirm gate is only for 派给 Lead and any future 发群. Local decisions do not confirm.
+    // Confirm before writing the local Lead pack. 静音此来源 confirms in onMuteSourceClick.
     const ok = window.confirm("确认派给 Lead？只会写出本机交接包，不会开始编码，也不会发云之家。");
     if (!ok) return;
     handoffBtn.disabled = true;
@@ -1810,7 +1849,7 @@ function renderProcessed() {
             <h3 class="processed-done-head">自动关闭</h3>
             ${doneCards}
           </div>`
-        : '<p class="processed-note">尚无「已在仓库/历史进度关闭」、「云之家进度关闭」或「同类已标无关」的卡片。</p>'
+        : '<p class="processed-note">尚无「已在仓库/历史进度关闭」、「云之家进度关闭」、「同类已标无关」或「来源已静音」的卡片。</p>'
     }
     ${
       d?.markdown
@@ -1889,7 +1928,9 @@ async function loadProcessed() {
       (c.disposition === "already_done" ||
         c.reject_reason === "already_done" ||
         c.disposition === "irrelevant" ||
-        c.reject_reason === "irrelevant")
+        c.reject_reason === "irrelevant" ||
+        c.disposition === "muted_source" ||
+        c.reject_reason === "muted_source")
   );
   renderProcessed();
 }
@@ -1899,6 +1940,19 @@ function irrelevantLabel(scope) {
   const stem = String(scope?.stem || "").trim();
   const bits = [theme, stem].filter(Boolean);
   return bits.join(" · ") || String(scope?.source || "");
+}
+
+function mutedChipRow(items) {
+  if (!items.length) return `<p class="pref-meta">（空）</p>`;
+  return `<div class="chips">${items
+    .map((row) => {
+      const label = String(row?.label || row?.source || "").trim();
+      const source = String(row?.source || "").trim();
+      return `<span class="chip">${escapeHtml(label || source)}<button type="button" data-unmute-source="${escapeHtml(
+        source
+      )}" aria-label="取消静音 ${escapeHtml(label || source)}">取消静音</button></span>`;
+    })
+    .join("")}</div>`;
 }
 
 function chipRow(items, kind) {
@@ -1994,6 +2048,9 @@ block +${(state.rsiPreview.added_blocklist || []).join(" | ") || "无"}`
       <h3 class="subhead">跟我无关</h3>
       <p class="pref-meta">拒绝一张卡片后记下同群和同主题。之后同类进系统已处理；拿不准的仍留在需要你拍板。点名到你的请求不会丢掉。</p>
       ${chipRow((mem.irrelevant || []).map(irrelevantLabel), "allow")}
+      <h3 class="subhead">已静音来源</h3>
+      <p class="pref-meta">整群默认不再进需要你拍板。点名到你的请求仍会留下。取消静音只影响之后的新卡片，不会重开已经关掉的。</p>
+      ${mutedChipRow(mem.muted_sources || [])}
     </div>
     <div class="pref-block">
       <h3>上次 RSI</h3>
@@ -2084,6 +2141,32 @@ document.getElementById("page-preferences").addEventListener("click", async (e) 
   if (remove) {
     remove.disabled = true;
     await patchPreference({ blocklist_remove: [remove.dataset.blockRemove] });
+    return;
+  }
+  const unmute = e.target.closest("[data-unmute-source]");
+  if (unmute) {
+    unmute.disabled = true;
+    try {
+      const res = await fetch("/api/source-unmute", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ source: unmute.dataset.unmuteSource }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        state.prefNote = data.error || JSON.stringify(data);
+        state.prefNoteFail = true;
+        renderPreferences();
+        return;
+      }
+      state.prefNote = data.changed ? "已取消静音。之后这个群的新卡片可以再进需要你拍板。" : "这个来源本来就没静音";
+      state.prefNoteFail = false;
+      await loadPreferences();
+    } catch (err) {
+      state.prefNote = String(err);
+      state.prefNoteFail = true;
+      renderPreferences();
+    }
     return;
   }
   const dry = e.target.closest("#pref-rsi-dry");

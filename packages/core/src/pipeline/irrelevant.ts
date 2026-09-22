@@ -9,13 +9,20 @@
  * distinctive stem leaves Needs you as 「同类已标无关」 on 系统已处理.
  * Uncertain overlap stays suggested (fail-open). A personal ask — owner
  * name or a direct 请你/需要你 — is never diverted.
+ *
+ * 静音此来源 writes the whole group into muted_sources. New non-personal
+ * cards from that group leave Needs you as 「来源已静音」 until 取消静音.
  */
 
 import {
   loadPreferenceMemory,
   mergeIrrelevant,
+  mergeMutedSources,
+  mutedSig,
+  removeMutedSource,
   savePreferenceMemory,
   type IrrelevantScope,
+  type MutedSource,
   type PreferenceMemory,
 } from "../agents/preference-memory.js";
 import {
@@ -32,6 +39,9 @@ export const NOT_MINE_REASON = "not_mine";
 export const IRRELEVANT_REASON = "irrelevant";
 export const IRRELEVANT_LABEL = "同类已标无关";
 export const IRRELEVANT_ACTOR = "system:irrelevant";
+export const MUTED_SOURCE_REASON = "muted_source";
+export const MUTED_SOURCE_LABEL = "来源已静音";
+export const MUTED_ACTOR = "system:muted";
 
 const OWNER_RE = /单国鑫|国鑫|guoxin|rock-shan/i;
 const DIRECT_ASK_RE = /请你|需要你|要你|你来|帮我|麻烦你|你确认|你拍板|你看一下|你看下|找你/;
@@ -70,6 +80,8 @@ export type IrrelevantVerdict = {
   /** Same group, but the theme/stem evidence was too thin to close the card. */
   uncertain: boolean;
   scope?: IrrelevantScope;
+  /** Whole-group mute. Personal asks never set this. */
+  muted?: MutedSource;
   reason: string;
 };
 
@@ -189,18 +201,32 @@ function weakClassHint(text: string, theme: string, vocab: ThemeVocabulary): boo
   return false;
 }
 
+function mutedHit(groups: Set<string>, muted: MutedSource[] | undefined): MutedSource | undefined {
+  for (const row of muted ?? []) {
+    const key = row.source.trim().toLowerCase();
+    if (!key) continue;
+    for (const group of groups) {
+      if (group.toLowerCase() === key) return row;
+    }
+  }
+  return undefined;
+}
+
 export function judgeIrrelevant(
   cand: ScopeInput,
   memory: PreferenceMemory,
   vocab?: ThemeVocabulary
 ): IrrelevantVerdict {
-  const scopes = memory.irrelevant ?? [];
-  if (!scopes.length) return { action: "keep", uncertain: false, reason: "no-scope" };
   if (cand.keep_open) return { action: "keep", uncertain: false, reason: "keep-open" };
   if (isPersonalAsk(cand.title, cand.body ?? "", cand.confidence ?? 0)) {
     return { action: "keep", uncertain: false, reason: "personal" };
   }
   const groups = new Set(groupIdsFromRefs(cand.refs));
+  const muted = mutedHit(groups, memory.muted_sources);
+  if (muted) return { action: "divert", uncertain: false, muted, reason: "muted-source" };
+
+  const scopes = memory.irrelevant ?? [];
+  if (!scopes.length) return { action: "keep", uncertain: false, reason: "no-scope" };
   if (!groups.size) return { action: "keep", uncertain: true, reason: "no-group" };
 
   const book = vocab ?? loadThemeVocabulary();
@@ -252,6 +278,27 @@ export function appendIrrelevantClose(
   });
 }
 
+export function appendMutedClose(
+  store: EventStore,
+  candidate: { id: string; title: string; refs: Ref[] },
+  muted: MutedSource
+): void {
+  store.append({
+    type: "decision_rejected",
+    subject_id: candidate.id,
+    summary: `muted-source: ${candidate.title}`,
+    detail: {
+      reason: MUTED_SOURCE_REASON,
+      reason_label: MUTED_SOURCE_LABEL,
+      disposition: MUTED_SOURCE_REASON,
+      source: muted.source,
+      label: muted.label,
+    },
+    refs: candidate.refs,
+    actor: MUTED_ACTOR,
+  });
+}
+
 export function applyIrrelevantToSuggested(
   store: EventStore,
   opts?: { repoRoot?: string; memory?: PreferenceMemory; vocab?: ThemeVocabulary }
@@ -273,10 +320,12 @@ export function applyIrrelevantToSuggested(
       memory,
       vocab
     );
-    if (verdict.action !== "divert" || !verdict.scope) continue;
-    appendIrrelevantClose(store, c, verdict.scope);
+    if (verdict.action !== "divert") continue;
+    if (verdict.muted) appendMutedClose(store, c, verdict.muted);
+    else if (verdict.scope) appendIrrelevantClose(store, c, verdict.scope);
+    else continue;
     ids.push(c.id);
-    console.log(`[irrelevant] diverted ${c.id}: ${c.title}`);
+    console.log(`[irrelevant] diverted ${c.id}: ${c.title} (${verdict.reason})`);
   }
   return { closed: ids.length, ids };
 }
@@ -316,6 +365,53 @@ export function teachIrrelevantFromReject(
 
   const sweep = applyIrrelevantToSuggested(store, { repoRoot, memory, vocab });
   return { learned: true, diverted: sweep.ids, scope: scopes[0] ?? null };
+}
+
+/**
+ * 静音此来源 — remember the whole group and divert open non-personal cards.
+ * Does not move RSI cursor_at. Does not send 云之家.
+ */
+export function muteSource(
+  store: EventStore,
+  repoRoot: string,
+  source: string,
+  label = "",
+  now = new Date()
+): { ok: boolean; diverted: string[] } {
+  const id = source.trim();
+  if (!id || id === "unknown") return { ok: false, diverted: [] };
+  const current = loadPreferenceMemory(repoRoot, store);
+  const muted_sources = mergeMutedSources(current.muted_sources ?? [], [
+    { source: id, label: label.trim() },
+  ]);
+  const changed = mutedSig(muted_sources) !== mutedSig(current.muted_sources);
+  const memory: PreferenceMemory = changed
+    ? { ...current, muted_sources, updated_at: now.toISOString() }
+    : { ...current, muted_sources };
+  if (changed) savePreferenceMemory(repoRoot, memory, store);
+  const sweep = applyIrrelevantToSuggested(store, { repoRoot, memory });
+  return { ok: true, diverted: sweep.ids };
+}
+
+/** 取消静音. Later extracts can surface the group again. Does not reopen closed cards. */
+export function unmuteSource(
+  store: EventStore,
+  repoRoot: string,
+  source: string,
+  now = new Date()
+): { ok: boolean; changed: boolean } {
+  const id = source.trim();
+  if (!id) return { ok: false, changed: false };
+  const current = loadPreferenceMemory(repoRoot, store);
+  const muted_sources = removeMutedSource(current.muted_sources ?? [], id);
+  const changed = mutedSig(muted_sources) !== mutedSig(current.muted_sources);
+  if (!changed) return { ok: true, changed: false };
+  savePreferenceMemory(
+    repoRoot,
+    { ...current, muted_sources, updated_at: now.toISOString() },
+    store
+  );
+  return { ok: true, changed: true };
 }
 
 export function irrelevantSig(list: IrrelevantScope[] | undefined): string {

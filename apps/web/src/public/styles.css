@@ -486,6 +486,27 @@ body {
   border-color: var(--ink);
   background: color-mix(in srgb, var(--warn) 42%, var(--card));
 }
+.source-pair {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.source-mute {
+  margin: 0;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.3;
+  cursor: pointer;
+}
+.source-mute:hover {
+  color: var(--text);
+  border-color: var(--ink);
+}
 .needs-group.is-other .source-chip {
   background: color-mix(in srgb, var(--warn) 24%, var(--card));
   color: var(--text);

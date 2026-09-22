@@ -24,7 +24,7 @@ Top nav: **需要你拍板** (default) · **系统已处理** · **我的偏好*
 | Center | **需要你拍板** — Suggested Approve/Reject nested under collapsible theme/project groups, checklist `human_gate_ack` (when any); outbound confirm only when a post is waiting. Empty: 「今天没有要你拍板的」+ that a clear queue is normal until watched groups produce new topics |
 | Right rail | Selected **matter**: title, source chip, 【摘要】 / 【要你拍板】 / 【可选动作】, with 短 / 长 and 【原文】 on the same item (see [10-dispatch-desk.md](./10-dispatch-desk.md)) |
 | 系统已处理 | Read-only 24h gate-digest: noise dropped / merged / outbound allow-drop-hold / auto_rate |
-| 我的偏好 | `data/preference-memory.json` thresholds + blocklist; clamped PATCH; RSI dry-run/apply |
+| 我的偏好 | `data/preference-memory.json` thresholds + blocklist + 跟我无关 + 已静音来源; clamped PATCH; RSI dry-run/apply |
 | Drawers | Listening, Lead, Matters (settled), Workspaces, Agents, Outbound — collapsed by default |
 | 高级 | Atoms append-only log placeholder (collapsed) + Setup/cold-start |
 

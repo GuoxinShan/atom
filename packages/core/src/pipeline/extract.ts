@@ -26,6 +26,7 @@ import {
 import { loadThemeVocabulary, tagLabelsForExtract } from "../agents/theme-vocabulary.js";
 import {
   appendIrrelevantClose,
+  appendMutedClose,
   applyIrrelevantToSuggested,
   judgeIrrelevant,
 } from "./irrelevant.js";
@@ -228,8 +229,9 @@ export async function runExtract(
           memory,
           vocab
         );
-        if (irrelevant.action === "divert" && irrelevant.scope) {
+        if (irrelevant.action === "divert" && (irrelevant.muted || irrelevant.scope)) {
           const candId = newId("cand");
+          const source = irrelevant.muted?.source ?? irrelevant.scope?.source ?? "";
           store.append({
             type: "candidate_proposed",
             subject_id: candId,
@@ -246,19 +248,25 @@ export async function runExtract(
                 action: "divert",
                 fail_open: false,
                 reason: irrelevant.reason,
-                source: irrelevant.scope.source,
-                theme: irrelevant.scope.theme,
-                stem: irrelevant.scope.stem,
+                source,
+                ...(irrelevant.scope
+                  ? { theme: irrelevant.scope.theme, stem: irrelevant.scope.stem }
+                  : {}),
+                ...(irrelevant.muted?.label ? { label: irrelevant.muted.label } : {}),
               },
             },
             refs: p.refs,
             actor: `agent:${agent.id}`,
           });
-          appendIrrelevantClose(store, { id: candId, title: p.title, refs: p.refs }, irrelevant.scope);
+          if (irrelevant.muted) {
+            appendMutedClose(store, { id: candId, title: p.title, refs: p.refs }, irrelevant.muted);
+          } else if (irrelevant.scope) {
+            appendIrrelevantClose(store, { id: candId, title: p.title, refs: p.refs }, irrelevant.scope);
+          }
           seenKeys.add(key);
           irrelevantDiverted += 1;
           skipped += 1;
-          console.log(`[extract] irrelevant: ${p.title} — ${irrelevant.reason}`);
+          console.log(`[extract] ${irrelevant.muted ? "muted-source" : "irrelevant"}: ${p.title} — ${irrelevant.reason}`);
           continue;
         }
       }

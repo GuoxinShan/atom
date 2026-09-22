@@ -510,7 +510,9 @@ function bestHistoryHit(
     // 拒绝 / 同类已标无关 means "not my problem", not "this ask is done".
     // A later personal ask with the same words still belongs on Needs you.
     if (
-      (h.reject_reason === "not_mine" || h.reject_reason === "irrelevant") &&
+      (h.reject_reason === "not_mine" ||
+        h.reject_reason === "irrelevant" ||
+        h.reject_reason === "muted_source") &&
       isPersonalAsk(cand.title, cand.body ?? "")
     ) {
       continue;

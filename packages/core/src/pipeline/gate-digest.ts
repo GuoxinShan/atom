@@ -13,6 +13,7 @@ import {
   loadPreferenceMemory,
   type IrrelevantScope,
   type LayaGateThresholds,
+  type MutedSource,
 } from "../agents/preference-memory.js";
 import type { EventRecord } from "../schema/types.js";
 import { EventStore } from "../store/events.js";
@@ -77,6 +78,7 @@ export type GateDigestPreference = {
   allowlist: string[];
   blocklist: string[];
   irrelevant: IrrelevantScope[];
+  muted_sources: MutedSource[];
   last_rsi: GateDigestLastRsi | null;
 };
 
@@ -301,6 +303,10 @@ function formatMarkdown(result: Omit<GateDigestResult, "markdown">): string {
     );
     lists.push(`- irrelevant (跟我无关): ${bits.join(" | ")}`);
   }
+  if (result.preference.muted_sources.length) {
+    const bits = result.preference.muted_sources.map((s) => s.label || s.source);
+    lists.push(`- muted sources (来源静音): ${bits.join(" | ")}`);
+  }
 
   const autoDenom = result.proxies.auto_handled + result.proxies.proposed_to_desk;
   const autoPct =
@@ -455,8 +461,10 @@ export function runGateDigest(
     return (
       reason === "already_done" ||
       reason === "irrelevant" ||
+      reason === "muted_source" ||
       ev.actor === "system:done-gate" ||
-      ev.actor === "system:irrelevant"
+      ev.actor === "system:irrelevant" ||
+      ev.actor === "system:muted"
     );
   }).length;
 
@@ -472,6 +480,7 @@ export function runGateDigest(
     allowlist: [...memory.allowlist],
     blocklist: [...memory.blocklist],
     irrelevant: memory.irrelevant.map((s) => ({ ...s })),
+    muted_sources: (memory.muted_sources ?? []).map((s) => ({ ...s })),
     last_rsi: readLastPreferenceRsi(store),
   };
 
@@ -491,7 +500,7 @@ export function runGateDigest(
   let overrideRejected = 0;
   let overrideAuditable = 0;
   for (const ev of [...acceptedEvents, ...rejectedEvents]) {
-    if (ev.actor === "system:done-gate" || ev.actor === "system:irrelevant") continue;
+    if (ev.actor === "system:done-gate" || ev.actor === "system:irrelevant" || ev.actor === "system:muted") continue;
     const row = audits.get(ev.subject_id);
     if (!isAutoIsh(row)) continue;
     overrideAuditable += 1;

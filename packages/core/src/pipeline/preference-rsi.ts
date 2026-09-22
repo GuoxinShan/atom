@@ -255,7 +255,7 @@ export function computePreferenceRsi(
 
   for (const row of rows) {
     const skipReason = (row.rejectReason ?? "").toLowerCase();
-    if (skipReason === "already_done" || skipReason === "irrelevant") continue;
+    if (skipReason === "already_done" || skipReason === "irrelevant" || skipReason === "muted_source") continue;
     if (row.status === "accepted") accepted += 1;
     else if (row.status === "rejected") rejected += 1;
     else if (row.status === "merged") merged += 1;
@@ -364,6 +364,7 @@ export function computePreferenceRsi(
       allowlist,
       blocklist,
       irrelevant,
+      muted_sources: (current.muted_sources ?? []).map((s) => ({ ...s })),
     },
     samples,
     deltas,
