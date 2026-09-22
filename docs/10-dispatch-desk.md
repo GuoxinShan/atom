@@ -77,11 +77,13 @@ Reading order: **title → source chip → 【摘要】 → 【要你拍板】 �
 
 1. **【摘要】** — short view is two lines: what changed, plus one reason this is on Needs you. The group name lives on the source chip, not again in the sentence.
 2. **【要你拍板】** — the decision, urgency first within a theme group (higher confidence, then older `updated_at`; display only). Each option is a verb plus one line of consequence:
-   - **A 通过** — 记为已通过，草稿进「规格待审」。不外发、不开工。 / **B 拒绝** — 移出今天的队列。只记在本机。
+   - **A 通过** — 记为已通过，草稿进「规格待审」。不外发、不开工。 / **B 拒绝** — 移出今天的队列。同类少露。只记在本机。
    - **A 批准规格** — 记为已批准。还不会写交接包，也不会外发。 / **B 退回修改** — 留在规格待审。
    - **A 派给 Lead** — 确认后写出本机交接包。不编码、不发云之家。 / **B 退回修改** — 回到待审，不写交接包。
    - **A 仍要我跟** — 重新放回 Needs you。只改本机。 / **B 保持关闭** — 留在系统已处理。
 3. **【可选动作】** — **回群同步** and **先记下**. Default is do not send. 回群同步 stays disabled (`即将推出 · 不会发送`) until an outbound send is actually wired. 先记下 writes a local note in this browser. Neither sends 云之家, and Desk never auto-sends 云之家.
+
+**拒绝 teaches the queue.** A local 拒绝 (or an explicit reason 跟我无关) writes one source+theme scope into `data/preference-memory.json` immediately — same Yunzhijia group plus the theme class (for example 发布与发布流程) or a distinctive title stem. The next extract diverts a strong overlap off Needs you onto **系统已处理** as 「同类已标无关」 (not theme-tagged back onto the home queue). Same group with only a weak hint (bare 「发布」) stays suggested. A personal ask (单国鑫 / 请你 / 需要你, including a high-confidence one) is never diverted. RSI apply keeps these scopes; it does not retrain Laya. No 云之家 send.
 
 **Confirm** (`window.confirm`) runs only before **派给 Lead** and any future 发群. 通过, 拒绝, 批准规格, 退回修改, 确认清单, 仍要我跟, 保持关闭, and 先记下 apply on the first click.
 

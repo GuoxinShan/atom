@@ -9,7 +9,11 @@
  * `agent_completed`, Desk decisions). Missing audits stay n/a — never invented.
  */
 
-import { loadPreferenceMemory, type LayaGateThresholds } from "../agents/preference-memory.js";
+import {
+  loadPreferenceMemory,
+  type IrrelevantScope,
+  type LayaGateThresholds,
+} from "../agents/preference-memory.js";
 import type { EventRecord } from "../schema/types.js";
 import { EventStore } from "../store/events.js";
 import { candidatesByStatus } from "../store/candidates.js";
@@ -72,6 +76,7 @@ export type GateDigestPreference = {
   floors: LayaGateThresholds;
   allowlist: string[];
   blocklist: string[];
+  irrelevant: IrrelevantScope[];
   last_rsi: GateDigestLastRsi | null;
 };
 
@@ -290,6 +295,12 @@ function formatMarkdown(result: Omit<GateDigestResult, "markdown">): string {
   if (result.preference.blocklist.length) {
     lists.push(`- blocklist: ${result.preference.blocklist.join(" | ")}`);
   }
+  if (result.preference.irrelevant.length) {
+    const bits = result.preference.irrelevant.map((s) =>
+      [s.theme, s.stem, s.source].filter(Boolean).join("/")
+    );
+    lists.push(`- irrelevant (跟我无关): ${bits.join(" | ")}`);
+  }
 
   const autoDenom = result.proxies.auto_handled + result.proxies.proposed_to_desk;
   const autoPct =
@@ -438,14 +449,20 @@ export function runGateDigest(
     if (gate?.fail_open === true) outbound.fail_open += 1;
   }
 
-  const alreadyDoneRejects = rejectedEvents.filter((ev) => {
+  const autoClosedRejects = rejectedEvents.filter((ev) => {
     const detail = parseDetail(ev.detail_json);
-    return String(detail.reason ?? "") === "already_done" || ev.actor === "system:done-gate";
+    const reason = String(detail.reason ?? "");
+    return (
+      reason === "already_done" ||
+      reason === "irrelevant" ||
+      ev.actor === "system:done-gate" ||
+      ev.actor === "system:irrelevant"
+    );
   }).length;
 
   const desk: GateDigestCountsDesk = {
     accepted: acceptedEvents.length,
-    rejected: rejectedEvents.length - alreadyDoneRejects,
+    rejected: rejectedEvents.length - autoClosedRejects,
     suggested: merge.open,
   };
 
@@ -454,6 +471,7 @@ export function runGateDigest(
     floors: { ...memory.thresholds },
     allowlist: [...memory.allowlist],
     blocklist: [...memory.blocklist],
+    irrelevant: memory.irrelevant.map((s) => ({ ...s })),
     last_rsi: readLastPreferenceRsi(store),
   };
 
@@ -473,7 +491,7 @@ export function runGateDigest(
   let overrideRejected = 0;
   let overrideAuditable = 0;
   for (const ev of [...acceptedEvents, ...rejectedEvents]) {
-    if (ev.actor === "system:done-gate") continue;
+    if (ev.actor === "system:done-gate" || ev.actor === "system:irrelevant") continue;
     const row = audits.get(ev.subject_id);
     if (!isAutoIsh(row)) continue;
     overrideAuditable += 1;

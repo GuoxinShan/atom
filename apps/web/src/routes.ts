@@ -52,6 +52,9 @@ import {
   runDoneSweep,
   reopenCandidate,
   loadProgressSnapshot,
+  isUserIrrelevantReason,
+  NOT_MINE_REASON,
+  teachIrrelevantFromReject,
 } from "@atom/core";
 import type { Daemon } from "./context.js";
 import { json, readJson } from "./http.js";
@@ -180,8 +183,12 @@ export async function handleApi(
       json(res, { error: "id required" }, 400);
       return true;
     }
-    rejectCandidate(daemon.store, id, body.reason ? String(body.reason) : undefined);
-    json(res, { ok: true });
+    const raw = body.reason ? String(body.reason) : undefined;
+    const teach = isUserIrrelevantReason(raw);
+    const reason = teach ? NOT_MINE_REASON : raw;
+    rejectCandidate(daemon.store, id, reason);
+    const taught = teach ? teachIrrelevantFromReject(daemon.store, daemon.repoRoot, id) : null;
+    json(res, { ok: true, irrelevant: taught?.learned === true, diverted: taught?.diverted.length ?? 0 });
     return true;
   }
 

@@ -738,7 +738,7 @@ function suggestedChoices(id) {
     choiceRow(
       `<button type="button" data-act="reject" data-id="${eid}">拒绝</button>`,
       "B",
-      "移出今天的队列。只记在本机。"
+      "移出今天的队列。同类少露。只记在本机。"
     )
   );
 }
@@ -948,7 +948,11 @@ function renderDetail() {
   else if (handed) situation = "已派 Lead。交接包在本机，没有开始编码，也没有发云之家。";
   else if (approved) situation = "规格已批准。派给 Lead 要再确认一次，现在还没写交接包。";
   else if (reviewing) situation = "已通过。规格还在待审，因为还没批准或退回。";
-  else if (candStatus === "rejected") situation = "已拒绝，不在今天的队列里。";
+  else if (candStatus === "rejected" && sel.cand?.disposition === "irrelevant") {
+    situation = "同类已标无关，不在 Needs you。";
+  } else if (candStatus === "rejected" && sel.cand?.reject_reason === "not_mine") {
+    situation = "已拒绝。同类少露，只记在本机。";
+  } else if (candStatus === "rejected") situation = "已拒绝，不在今天的队列里。";
   else if (candStatus === "accepted") situation = "已通过。";
   const summary = shortSummary(body, situation);
   const choices =
@@ -1806,7 +1810,7 @@ function renderProcessed() {
             <h3 class="processed-done-head">自动关闭</h3>
             ${doneCards}
           </div>`
-        : '<p class="processed-note">尚无「已在仓库/历史进度关闭」或「云之家进度关闭」的卡片。</p>'
+        : '<p class="processed-note">尚无「已在仓库/历史进度关闭」、「云之家进度关闭」或「同类已标无关」的卡片。</p>'
     }
     ${
       d?.markdown
@@ -1868,21 +1872,33 @@ function renderAdvancedSpecs() {
 }
 
 async function loadProcessed() {
-  const [digest, cands, specs] = await Promise.all([
+  const [digest, cands, specs, sources] = await Promise.all([
     fetchJson("/api/gate-digest?since=24h", null),
     fetchJson("/api/candidates", { candidates: [] }),
     fetchJson("/api/specs", { specs: [] }),
+    fetchJson("/api/sources", { sources: [] }),
   ]);
   state.digest = digest && digest.ok !== false ? digest : null;
   const list = Array.isArray(cands.candidates) ? cands.candidates : [];
   state.candidates = list;
   state.specs = Array.isArray(specs.specs) ? specs.specs : [];
+  if (Array.isArray(sources.sources)) state.sources = sources.sources;
   state.alreadyDone = list.filter(
     (c) =>
       c.status === "rejected" &&
-      (c.disposition === "already_done" || c.reject_reason === "already_done")
+      (c.disposition === "already_done" ||
+        c.reject_reason === "already_done" ||
+        c.disposition === "irrelevant" ||
+        c.reject_reason === "irrelevant")
   );
   renderProcessed();
+}
+
+function irrelevantLabel(scope) {
+  const theme = String(scope?.theme || "").trim();
+  const stem = String(scope?.stem || "").trim();
+  const bits = [theme, stem].filter(Boolean);
+  return bits.join(" · ") || String(scope?.source || "");
 }
 
 function chipRow(items, kind) {
@@ -1975,6 +1991,9 @@ block +${(state.rsiPreview.added_blocklist || []).join(" | ") || "无"}`
       </form>
       <h3 class="subhead">允许列表 allowlist</h3>
       ${chipRow(mem.allowlist || [], "allow")}
+      <h3 class="subhead">跟我无关</h3>
+      <p class="pref-meta">拒绝一张卡片后记下同群和同主题。之后同类进系统已处理；拿不准的仍留在需要你拍板。点名到你的请求不会丢掉。</p>
+      ${chipRow((mem.irrelevant || []).map(irrelevantLabel), "allow")}
     </div>
     <div class="pref-block">
       <h3>上次 RSI</h3>

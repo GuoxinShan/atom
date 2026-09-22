@@ -21,6 +21,8 @@ export const RSI_MIN_SAMPLES = 5;
 export const RSI_MAX_PATTERNS = 16;
 export const RSI_PATTERN_MIN_HITS = 2;
 export const RSI_MIN_PATTERN_CHARS = 4;
+/** Source+theme pairs learned from 拒绝 / 跟我无关. One reject is enough. */
+export const IRRELEVANT_MAX = 24;
 
 export const PREFERENCE_MEMORY_FILE = "data/preference-memory.json";
 export const META_PREFERENCE_MEMORY = "preference_memory";
@@ -29,6 +31,19 @@ export type LayaGateThresholds = {
   noise: number;
   merge: number;
   outbound: number;
+};
+
+/**
+ * One group the owner marked 跟我无关, plus the theme class and/or title stem.
+ * Later extracts divert strong overlaps off Needs you. Not a global blocklist.
+ */
+export type IrrelevantScope = {
+  /** IM group id (third segment of `source:im:<groupId>:<msg>`). */
+  source: string;
+  /** Canonical theme class such as 发布与发布流程. Empty when only `stem` is known. */
+  theme: string;
+  /** Distinctive title stem such as 88环境技能同步. Empty when the class is enough. */
+  stem: string;
 };
 
 export type PreferenceMemory = {
@@ -41,6 +56,8 @@ export type PreferenceMemory = {
   allowlist: string[];
   /** Title/body substrings that should be treated as noise without Laya. */
   blocklist: string[];
+  /** Same group + theme/stem the owner rejected as not their problem. */
+  irrelevant: IrrelevantScope[];
 };
 
 export function defaultPreferenceMemory(): PreferenceMemory {
@@ -55,6 +72,7 @@ export function defaultPreferenceMemory(): PreferenceMemory {
     },
     allowlist: [],
     blocklist: [],
+    irrelevant: [],
   };
 }
 
@@ -76,6 +94,22 @@ export function preferenceMemoryPath(repoRoot: string): string {
   const fromEnv = process.env.ATOM_PREFERENCE_MEMORY?.trim();
   if (fromEnv) return path.isAbsolute(fromEnv) ? fromEnv : path.join(repoRoot, fromEnv);
   return path.join(repoRoot, PREFERENCE_MEMORY_FILE);
+}
+
+function asIrrelevant(v: unknown): IrrelevantScope[] {
+  if (!Array.isArray(v)) return [];
+  const parsed: IrrelevantScope[] = [];
+  for (const item of v) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const o = item as Record<string, unknown>;
+    const source = typeof o.source === "string" ? o.source.trim() : "";
+    const theme = typeof o.theme === "string" ? o.theme.trim() : "";
+    const stem = typeof o.stem === "string" ? o.stem.trim() : "";
+    if (!source) continue;
+    if (theme.length < 2 && stem.length < RSI_MIN_PATTERN_CHARS) continue;
+    parsed.push({ source, theme, stem });
+  }
+  return mergeIrrelevant([], parsed);
 }
 
 function asStringArray(v: unknown): string[] {
@@ -117,6 +151,7 @@ export function parsePreferenceMemory(raw: unknown): PreferenceMemory {
     },
     allowlist: asStringArray(r.allowlist),
     blocklist: asStringArray(r.blocklist),
+    irrelevant: asIrrelevant(r.irrelevant),
   };
 }
 
@@ -228,6 +263,7 @@ export function applyPreferenceMemoryPatch(
     thresholds,
     allowlist: current.allowlist,
     blocklist,
+    irrelevant: current.irrelevant,
   });
 
   const changed =
@@ -280,6 +316,35 @@ export function patternStem(title: string): string | undefined {
   if (sliced.length < RSI_MIN_PATTERN_CHARS) return undefined;
   if (/^[\d\s\p{P}]+$/u.test(sliced)) return undefined;
   return sliced;
+}
+
+export function mergeIrrelevant(existing: IrrelevantScope[], added: IrrelevantScope[]): IrrelevantScope[] {
+  const out = existing.map((s) => ({ ...s }));
+  for (const next of added) {
+    const source = next.source.trim();
+    const theme = next.theme.trim();
+    const stem = next.stem.trim();
+    if (!source) continue;
+    if (theme.length < 2 && stem.length < RSI_MIN_PATTERN_CHARS) continue;
+    const idx = out.findIndex((e) => {
+      if (e.source.toLowerCase() !== source.toLowerCase()) return false;
+      if (theme && e.theme && e.theme === theme) return true;
+      if (stem && e.stem && e.stem.toLowerCase() === stem.toLowerCase()) return true;
+      return false;
+    });
+    if (idx >= 0) {
+      const prev = out[idx]!;
+      out[idx] = {
+        source: prev.source,
+        theme: prev.theme || theme,
+        stem: stem.length > prev.stem.length ? stem : prev.stem,
+      };
+      continue;
+    }
+    out.push({ source, theme, stem });
+  }
+  if (out.length > IRRELEVANT_MAX) return out.slice(out.length - IRRELEVANT_MAX);
+  return out;
 }
 
 export function mergePatternList(existing: string[], added: string[]): string[] {

@@ -145,6 +145,8 @@ describe("Desk shell", () => {
     assert.match(js, /仍要我跟/);
     assert.match(js, /保持关闭/);
     assert.match(js, /记为已通过，草稿进「规格待审」。不外发、不开工。/);
+    assert.match(js, /移出今天的队列。同类少露。只记在本机。/);
+    assert.match(js, /跟我无关/);
     assert.match(js, /确认后写出本机交接包。不编码、不发云之家。/);
     assert.match(html, /【摘要】/);
     assert.match(html, /今天没有要你拍板的|需要你拍板/);
@@ -639,6 +641,66 @@ describe("Desk operator APIs", () => {
     assert.equal(handed?.review_status, "handed_off");
     assert.equal(handed?.stage_label, "已派 Lead");
     assert.equal((after.json.review as unknown[]).length, 0);
+  });
+
+  it("POST /api/reject learns 跟我无关 and leaves a personal sibling", async () => {
+    const daemon = await tempDaemon();
+    const group = "6a4ce0e0e4b0611af90e3087";
+    const release = "明确88环境技能同步到沙箱/预发布/生产的发布流程";
+    const id = newId("cand");
+    daemon.store.append({
+      type: "candidate_proposed",
+      subject_id: id,
+      summary: release,
+      detail: { title: release, body: "mcpApp开发群", confidence: 0.8 },
+      refs: [{ token: `yzj-ai-advance:im:${group}:m1`, kind: "im", digest: "release" }],
+      actor: "test",
+    });
+    const personal = newId("cand");
+    daemon.store.append({
+      type: "candidate_proposed",
+      subject_id: personal,
+      summary: "单国鑫请你确认88环境技能同步到生产的发布流程",
+      detail: {
+        title: "单国鑫请你确认88环境技能同步到生产的发布流程",
+        body: "需要你拍板",
+        confidence: 0.93,
+      },
+      refs: [{ token: `yzj-ai-advance:im:${group}:m2`, kind: "im", digest: "you" }],
+      actor: "test",
+    });
+
+    const rejected = await api(daemon, "POST", "/api/reject", { id });
+    assert.equal(rejected.status, 200);
+    assert.equal(rejected.json.irrelevant, true);
+
+    const memory = await api(daemon, "GET", "/api/preference-memory");
+    const scopes = (
+      memory.json.memory as { irrelevant: Array<{ source: string; theme: string }> }
+    ).irrelevant;
+    assert.equal(
+      scopes.some((s) => s.source === group && s.theme === "发布与发布流程"),
+      true
+    );
+
+    const noiseId = newId("cand");
+    daemon.store.append({
+      type: "candidate_proposed",
+      subject_id: noiseId,
+      summary: "另一条发布流程说明",
+      detail: { title: "另一条技能同步发布流程说明", body: "发布流程", confidence: 0.6 },
+      refs: [{ token: `yzj-ai-advance:im:${group}:m3`, kind: "im", digest: "n" }],
+      actor: "test",
+    });
+    const noise = await api(daemon, "POST", "/api/reject", { id: noiseId, reason: "noise-heuristic" });
+    assert.equal(noise.status, 200);
+    assert.equal(noise.json.irrelevant, false);
+
+    const cands = await api(daemon, "GET", "/api/candidates");
+    const list = cands.json.candidates as Array<{ id: string; status: string; reject_reason?: string }>;
+    assert.equal(list.find((c) => c.id === id)?.status, "rejected");
+    assert.equal(list.find((c) => c.id === id)?.reject_reason, "not_mine");
+    assert.equal(list.find((c) => c.id === personal)?.status, "suggested");
   });
 });
 

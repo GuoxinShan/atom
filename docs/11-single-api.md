@@ -81,7 +81,7 @@ Use **`POST /api/run`** from the CLI. Keep **`POST /hooks/run`** for inbound web
 | `serve` | *(starts this daemon)* |
 | `candidates [--status]` | `GET /api/candidates?status=` |
 | `approve <id>` | `POST /api/approve` `{id, note?}` → `{specId, created}` (draft only; no handoff) |
-| `reject <id>` | `POST /api/reject` `{id, reason?}` |
+| `reject <id>` | `POST /api/reject` `{id, reason?}` — empty reason or 跟我无关 writes a same-group+theme `irrelevant` scope (no send) |
 | `reject-noise` | `POST /api/reject-noise` |
 | `merge-sweep [--apply]` | `POST /api/merge-sweep` `{apply?}` (default dry-run) |
 | `tag-backfill [--apply]` | `POST /api/tag-backfill` `{apply?}` (default dry-run; suggested only) |

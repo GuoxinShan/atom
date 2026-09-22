@@ -21,6 +21,7 @@ import {
   type DoneMatchContext,
 } from "./done-match.js";
 import { listOpenSuggested } from "./merge-sweep.js";
+import { IRRELEVANT_REASON } from "./irrelevant.js";
 
 export const ALREADY_DONE_REASON = "already_done";
 export const ALREADY_DONE_LABEL = "已在仓库/历史进度关闭";
@@ -80,6 +81,7 @@ export function historyFromStore(store: EventStore): DoneHistoryItem[] {
       ...(c.theme ? { theme: c.theme } : {}),
       ...(c.project ? { project: c.project } : {}),
       ...(c.tags ? { tags: c.tags } : {}),
+      ...(c.reject_reason ? { reject_reason: c.reject_reason } : {}),
     });
   }
   return out;
@@ -129,8 +131,9 @@ export function reopenCandidate(store: EventStore, candidateId: string, note?: s
   const found = projectCandidates(store).find((c) => c.id === candidateId);
   if (!found) throw new Error(`Candidate not found: ${candidateId}`);
   if (found.status === "suggested") return found;
-  if (found.disposition !== ALREADY_DONE_REASON && !isAlreadyDoneReason(found.reject_reason)) {
-    throw new Error(`Only already_done items can be reopened: ${candidateId}`);
+  const irrelevant = found.disposition === IRRELEVANT_REASON || found.reject_reason === IRRELEVANT_REASON;
+  if (found.disposition !== ALREADY_DONE_REASON && !isAlreadyDoneReason(found.reject_reason) && !irrelevant) {
+    throw new Error(`Only already_done or irrelevant items can be reopened: ${candidateId}`);
   }
   store.append({
     type: "decision_reopened",

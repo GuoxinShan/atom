@@ -24,6 +24,11 @@ import {
   type OpenItemSnippet,
 } from "../agents/laya.js";
 import { loadThemeVocabulary, tagLabelsForExtract } from "../agents/theme-vocabulary.js";
+import {
+  appendIrrelevantClose,
+  applyIrrelevantToSuggested,
+  judgeIrrelevant,
+} from "./irrelevant.js";
 import { appendLayaMergeDecision, isLayaMergeNow } from "./laya-merge.js";
 import { recordExtractFinished } from "./runtime-meta.js";
 import {
@@ -121,6 +126,7 @@ export async function runExtract(
   noiseDropped: number;
   merged: number;
   alreadyDone: number;
+  irrelevant: number;
 }> {
   const runId = newId("agent");
   const useGate = opts?.heuristicGate !== false;
@@ -184,11 +190,13 @@ export async function runExtract(
     let noiseDropped = 0;
     let merged = 0;
     let alreadyDone = 0;
+    let irrelevantDiverted = 0;
     let layaNoiseDropped = 0;
     let layaMerged = 0;
     let layaTagged = 0;
     let layaFailOpen = !layaAvailable && Boolean(laya?.isEnabled());
     const tagLabels = tagLabelsForExtract(opts?.repoRoot);
+    const vocab = loadThemeVocabulary(opts?.repoRoot);
     const doneCtx = loadDoneContext(store, opts?.repoRoot);
     for (const p of proposals) {
       const key = p.cluster_key ?? p.title;
@@ -205,6 +213,54 @@ export async function runExtract(
         noiseDropped += 1;
         skipped += 1;
         continue;
+      }
+
+      if (!allowlisted) {
+        const irrelevant = judgeIrrelevant(
+          {
+            title: p.title,
+            body: p.body,
+            refs: p.refs,
+            theme: p.theme ?? p.tags?.theme,
+            tags: p.tags,
+            confidence: p.confidence,
+          },
+          memory,
+          vocab
+        );
+        if (irrelevant.action === "divert" && irrelevant.scope) {
+          const candId = newId("cand");
+          store.append({
+            type: "candidate_proposed",
+            subject_id: candId,
+            summary: p.title,
+            detail: {
+              title: p.title,
+              body: p.body,
+              confidence: p.confidence,
+              cluster_key: key,
+              source_message_ids: p.source_message_ids,
+              agent_id: agent.id,
+              gated_by: useGate ? "heuristic-gate" : "none",
+              irrelevant_gate: {
+                action: "divert",
+                fail_open: false,
+                reason: irrelevant.reason,
+                source: irrelevant.scope.source,
+                theme: irrelevant.scope.theme,
+                stem: irrelevant.scope.stem,
+              },
+            },
+            refs: p.refs,
+            actor: `agent:${agent.id}`,
+          });
+          appendIrrelevantClose(store, { id: candId, title: p.title, refs: p.refs }, irrelevant.scope);
+          seenKeys.add(key);
+          irrelevantDiverted += 1;
+          skipped += 1;
+          console.log(`[extract] irrelevant: ${p.title} — ${irrelevant.reason}`);
+          continue;
+        }
       }
 
       let layaGate: LayaCandidateGate | undefined;
@@ -374,11 +430,21 @@ export async function runExtract(
     });
     alreadyDone += swept.closed;
 
+    const irrelSweep = applyIrrelevantToSuggested(store, {
+      repoRoot: opts?.repoRoot,
+      memory,
+      vocab,
+    });
+    irrelevantDiverted += irrelSweep.closed;
+
     if (noiseDropped > 0) {
       console.log(`[extract] dropped ${noiseDropped} noise proposals`);
     }
     if (alreadyDone > 0) {
       console.log(`[extract] already_done=${alreadyDone} (off Needs-you)`);
+    }
+    if (irrelevantDiverted > 0) {
+      console.log(`[extract] irrelevant=${irrelevantDiverted} (off Needs-you)`);
     }
 
     store.append({
@@ -392,6 +458,7 @@ export async function runExtract(
         skipped,
         merged,
         already_done: alreadyDone,
+        irrelevant: irrelevantDiverted,
         noise_dropped: noiseDropped,
         laya_noise_dropped: layaNoiseDropped,
         laya_merged: layaMerged,
@@ -413,6 +480,7 @@ export async function runExtract(
       noiseDropped,
       merged,
       alreadyDone,
+      irrelevant: irrelevantDiverted,
     };
   } catch (err) {
     store.append({
