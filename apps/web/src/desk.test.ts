@@ -112,10 +112,22 @@ describe("Desk shell", () => {
     assert.match(html, /按主题\/项目折叠/);
     assert.match(html, /规格待审/);
     assert.match(html, /规格进度/);
+    assert.match(html, /id="section-needs-you"/);
+    assert.match(html, /id="section-blockers"/);
+    assert.match(html, /id="section-progress"/);
+    assert.match(html, />要你拍板</);
+    assert.match(html, />卡点</);
+    assert.match(html, />进度摘要</);
+    assert.match(html, /id="drawer-pack"/);
+    assert.match(html, /事项 · Listening \/ Lead \/ Matters/);
     assert.match(js, /批准规格/);
     assert.match(js, /退回修改/);
     assert.match(js, /派给 Lead/);
     assert.match(js, /spec-review-card/);
+    assert.match(js, /renderBlockersSection/);
+    assert.match(js, /renderProgressSection/);
+    assert.match(js, /recentAlreadyDone/);
+    assert.match(js, /\/api\/progress-snapshot/);
     assert.match(js, /window\.confirm/);
     assert.match(js, /target: "file", run: false/);
     assert.match(js, /\/api\/spec-approve/);
@@ -124,7 +136,25 @@ describe("Desk shell", () => {
     assert.match(css, /spec-review-card/);
     assert.match(css, /needs-group\.is-other/);
     assert.match(css, /empty-desk/);
+    assert.match(css, /\.blocker-row/);
+    assert.match(css, /\.progress-repo/);
+    assert.match(css, /\.drawer-pack/);
     assert.doesNotMatch(css, /#6e7bf2/);
+  });
+
+  it("keeps Needs-you empty copy while blockers and progress still render", () => {
+    const js = fs.readFileSync(path.join(here, "public/app.js"), "utf8");
+    const html = fs.readFileSync(path.join(here, "public/index.html"), "utf8");
+    assert.match(js, /今天没有要你拍板的/);
+    assert.match(js, /现在没有卡点/);
+    assert.match(js, /还没有进度快照|快照里暂时没有新进展/);
+    assert.match(js, /不编造提交/);
+    assert.match(html, /id="blocker-list"/);
+    assert.match(html, /id="progress-summary"/);
+    const morningFn = js.slice(js.indexOf("function morningLine"), js.indexOf("function recentAlreadyDone"));
+    assert.match(morningFn, /今日 \$\{n\} 条待拍板/);
+    assert.doesNotMatch(morningFn, /规格待审/);
+    assert.match(js, /drawerPack\.open = false/);
   });
 
   it("renders the three-section brief and confirms only Lead handoff", () => {
@@ -297,6 +327,11 @@ describe("Desk operator APIs", () => {
     assert.equal(mem.thresholds?.noise, 0.8);
     assert.equal(mem.cursor_at, null);
     assert.equal(memory.json.last_rsi, null);
+
+    const progress = await api(daemon, "GET", "/api/progress-snapshot");
+    assert.equal(progress.status, 200);
+    assert.equal(progress.json.ok, true);
+    assert.equal(progress.json.snapshot, null);
   });
 
   it("groups Needs-you candidates by theme/project or workspace heuristic", async () => {
